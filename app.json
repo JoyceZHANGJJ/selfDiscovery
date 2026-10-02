@@ -4,6 +4,7 @@
     "pages/look/look",
     "pages/review/review",
     "pages/set/set",
+    "pages/list/list",
     "pages/options/options"
   ],
   "window": {

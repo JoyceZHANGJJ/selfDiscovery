@@ -1,0 +1,41 @@
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onRefresh" refresher-triggered="{{refreshing}}">
+    <view class="body">
+      <view class="sect-t">{{tit}}</view>
+      <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
+
+      <!-- 区分：全部 / 备忘 / 购物 -->
+      <view class="filters">
+        <view class="ft {{seg==='all'?'on':''}}" data-s="all" bindtap="onSeg">全部</view>
+        <view class="ft {{seg==='memo'?'on':''}}" data-s="memo" bindtap="onSeg"><text class="fd" style="background:{{cmemo}}"></text>备忘</view>
+        <view class="ft {{seg==='buy'?'on':''}}" data-s="buy" bindtap="onSeg"><text class="fd" style="background:{{cbuy}}"></text>购物</view>
+      </view>
+
+      <block wx:if="{{show}}">
+        <view wx:for="{{undone}}" wx:key="id" class="rec list" data-id="{{item.id}}">
+          <view class="edge" style="background:{{item.c}}"></view>
+          <view class="hd">
+            <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          </view>
+        </view>
+
+        <view wx:if="{{done.length}}" class="dnlab">已完成 · {{done.length}}</view>
+        <view wx:for="{{done}}" wx:key="id" class="rec list done" data-id="{{item.id}}">
+          <view class="edge" style="background:{{item.c}}"></view>
+          <view class="hd">
+            <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          </view>
+          <view class="done-at">{{item.doneLabel}}</view>
+        </view>
+      </block>
+
+      <view wx:if="{{empty}}" class="empty-mini">还没有备忘或购物记录</view>
+    </view>
+  </scroll-view>
+</view>
