@@ -4,14 +4,13 @@
 
 /* ---------------- 常量（与线上版同构） ---------------- */
 const MODULES = [
-  { k: 'obs', n: '观察', c: '#7C9A86' },
+  { k: 'obs', n: '觉察', c: '#7C9A86' },
   { k: 'now', n: '此刻', c: '#5E9A94' },
-  { k: 'want', n: '来做', c: '#C0A05A' },
-  { k: 'like', n: '喜欢', c: '#C77DA0' },
-  { k: 'done', n: '做了', c: '#6E8CB0' },
+  { k: 'want', n: '可做', c: '#C0A05A' },
+  { k: 'like', n: '悦己', c: '#C77DA0' },
+  { k: 'nope', n: '无感', c: '#948AA8' },
   { k: 'memo', n: '备忘', c: '#9A8C7A' },
-  { k: 'buy', n: '购物', c: '#C08552' },
-  { k: 'nope', n: '不想', c: '#948AA8' }
+  { k: 'buy', n: '购物', c: '#C08552' }
 ];
 
 const OPT = {
@@ -21,13 +20,13 @@ const OPT = {
   genFeel: ['专注', '走神', '平静', '焦虑'],
   genWant: ['喝咖啡', '走一走', '看会儿书'],
   wantItem: ['学吉他', '早睡', '去旅行', '练字'],
-  wantKind: ['想做', '可做', '喜欢'],
+  wantKind: ['想做', '可试', '喜欢'],
   nopeThing: ['应酬', '刷手机', '加班', '回消息'],
   nopeDeg: ['微微', '有点', '很', '非常', '极度'],
   nopeMood: ['抵触', '心累', '反感'],
+  nopeKind: ['不想', '没兴趣', '不喜欢'],
   memoItem: [], buyItem: [],
   likeItem: ['掌控自己的时间', '没有任务压力', '做想做的事', '无人打扰'],
-  doneItem: ['跑步', '读书', '打扫', '写周报', '冥想'],
   doneFeel: ['踏实', '轻松', '平静'],
   doneGain: ['完成感', '心情变好', '学到了'],
   obsMood: ['开心', '平静', '满足', '焦虑', '低落', '烦躁', '麻木']
@@ -35,16 +34,15 @@ const OPT = {
 
 const GLABEL = {
   obsWhat: '什么事', obsStart: '怎么开始的', genDoing: '正在做的事', genFeel: '情绪',
-  genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '不想的事', nopeDeg: '程度', nopeMood: '不想的情绪',
-  doneItem: '做了的事', doneFeel: '做了的感受', doneGain: '收获', obsMood: '做完心情如何', memoItem: '要记住什么', buyItem: '要买什么', likeItem: '喜欢的事'
+  genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '什么事', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '分类',
+  doneFeel: '做了的感受', doneGain: '收获', obsMood: '做完心情如何', memoItem: '要记住什么', buyItem: '要买什么', likeItem: '什么事'
 };
 
 const OPTGROUPS = [
   { m: 'obs', gs: ['obsWhat', 'obsStart', 'obsMood'] },
   { m: 'now', gs: ['genDoing', 'genFeel', 'genWant'] },
   { m: 'want', gs: ['wantItem', 'wantKind'] },
-  { m: 'nope', gs: ['nopeThing', 'nopeDeg', 'nopeMood'] },
-  { m: 'done', gs: ['doneItem', 'doneFeel', 'doneGain'] },
+  { m: 'nope', gs: ['nopeThing', 'nopeKind', 'nopeDeg', 'nopeMood'] },
   { m: 'like', gs: ['likeItem'] }
 ];
 
@@ -74,17 +72,21 @@ const FIELDS = {
   want: { main: 'wantItem', items: [
     { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },
     { free: 'trigger', label: '是什么让你想做', ph: '刚看到别人晒成果，有点不甘心' },
-    { free: 'hope', label: '希望最终变成什么样', ph: '变成每天稳定的习惯' }
+    { free: 'hope', label: '希望最终变成什么样', ph: '变成每天稳定的习惯' },
+    // 「进行中感受」仅在做中/点「开始」后显示（由 index 编辑态按状态过滤）
+    { free: 'doingNote', label: '进行中感受', ph: '做的过程中冒出来的感受，随便写', ta: true },
+    // 「做了的感受 / 收获」仅点「完成」后显示（由 index 编辑态按状态过滤）
+    { free: 'doneFeel', label: '做了的感受', ph: '做完那一刻心里冒出来的话', ta: true },
+    { free: 'doneGain', label: '收获', ph: '这次有什么收获，随便写', ta: true },
+    // 「为什么不做了」仅点「放弃」或编辑「不做」记录时显示（由 index 编辑态按状态过滤）
+    { free: 'abandonWhy', label: '为什么不做了', ph: '为什么不想做了？随便写', ta: true }
   ] },
   nope: { main: 'nopeThing', items: [
+    { g: 'nopeKind', single: true, noInput: true, hideDetail: true, required: true },
     { g: 'nopeDeg', freeze: false, single: true, noInput: true },
     { g: 'nopeMood', freeze: true, single: false, noInput: true },
     { free: 'nopefeel', label: '感受（自由记录）', ph: '那一刻心里冒出来的话', ta: true },
     { free: 'after', label: '硬着头皮做了之后', ph: '其实没那么糟' }
-  ] },
-  done: { main: 'doneItem', items: [
-    { g: 'doneFeel', freeze: false, single: false },
-    { g: 'doneGain', freeze: true, single: false }
   ] },
   /* 备忘 / 购物：只记一句话，没有细节；加 ~ 前缀可把这条存进选项池下次点选 */
   memo: { main: 'memoItem', items: [ { free: 'memonote', label: '原因', ph: '为什么记这条？可不填', ta: true } ] },
@@ -137,11 +139,11 @@ const DCOLORS = ['#7C9A86', '#5E9A94', '#C0A05A', '#948AA8', '#6E8CB0', '#B4544E
 const COLMAP = {
   obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
   'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:memonote': '原因', 'free:buynote': '干什么用',
-  'free:trigger': '诱因', 'free:hope': '希望实现成',
+  'free:trigger': '诱因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '不想感受', 'free:after': '之后',
-  doneFeel: '做了感受', doneGain: '做了收获', 'free:likeFeel': '当时感受'
+  'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受'
 };
-const FALLBACK = { obs: '感受', want: '诱因', nope: '不想感受', done: '做了感受', now: '感受', like: '当时感受' };
+const FALLBACK = { obs: '感受', want: '诱因', nope: '不想感受', now: '感受', like: '当时感受' };
 
 /* ---------------- 纯计算 ---------------- */
 function dayLabel(ago) {
@@ -150,8 +152,14 @@ function dayLabel(ago) {
   const d = new Date(); d.setDate(d.getDate() - ago);
   return (d.getMonth() + 1) + '月' + d.getDate() + '日';
 }
-function mname(k) { const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n }))).find(x => x.k === k); return m ? m.n : k; }
-function mcolor(k) { const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n, c: d.c }))).find(x => x.k === k); return m ? m.c : '#7C9A86'; }
+function mname(k) {
+  if (k === 'done') return '做了';   // 兼容历史 m='done' 记录（新流程已并入「可做·做了」）
+  const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n }))).find(x => x.k === k); return m ? m.n : k;
+}
+function mcolor(k) {
+  if (k === 'done') return '#6E8CB0';
+  const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n, c: d.c }))).find(x => x.k === k); return m ? m.c : '#7C9A86';
+}
 function isSingle(g) { for (const m of OPTGROUPS) { if (m.gs.indexOf(g) >= 0) { const f = FIELDS[m.m]; return !!(f.items.find(it => it.g === g && it.single)); } } return false; }
 // 该选项组是否隐藏手填输入框（这类组不能手填，编辑时不留残值）
 function isNoInput(g) { for (const m of OPTGROUPS) { if (m.gs.indexOf(g) >= 0) { const f = FIELDS[m.m]; return !!(f.items.find(it => it.g === g && it.noInput)); } } return false; }
@@ -160,6 +168,12 @@ function getOPT(g) { const O = G.OPT || OPT; return O[g] || []; }
 function wantKindDefault() {
   const k = getOPT('wantKind');
   const def = k.indexOf('想做') >= 0 ? '想做' : (k[0] || '想做');
+  return [def];
+}
+// 无感模块默认分类：锁定「不想」（不随选项顺序变化），找不到再退第一个，最后兜底「不想」
+function nopeKindDefault() {
+  const k = getOPT('nopeKind');
+  const def = k.indexOf('不想') >= 0 ? '不想' : (k[0] || '不想');
   return [def];
 }
 
@@ -239,14 +253,15 @@ function normTime(t, ts) {
   if (ts) { const d = new Date(ts); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   return s;
 }
-// 记录的模块显示名：want 模块按分类展示为「{模块名} · {分类}」，其余原样
-// 直接显示存储的分类值（支持后续改名/删除），无分类（含历史数据）默认「{模块名} · {第一个分类}」
+// 记录的模块显示名：want 按状态显示为 未做/在做（已完成归入 done 模块显示“做了”），再拼接分类
 function recMname(r) {
   if (r.m === 'want') {
-    const nm = mname('want');
-    const i = (r.extSrc || []).indexOf('wantKind');
-    const kind = i >= 0 ? String((r.ext || [])[i] || '') : '';
-    return kind ? nm + ' · ' + kind : nm + ' · ' + (getOPT('wantKind')[0] || nm);
+    const st = r.status || '';
+    const stateName = st === 'doing' ? '在做' : (st === 'done' ? '做了' : (st === 'abandon' ? '不做' : '未做'));
+    const es = r.extSrc || [], ex = r.ext || [];
+    const i = es.indexOf('wantKind');
+    const k = i >= 0 ? ex[i] : '';
+    return k ? stateName + '·' + k : stateName;
   }
   return mname(r.m);
 }
@@ -259,6 +274,12 @@ function decorate(r) {
   o.extSrc = fixExtSrc(o.m, o.ext, o.extSrc);
   o.done = !!o.done;
   o.doneAt = o.doneAt || 0;
+  o.status = r.status || '';
+  o.ref = r.ref || '';
+  o.refTxt = r.refTxt || '';
+  o.startedAt = r.startedAt || 0;
+  o.abandonedAt = r.abandonedAt || 0;
+  o.endTs = r.endTs || 0;
   // 备忘「原因」/ 购物「什么用」：从细节里提取对应 free 字段
   o.reason = '';
   o.usefor = '';
@@ -321,14 +342,23 @@ function decorateDoc(d) {
   return decorate({
     id: d._id, _rid: d._id, m: d.m, t: d.t, txt: d.txt,
     ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts,
-    done: !!d.done, doneAt: d.doneAt || 0
+    done: !!d.done, doneAt: d.doneAt || 0,
+    status: d.status || '', ref: d.ref || '', refTxt: d.refTxt || '', startedAt: d.startedAt || 0, refTs: d.refTs || 0, endTs: d.endTs || 0, abandonedAt: d.abandonedAt || 0
   });
 }
-// 组装查询条件：模块过滤 + 时间范围（startTs <= ts < before）
-function recWhere({ m = null, startTs = null, before = null } = {}) {
+// 组装查询条件：模块过滤 + 时间范围（startTs <= ts < before）+ 状态（仅 want 模块用）
+// state: 'all'(未做+在做+做了+不做) / 'todo' / 'doing' / 'done' / 'abandon'
+function recWhere({ m = null, startTs = null, before = null, state = null } = {}) {
   const _ = db().command;
   const w = {};
   if (m && m !== 'all') w.m = m;
+  if (m === 'want' && state) {
+    if (state === 'todo') w.status = _.nin(['doing', 'done', 'abandon']);
+    else if (state === 'doing') w.status = 'doing';
+    else if (state === 'done') w.status = 'done';
+    else if (state === 'abandon') w.status = 'abandon';
+    // state === 'all'：不限制 status（未做 + 在做 + 做了 + 不做 都显示）
+  }
   const ts = [];
   if (startTs != null) ts.push(_.gte(startTs));
   if (before != null) ts.push(_.lt(before));
@@ -338,9 +368,9 @@ function recWhere({ m = null, startTs = null, before = null } = {}) {
 }
 // 单页：请求 limit+1 条，多出的 1 条仅用于探测 hasMore；before 为上一页最后一条的 ts（取更旧）
 // 注：同一毫秒多条记录理论上可能漏一条，手记场景极少，可忽略
-function loadRecordsPage({ before = null, limit = 20, m = null, startTs = null } = {}) {
+function loadRecordsPage({ before = null, limit = 20, m = null, startTs = null, state = null } = {}) {
   return new Promise((resolve) => {
-    recCol().where(recWhere({ m, startTs, before })).orderBy('ts', 'desc').limit(limit + 1).get().then(res => {
+    recCol().where(recWhere({ m, startTs, before, state })).orderBy('ts', 'desc').limit(limit + 1).get().then(res => {
       const data = res.data || [];
       const hasMore = data.length > limit;
       const list = (hasMore ? data.slice(0, limit) : data).map(decorateDoc);
@@ -374,10 +404,25 @@ function countRecords({ m = null, startTs = null } = {}) {
 function loadRecords() { return loadAllRecords({}).then(list => list); }
 function addRecord(rec) {
   const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0, createTime: db().serverDate() };
+  if (rec.status) data.status = rec.status;
+  if (rec.startedAt) data.startedAt = rec.startedAt;
+  if (rec.ref) data.ref = rec.ref;
+  if (rec.refTxt) data.refTxt = rec.refTxt;
+  if (rec.refTs) data.refTs = rec.refTs;
+  if (rec.endTs) data.endTs = rec.endTs;
+  if (rec.abandonedAt) data.abandonedAt = rec.abandonedAt;
   return recCol().add({ data }).then(res => res._id);
 }
 function updateRecord(rec) {
-  return recCol().doc(rec._rid).update({ data: { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0 } });
+  const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0 };
+  if (rec.status !== undefined) data.status = rec.status;
+  if (rec.startedAt !== undefined) data.startedAt = rec.startedAt;
+  if (rec.ref !== undefined) data.ref = rec.ref;
+  if (rec.refTxt !== undefined) data.refTxt = rec.refTxt;
+  if (rec.refTs !== undefined) data.refTs = rec.refTs;
+  if (rec.endTs !== undefined) data.endTs = rec.endTs;
+  if (rec.abandonedAt !== undefined) data.abandonedAt = rec.abandonedAt;
+  return recCol().doc(rec._rid).update({ data });
 }
 function deleteRecord(rec) {
   return recCol().doc(rec._rid).remove();
@@ -556,6 +601,58 @@ function renameOption(g, ov, nv) {
   });
 }
 
+// 一次性迁移：分类「可做」→「可试」（2026-10 模块改名“可做”后避免与分类重名）
+// 步骤：① 翻页改所有 m='want' 且 wantKind=可做 的记录；② 选项池（云端+本地）重命名；③ 同步内存 G.records
+const MIG_WANTKIND_KEY = 'self_mig_wantkind_202610';
+function migrateWantKind() {
+  return new Promise((resolve) => {
+    if (wx.getStorageSync(MIG_WANTKIND_KEY)) { resolve(true); return; }
+    let cursor = 0;
+    function step() {
+      return recCol().where({ m: 'want' }).limit(100).skip(cursor).get().then(res => {
+        const docs = res.data || [];
+        const tasks = [];
+        docs.forEach(d => {
+          const es = d.extSrc || [], ex = d.ext || [];
+          const i = es.indexOf('wantKind');
+          if (i >= 0 && ex[i] === '可做') {
+            ex[i] = '可试';
+            tasks.push(recCol().doc(d._id).update({ data: { ext: ex } }));
+          }
+        });
+        return Promise.all(tasks).then(() => {
+          cursor += docs.length;
+          return docs.length === 100 ? step() : true;
+        });
+      }).catch(() => true);
+    }
+    step().then(() => {
+      // 选项池重命名（云端）
+      return renameOption('wantKind', '可做', '可试').then(() => {
+        // 本地 OPT 与内存同步
+        const local = loadLocalOpts();
+        if (local.wantKind) {
+          const li = local.wantKind.indexOf('可做');
+          if (li >= 0) { local.wantKind[li] = '可试'; wx.setStorageSync(OPT_LS, local); }
+        }
+        if (G.OPT && G.OPT.wantKind) {
+          const gi = G.OPT.wantKind.indexOf('可做');
+          if (gi >= 0) { G.OPT.wantKind[gi] = '可试'; persistLocalOpts(); }
+        }
+        // 内存已加载记录同步（本会话编辑/回看一致）
+        (G.records || []).forEach(r => {
+          if (r.m === 'want' && r.extSrc && r.ext) {
+            const i = r.extSrc.indexOf('wantKind');
+            if (i >= 0 && r.ext[i] === '可做') r.ext[i] = '可试';
+          }
+        });
+        wx.setStorageSync(MIG_WANTKIND_KEY, 1);
+        resolve(true);
+      });
+    });
+  });
+}
+
 // 自定义维度
 function loadDims() {
   return new Promise((resolve) => {
@@ -637,6 +734,7 @@ function ensureAll() {
     (dims || []).forEach(d => regDim(d));
     G.loaded = true;
     _loading = false;
+    return migrateWantKind();
   }).catch(() => { _loading = false; });
 }
 
@@ -655,9 +753,9 @@ function reload() {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, agoOf, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, nopeKindDefault, agoOf, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, addRecord, updateRecord, deleteRecord, clearAllRecords,
-  loadOptions, addOption, removeOption, renameOption, setOptOrder,
+  loadOptions, addOption, removeOption, renameOption, setOptOrder, migrateWantKind,
   isDefault, addDelDef, clearDelDef,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, reload, regDim, unregDim,
   globalData: G

@@ -1,5 +1,5 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
-  <scroll-view class="screen" scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{scrollTop}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh" bindscroll="closeRecSel">
+  <scroll-view class="screen" scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{scrollTop}}" scroll-into-view="{{scrollTo}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh" bindscroll="closeRecSel">
     <view class="body body-top" bindtap="closeRecSel">
       <!-- 骨架屏：数据未就绪时占位，避免首屏空卡片闪动 -->
       <block wx:if="{{!ready}}">
@@ -47,10 +47,10 @@
 
         <!-- 备忘 / 购物：纯主输入框，不要标题、选项池与管理入口 -->
         <block wx:if="{{composer.plain}}">
-          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{false}}" cursor-spacing="20" />
+          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" id="fldmain" bindfocus="onFieldFocus" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
-            <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" adjust-position="{{false}}"></textarea>
+            <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
           </view>
         </block>
         <block wx:else>
@@ -58,7 +58,7 @@
         <view wx:if="{{composer.mainOpts.length}}" class="chips">
           <view wx:for="{{composer.mainOpts}}" wx:key="*this" class="chip {{item.on?'on':''}}" data-v="{{item.v}}" bindtap="onMainChip">{{item.v}}</view>
         </view>
-        <textarea class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{false}}" cursor-spacing="20"></textarea>
+        <textarea class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" id="fldmain" bindfocus="onFieldFocus"></textarea>
 
         <view class="extra-h">细节 · 都可跳过</view>
         <view wx:for="{{composer.items}}" wx:key="index" class="extra {{item.first?'first':''}}">
@@ -70,11 +70,33 @@
             <view class="chips">
               <view wx:for="{{item.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{item.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
             </view>
-            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{false}}" cursor-spacing="20" />
+            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="24" id="fld{{index}}" bindfocus="onFieldFocus" />
           </block>
-          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" adjust-position="{{false}}"></textarea>
+          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
         </view>
         </block>
+
+        <!-- 编辑时：可修改时间（创建 / 开始 / 结束），默认回填原时间，改了才生效 -->
+        <view wx:if="{{editing}}" class="etime">
+          <view class="ql">{{editCreateLabel}}</view>
+          <picker class="ev" mode="date" value="{{editDate}}" bindchange="onEditDate"><view class="evv">{{editDate}}</view></picker>
+          <picker class="ev" mode="time" value="{{editTime}}" bindchange="onEditTime"><view class="evv">{{editTime}}</view></picker>
+        </view>
+        <view wx:if="{{editing && editHasStart}}" class="etime">
+          <view class="ql">开始时间</view>
+          <picker class="ev" mode="date" value="{{editStartDate}}" bindchange="onEditStartDate"><view class="evv">{{editStartDate}}</view></picker>
+          <picker class="ev" mode="time" value="{{editStartTime}}" bindchange="onEditStartTime"><view class="evv">{{editStartTime}}</view></picker>
+        </view>
+        <view wx:if="{{editing && editHasEnd}}" class="etime">
+          <view class="ql">结束时间</view>
+          <picker class="ev" mode="date" value="{{editEndDate}}" bindchange="onEditEndDate"><view class="evv">{{editEndDate}}</view></picker>
+          <picker class="ev" mode="time" value="{{editEndTime}}" bindchange="onEditEndTime"><view class="evv">{{editEndTime}}</view></picker>
+        </view>
+        <view wx:if="{{editing && editHasAbandon}}" class="etime">
+          <view class="ql">放弃时间</view>
+          <picker class="ev" mode="date" value="{{editAbandonDate}}" bindchange="onEditAbandonDate"><view class="evv">{{editAbandonDate}}</view></picker>
+          <picker class="ev" mode="time" value="{{editAbandonTime}}" bindchange="onEditAbandonTime"><view class="evv">{{editAbandonTime}}</view></picker>
+        </view>
 
         <view class="savebar">
           <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
@@ -99,7 +121,8 @@
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
           <text class="mn" style="color:{{item.c}}">{{item.m}}</text>
-          <text class="tv">{{item.txt}}</text>
+          <text wx:if="{{item.doingDays}}" class="tag doing">第{{item.doingDays}}天</text>
+          <view class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
           <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
           <text wx:else class="tw">{{item.d}}{{item.t}}</text>
         </view>
@@ -112,12 +135,8 @@
     </view>
   </scroll-view>
 
-  <!-- 记录操作条（选中记录后出现） -->
-  <view class="actbar {{recSel!=null?'on':''}}">
-    <view wx:if="{{recSelRec}}" class="tx">{{recSelRec.m}} · {{recSelRec.txt}}</view>
-    <view class="edit" bindtap="onRecEdit">改</view>
-    <view class="del" bindtap="onRecDel">删除</view>
-  </view>
+  <!-- 记录操作条（选中记录后出现）：记页与看页共用一套组件，按钮集合/可见性只维护一处 -->
+  <rec-actions rec="{{recSelRec}}" visible="{{recSel!=null}}" bind:action="onRecAction" />
 
   <!-- 删除撤销 -->
   <view wx:if="{{delUndo}}" class="toastline undo-bar">

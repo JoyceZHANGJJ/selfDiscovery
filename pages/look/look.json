@@ -1,6 +1,7 @@
 {
   "usingComponents": {
-    "theme-switcher": "/components/theme-switcher/index"
+    "theme-switcher": "/components/theme-switcher/index",
+    "rec-actions": "/components/rec-actions/rec-actions"
   },
   "navigationStyle": "custom"
 }

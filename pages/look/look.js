@@ -5,10 +5,21 @@ const app = getApp();
 function dmClass(m) {
   return ['obs', 'now', 'want', 'nope', 'done', 'memo', 'buy', 'like'].indexOf(m) >= 0 ? 'dm-' + m : 'dm-custom';
 }
-// 取一条「想做」记录的分类值（想要/可做/喜欢…）
-function wantKindOf(r) {
-  const i = (r.extSrc || []).indexOf('wantKind');
-  return i >= 0 ? String((r.ext || [])[i] || '') : '';
+
+// 用时格式化：不足 1 天用小时（不足 1 小时用分钟，再短“片刻”）；
+// 满 1 天及以上用「天」并保留一位小数，如 1.5 天
+function fmtDur(ms) {
+  if (ms <= 0) return '';
+  const DAY = 86400000, HOUR = 3600000, MIN = 60000;
+  if (ms < DAY) {
+    const h = Math.floor(ms / HOUR);
+    if (h > 0) return h + ' 小时';
+    const m = Math.floor(ms / MIN);
+    if (m > 0) return m + ' 分钟';
+    return '片刻';
+  }
+  const d = ms / DAY;
+  return (Math.round(d * 10) / 10) + ' 天';
 }
 
 Page({
@@ -18,8 +29,7 @@ Page({
     modules: [],
     filter: 'all',
     filterName: '全部',
-    kindFilter: 'all',
-    kinds: [],
+    stateFilter: 'all',
     q: '',
     recs: [],          // 已加载（装饰后）的记录，按 ts 倒序
     days: [],
@@ -31,6 +41,8 @@ Page({
     taskOpen: { undone: true, done: false }, // 待完成 / 已完成 折叠态（true=展开）
     empty: false,
     refreshing: false,
+    scrollTo: '',       // 聚焦搜索框时把其滚到可视区顶部，避免被键盘遮挡
+
     // 游标分页 + 快捷时间
     range: 'all',
     rangeLabel: '全部',
@@ -50,6 +62,8 @@ Page({
     this.ensureTheme();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 1, theme: store.curTheme() });
     this.setData({ sel: null, selRec: null, delUndo: null });
+    // 兜底：若此前停留在已下架的「做了」维度，回到「全部」
+    if (this.data.filter === 'done') this.setData({ filter: 'all', stateFilter: 'all' });
     store.ensureAll().then(() => { this.resetLoad(); });
   },
 
@@ -59,7 +73,8 @@ Page({
   },
 
   modulesVM() {
-    return store.MODULES;
+    // 维度筛选不单列「做了」：它与「可做 → 做了」状态筛选重复，避免入口歧义
+    return store.MODULES.filter(m => m.k !== 'done');
   },
 
   recVM(r) {
@@ -67,12 +82,64 @@ Page({
     const ago = store.agoOf(r.ts);
     const d = ago <= 0 ? '' : (ago === 1 ? '昨天' : (ago === 2 ? '前天' : store.dayLabel(ago))) + ' ';
     const task = store.isTask(r.m);
-    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '' };
+    const doingDays = (r.m === 'want' && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
+    // 做了 的历时：可做→做了（status=done）或历史遗留 m='done' 记录
+    let fromLine = '', durLine = '';
+    const isDoneView = (r.m === 'done') || (r.m === 'want' && r.status === 'done');
+    if (isDoneView) {
+      const refTxt = r.refTxt || '';
+      const endTs = r.doneAt || r.ts;                        // 完成时间：want-done 用 doneAt；遗留 done 用 ts
+      const baseTs = r.m === 'done' ? (r.refTs || r.ts) : r.ts;  // 惦记起点：want 用创建 ts；遗留 done 用 refTs
+      let durLabel = '', dur = 0;
+      if (r.startedAt && endTs && r.startedAt <= endTs) {
+        // 有开始时间：实际用了多久（完成 − 开始）
+        dur = endTs - r.startedAt; durLabel = '用了';
+      } else if (baseTs && endTs && baseTs <= endTs) {
+        // 没开始时间（一次性直接完成）：从创建/惦记起惦记了多久（完成 − 起点）
+        dur = endTs - baseTs; durLabel = '惦记了';
+      }
+      if (refTxt && refTxt !== r.txt) fromLine = '↳ 来自：' + refTxt;
+      const ds = fmtDur(dur);
+      // 「片刻」本身成词，与标签连写（用了片刻）；数值时长保留空格（用了 1 天）
+      if (ds) durLine = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
+    }
+    // 觉察 / 无感：有结束时间则显示「历时」（从创建到结束）
+    if ((r.m === 'obs' || r.m === 'nope') && r.endTs && r.ts && r.endTs > r.ts) {
+      const ds = fmtDur(r.endTs - r.ts);
+      if (ds) durLine = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
+    }
+    // 不做 的历时：从创建到放弃（惦记了多久）
+    if (r.m === 'want' && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
+      const ds = fmtDur(r.abandonedAt - r.ts);
+      if (ds) durLine = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
+    }
+    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur: durLine, from: fromLine };
   },
 
   buildStats(filter, list, totalOverride) {
     // 备忘 / 购物是待办，不展示统计，只在下面清单里看
     if (filter === 'memo' || filter === 'buy') return { hide: true };
+    // 「可做」维度：统计各流转状态（未做 / 在做 / 做了 / 不做），不按事项逐条统计
+    if (filter === 'want') {
+      const cnt = { todo: 0, doing: 0, done: 0, abandon: 0 };
+      list.forEach(r => {
+        const st = r.status || '';
+        if (st === 'doing') cnt.doing++;
+        else if (st === 'done') cnt.done++;
+        else if (st === 'abandon') cnt.abandon++;
+        else cnt.todo++;
+      });
+      const defs = [
+        { n: '未做', k: 'todo', c: '#C0A05A' },
+        { n: '在做', k: 'doing', c: '#5E9A94' },
+        { n: '做了', k: 'done', c: '#7C9A86' },
+        { n: '不做', k: 'abandon', c: '#948AA8' }
+      ];
+      const mx = Math.max(1, cnt.todo, cnt.doing, cnt.done, cnt.abandon);
+      const total = list.length;
+      const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
+      return { all: false, title: '可做 · 流转', lead: `共 ${total} 条`, bars, extra: '' };
+    }
     // 「全部」统计不计备忘/购物：它们属于待办，单独在清单里看（展示全部觉察维度，不截断）
     const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m)) : list;
     const allMods = store.MODULES.filter(m => !store.isTask(m.k));
@@ -87,7 +154,7 @@ Page({
     const keys = Object.keys(acc).sort((a, b) => acc[b] - acc[a]).slice(0, 4);
     const mxv = keys.length ? acc[keys[0]] : 1;
     const bars = keys.map(k => ({ n: k, c: store.mcolor(filter), n2: acc[k], w: Math.round(acc[k] / mxv * 100) + '%' }));
-    const labelMap = { obs: '观察最多的事', now: '最常在做的事', want: '最常想做的事', nope: '最常不想的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西', like: '最常喜欢的事' };
+    const labelMap = { obs: '觉察最多的事', now: '最常在做的事', want: '最常想做的事', nope: '最常不想的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西', like: '最常喜欢的事' };
     let extra = '';
     if (filter === 'obs' && list.length) {
       const fg = list.filter(r => (r.ext || []).indexOf('忘了时间') >= 0).length;
@@ -101,9 +168,20 @@ Page({
   rebuild() {
     const all = this.data.recs;
     const q = this.data.q.trim().toLowerCase();
+    const isWant = this.data.filter === 'want';
+    // 「可以」下「做了」即 want 记录 status=done；统计/标题用模块名
+    const effM = this.data.filter;
     const list = all.filter(r => {
       const f1 = this.data.filter === 'all' || r.m === this.data.filter;
-      const f1b = this.data.filter !== 'want' || this.data.kindFilter === 'all' || wantKindOf(r) === this.data.kindFilter;
+      let f1b = true;
+      if (isWant) {
+        const st = r.status || '';
+        if (this.data.stateFilter === 'todo') f1b = (st !== 'doing' && st !== 'done' && st !== 'abandon');
+        else if (this.data.stateFilter === 'doing') f1b = (st === 'doing');
+        else if (this.data.stateFilter === 'done') f1b = (st === 'done');
+        else if (this.data.stateFilter === 'abandon') f1b = (st === 'abandon');
+        else f1b = true; // all：未做 + 在做 + 做了 + 不做
+      }
       const f2 = !q || (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q) >= 0;
       return f1 && f1b && f2;
     });
@@ -113,11 +191,10 @@ Page({
     const map = {}, days = [];
     aware.forEach(r => { if (!map[r.day]) { map[r.day] = []; days.push(r.day); } map[r.day].push(this.recVM(r)); });
     const groups = days.map(d => ({ day: d, recs: map[d] }));
-    const stats = this.buildStats(this.data.filter, list, q ? null : this.data.total);
+    const stats = this.buildStats(effM, list, q ? null : this.data.total);
     this.setData({
       modules: this.modulesVM(),
-      filterName: this.data.filter === 'all' ? '全部' : store.mname(this.data.filter),
-      kinds: this.data.filter === 'want' ? store.getOPT('wantKind') : [],
+      filterName: effM === 'all' ? '全部' : store.mname(effM),
       days: groups,
       tasks: this.buildTasks(tasks),
       empty: groups.length === 0 && tasks.length === 0,
@@ -139,6 +216,18 @@ Page({
   },
 
   /* ---------------- 游标分页 ---------------- */
+  // 「可以」维度下「做了」已是 want 记录的一种状态（status=done），不再单独查 done 模块
+  effQuery() {
+    let m = this.data.filter === 'all' ? null : this.data.filter;
+    let state = null;
+    if (this.data.filter === 'want') {
+      state = this.data.stateFilter === 'doing' ? 'doing'
+            : (this.data.stateFilter === 'todo' ? 'todo'
+            : (this.data.stateFilter === 'done' ? 'done'
+            : (this.data.stateFilter === 'abandon' ? 'abandon' : 'all')));
+    }
+    return { m, state };
+  },
   // 重置并加载第一页 + 统计总数
   resetLoad() {
     this._cursor = null;
@@ -153,11 +242,13 @@ Page({
     if (this.data.q.trim()) { this.fullSearch(); return; }
     this._loading = true;
     this.setData({ loading: true });
+    const q = this.effQuery();
     const params = {
       before: first ? null : this._cursor,
       limit: 20,
-      m: this.data.filter === 'all' ? null : this.data.filter,
-      startTs: this.data.rangeStart
+      m: q.m,
+      startTs: this.data.rangeStart,
+      state: q.state
     };
     store.loadRecordsPage(params).then(({ list, hasMore, nextCursor }) => {
       this._cursor = nextCursor;
@@ -176,17 +267,20 @@ Page({
   onLoadMore() { this.loadMore(false); },
   // 统计当前 模块 + 时间范围 下的总数
   loadCount() {
-    const m = this.data.filter === 'all' ? null : this.data.filter;
-    store.countRecords({ m, startTs: this.data.rangeStart }).then(t => this.setData({ total: t }));
+    const q = this.effQuery();
+    store.countRecords({ m: q.m, state: q.state, startTs: this.data.rangeStart }).then(t => {
+      this.setData({ total: t }, () => { if (!this.data.q.trim()) this.rebuild(); });
+    });
   },
   // 搜索：全量拉取后客户端过滤（搜索需覆盖全部记录，不走游标分页）
   fullSearch() {
     this._loading = true;
     this.setData({ loading: true, hasMore: false });
-    const params = { m: this.data.filter === 'all' ? null : this.data.filter, startTs: this.data.rangeStart };
+    const q = this.effQuery();
+    const params = { m: q.m, startTs: this.data.rangeStart };
     store.loadAllRecords(params).then(all => {
-      const q = this.data.q.trim().toLowerCase();
-      const list = all.filter(r => (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q) >= 0);
+      const q2 = this.data.q.trim().toLowerCase();
+      const list = all.filter(r => (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q2) >= 0);
       this._loading = false;
       this.setData({ recs: list, loading: false }, () => this.rebuild());
     }).catch(() => {
@@ -202,6 +296,13 @@ Page({
     if (!this.data.q.trim()) { this.resetLoad(); return; }
     this._searchTimer = setTimeout(() => this.fullSearch(), 300);
   },
+  // 聚焦搜索框：不再手动 scroll-into-view。
+  // 手动滚动会与 adjust-position 的原生键盘避让叠加（先被滚到顶部、又被原生推起一次），
+  // 导致键盘弹出时搜索框“飞”到页面顶端。统一交给 adjust-position 原生处理。
+  onSearchFocus() {},
+  onSearchBlur() {
+    this.setData({ scrollTo: '' });
+  },
   // 待完成 / 已完成 折叠切换
   onTaskFold(e) {
     const k = e.currentTarget.dataset.k;
@@ -212,21 +313,21 @@ Page({
   },
   onFilter(e) {
     this.data.filter = e.currentTarget.dataset.f;
-    this.data.kindFilter = 'all';
-    this.setData({ filter: this.data.filter, kindFilter: 'all', sel: null, selRec: null });
+    this.data.stateFilter = 'all';
+    this.setData({ filter: this.data.filter, stateFilter: 'all', sel: null, selRec: null });
     this.resetLoad();
   },
-  // 想做模块二级分类筛选（想要/可做/喜欢…）
-  onKindFilter(e) {
-    this.data.kindFilter = e.currentTarget.dataset.k;
-    this.setData({ kindFilter: this.data.kindFilter });
+  // 可以 维度下的状态切换：未做 / 在做 / 做了
+  onStateFilter(e) {
+    this.data.stateFilter = e.currentTarget.dataset.s;
+    this.setData({ stateFilter: this.data.stateFilter });
     this.resetLoad();
   },
   // 快捷时间选择：全部 / 今天 / 近7天 / 近30天
   onRange(e) {
     const r = e.currentTarget.dataset.r;
     const map = { all: '全部', today: '今天', '7d': '近7天', '30d': '近30天' };
-    this.setData({ range: r, rangeLabel: map[r] || '全部', rangeStart: this.rangeStartOf(r), kindFilter: 'all' });
+    this.setData({ range: r, rangeLabel: map[r] || '全部', rangeStart: this.rangeStartOf(r), stateFilter: 'all' });
     this.resetLoad();
   },
   rangeStartOf(range) {
@@ -278,21 +379,69 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
-    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt } : null });
+    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs } : null });
+  },
+
+  /* 记录操作条统一入口（与记页共用 rec-actions 组件；看页行为：流转/改/结束 跳到记页（结束时间待「保存修改」时才记），恢复/删 本地直接处理）
+     type: start | complete | abandon | restore | end | edit | del */
+  onRecAction(e) {
+    const type = e.detail.type;
+    const id = this.data.sel; if (id == null) return;
+    const r = this.findRec(id);
+    if (!r) return;
+    if (type === 'start' || type === 'complete' || type === 'abandon') {
+      if (r.m !== 'want') return;
+      app.globalData.editRec = r;
+      if (type === 'start') app.globalData.editStart = true;
+      if (type === 'complete') app.globalData.editComplete = true;
+      if (type === 'abandon') app.globalData.editAbandon = true;
+      this.setData({ sel: null, selRec: null });
+      wx.switchTab({ url: '/pages/index/index' });
+      return;
+    }
+    if (type === 'restore') {
+      if (r.m !== 'want' || r.status !== 'abandon') return;
+      const now = Date.now();
+      const apply = (rec) => {
+        rec.status = '';
+        rec.ts = now;
+        rec.t = store.normTime('', now);
+        rec.abandonedAt = 0;
+        rec.startedAt = 0;
+        const es = rec.extSrc || [], ex = rec.ext || [];
+        const keep = [];
+        for (let i = 0; i < es.length; i++) { if (es[i] === 'free:abandonWhy') continue; keep.push(i); }
+        rec.extSrc = keep.map(i => es[i]); rec.ext = keep.map(i => ex[i]);
+      };
+      apply(r);
+      this.syncGlobal(id, apply);
+      store.updateRecord(r).catch(() => {});
+      this.setData({ recs: this.data.recs.slice(), sel: null, selRec: null }, () => this.rebuild());
+      return;
+    }
+    if (type === 'end') {
+      if (r.m !== 'obs' && r.m !== 'nope') return;
+      // 不在这里落结束时间：只标记待结束，跳到记页编辑态并聚焦「感受」输入框、弹键盘，
+      // 等点「保存修改」时才记录结束时间并写云
+      app.globalData.editRec = r;
+      app.globalData.editEnding = true;
+      app.globalData.editEndFocus = true;
+      this.setData({ sel: null, selRec: null });
+      wx.switchTab({ url: '/pages/index/index' });
+      return;
+    }
+    if (type === 'edit') {
+      app.globalData.editRec = r;
+      this.setData({ sel: null, selRec: null });
+      wx.switchTab({ url: '/pages/index/index' });
+      return;
+    }
+    if (type === 'del') { this.onActDel(); return; }
   },
 
   /* 点页面其它地方：收起记录操作条（失焦即关） */
   closeSel() {
     if (this.data.sel != null) this.setData({ sel: null, selRec: null });
-  },
-
-  onActEdit() {
-    const id = this.data.sel; if (id == null) return;
-    const r = this.findRec(id);
-    if (!r) return;
-    app.globalData.editRec = r;
-    this.setData({ sel: null, selRec: null });
-    wx.switchTab({ url: '/pages/index/index' });
   },
 
   onActDel() {
@@ -310,7 +459,16 @@ Page({
   onUndoDel() {
     const u = this.data.delUndo; if (!u) return;
     const dump = u.dump;
-    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0 };
+    // 删除后撤销：忠实还原原记录，保留状态（未做/在做/做了/不做）、开始时间与放弃时间，
+    // 以及「为什么不做了」——「不做」记录撤销后仍是「不做」，而不是退回未做
+    const rec = {
+      m: dump.m, t: dump.t, txt: dump.txt,
+      ext: dump.ext || [], extSrc: dump.extSrc || [],
+      ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0,
+      status: dump.status || '',
+      startedAt: dump.startedAt || 0,
+      abandonedAt: dump.abandonedAt || 0
+    };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       const decorated = store.decorate(rec);

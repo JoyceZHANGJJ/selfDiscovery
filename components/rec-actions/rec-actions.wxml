@@ -1,0 +1,15 @@
+<view class="actbar {{visible ? 'on' : ''}}">
+  <view wx:if="{{title}}" class="tx">{{title}}</view>
+
+  <view wx:if="{{flow.length}}" class="grp flowgrp">
+    <view wx:for="{{flow}}" wx:key="type" class="flow {{item.cls}}" data-type="{{item.type}}" bindtap="onTap">{{item.label}}</view>
+  </view>
+
+  <view wx:if="{{showEndSep}}" class="sep"></view>
+  <view wx:if="{{showWantSep}}" class="sep"></view>
+
+  <view wx:if="{{showEditDel}}" class="grp mgrp">
+    <view class="edit" data-type="edit" bindtap="onTap">改</view>
+    <view class="del" data-type="del" bindtap="onTap">删除</view>
+  </view>
+</view>

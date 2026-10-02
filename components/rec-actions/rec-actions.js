@@ -1,0 +1,57 @@
+// 记录操作条（记页「最近」与看页共用）：集中维护「哪些模块/状态显示哪些操作按钮」
+// 页面只负责各自的行为（记页内联改、看页跳记页），按钮集合与可见性逻辑只此一处。
+Component({
+  properties: {
+    rec: {
+      type: Object,
+      value: null,
+      observer() { this.compute(); }
+    },
+    visible: { type: Boolean, value: false }
+  },
+  data: {
+    title: '',
+    flow: [],        // [{ type, label, cls }] 流转按钮（开始/完成/放弃/恢复/结束）
+    showEditDel: false,
+    showEndSep: false,   // 觉察/无感 分组后分隔线
+    showWantSep: false   // 可做 流转后分隔线
+  },
+  lifetimes: {
+    attached() { this.compute(); }
+  },
+  methods: {
+    compute() {
+      const rec = this.data.rec || {};
+      const rawm = rec.rawm;
+      const status = rec.status || '';
+      const isWant = rawm === 'want';
+      const isObsNope = rawm === 'obs' || rawm === 'nope';
+      const flow = [];
+      // 可做：未做/在做 显示 开始(仅未在做)/完成/放弃；不做 显示 恢复
+      if (isWant && status !== 'done' && status !== 'abandon') {
+        if (status !== 'doing') flow.push({ type: 'start', label: '开始', cls: 'start' });
+        // type 必须是 complete（页面 handler 按 complete 处理）；cls 仍是 done（对应 .flow.done 样式）
+        flow.push({ type: 'complete', label: '完成', cls: 'done' });
+        flow.push({ type: 'abandon', label: '放弃', cls: 'abandon' });
+      }
+      if (isWant && status === 'abandon') {
+        flow.push({ type: 'restore', label: '恢复', cls: 'restore' });
+      }
+      // 觉察 / 无感：结束（仅未结束显示；已结束后改时间走「改」，不再显示「结束」）
+      if (isObsNope && !rec.ended) {
+        flow.push({ type: 'end', label: '结束', cls: 'end' });
+      }
+      this.setData({
+        flow,
+        showEditDel: !!rawm,
+        showEndSep: isObsNope && !rec.ended,
+        showWantSep: isWant && status !== 'done',
+        title: rec.m ? (rec.m + ' · ' + rec.txt) : ''
+      });
+    },
+    onTap(e) {
+      const type = e.currentTarget.dataset.type;
+      this.triggerEvent('action', { type, rec: this.data.rec });
+    }
+  }
+});

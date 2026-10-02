@@ -1,0 +1,25 @@
+/* 记录操作条：自带完整样式，与页面解耦（两页共用，不再各写一份） */
+.actbar { position: fixed; left: 0; right: 0; bottom: calc(58px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: #fff; border-radius: 18px 18px 0 0; display: flex; align-items: center; padding: 12px 10px calc(12px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -8px 24px rgba(35,35,31,.20); transform: translateY(150%); transition: transform .2s; z-index: 50; pointer-events: none; visibility: hidden; max-width: 640px; margin: 0 auto; gap: 12px; }
+.actbar.on { transform: translateY(0); pointer-events: auto; visibility: visible; }
+.actbar > view { flex: 1; text-align: center; font-size: 13.5px; }
+.actbar > view.del { color: #F0A9A5; }
+.actbar > view.tx { flex: 0 1 auto; min-width: 0; font-size: 12.5px; color: #E8E6DE; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding-left: 12px; }
+.actbar > view:active { opacity: .65; }
+
+/* 分组：流转(开始/完成/放弃/恢复/结束) 与 管理(改/删) 分隔，避免误点 */
+.actbar .grp { flex: 0 0 auto; display: flex; align-items: center; }
+.actbar .flowgrp { gap: 8px; }
+.actbar .mgrp { gap: 16px; margin-left: auto; }
+.actbar .sep { flex: 0 0 auto; width: 1px; height: 18px; background: rgba(255,255,255,.2); margin-left: auto; } /* 分隔线居中在空白处 */
+.actbar .edit { color: #fff; font-size: 13.5px; }
+.actbar .del { color: #F0A9A5; font-size: 13.5px; }
+.actbar .grp:active { opacity: 1; }
+.actbar .flow:active, .actbar .edit:active, .actbar .del:active { opacity: .6; }
+
+/* 流转按钮 */
+.flow { font-size: 13px; padding: 6px 14px; border-radius: 8px; line-height: 1; }
+.flow.start { color: #6E8CB0; background: rgba(110,140,176,.12); }
+.flow.done { color: #6E8CB0; background: rgba(110,140,176,.12); }
+.flow.abandon { color: #948AA8; background: rgba(148,138,168,.14); }   /* 放弃：灰紫，区别于开始/完成 */
+.flow.restore { color: #7C9A86; background: rgba(124,154,134,.15); }      /* 恢复：绿，区别于放弃 */
+.flow.end { color: #5E9A94; background: rgba(94,154,148,.14); }          /* 结束：青，区别于完成(蓝)/恢复(绿) */

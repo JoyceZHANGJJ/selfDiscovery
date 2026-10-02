@@ -6,6 +6,37 @@ function nowStr() {
   const d = new Date();
   return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
 }
+// 时间戳 -> { date:'YYYY-MM-DD', time:'HH:MM' }
+function dtStr(ts) {
+  if (!ts) return { date: '', time: '' };
+  const d = new Date(ts);
+  return {
+    date: d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2),
+    time: ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2)
+  };
+}
+// 'YYYY-MM-DD' + 'HH:MM' -> { ts, t }
+function tsFromDate(dStr, tStr) {
+  const p = (dStr || '').split('-').map(Number);
+  const q = (tStr || '').split(':').map(Number);
+  if (p.length !== 3 || q.length !== 2 || isNaN(p[0])) return { ts: Date.now(), t: nowStr() };
+  const ts = new Date(p[0], p[1] - 1, p[2], q[0], q[1], 0, 0).getTime();
+  return { ts, t: ('0' + q[0]).slice(-2) + ':' + ('0' + q[1]).slice(-2) };
+}
+// 用时格式化（与看页一致）：不足 1 天用小时；满 1 天用「天」保留一位小数；不足 1 分钟为“片刻”
+function fmtDur(ms) {
+  if (ms <= 0) return '';
+  const DAY = 86400000, HOUR = 3600000, MIN = 60000;
+  if (ms < DAY) {
+    const h = Math.floor(ms / HOUR);
+    if (h > 0) return h + ' 小时';
+    const m = Math.floor(ms / MIN);
+    if (m > 0) return m + ' 分钟';
+    return '片刻';
+  }
+  const d = ms / DAY;
+  return (Math.round(d * 10) / 10) + ' 天';
+}
 
 Page({
   data: {
@@ -21,15 +52,31 @@ Page({
     froze: null,
     editing: false,
     refreshing: false,
+    focusIdx: -1,
     scrollTop: 0,
+    scrollTo: '',
     recSel: null,
     recSelRec: null,
-    delUndo: null
+    delUndo: null,
+    editDate: '',
+    editTime: '',
+    editCreateLabel: '创建时间',
+    editHasStart: false,
+    editStartDate: '',
+    editStartTime: '',
+    editHasEnd: false,
+    editEndDate: '',
+    editEndTime: '',
+    editHasAbandon: false,
+    editAbandonDate: '',
+    editAbandonTime: ''
   },
 
   st: {
     tag: 'obs', main: '', mainPick: null, pick: {}, typed: {}, free: {},
-    edit: null, lastRec: null, ren: null, optUndo: null
+    edit: null, lastRec: null, ren: null, optUndo: null,
+    startMode: false, completing: false, doing: false, showDoing: false, showDone: false,
+    abandoning: false, showAbandon: false, ending: false, focusFree: ''
   },
 
   onShow() {
@@ -44,11 +91,14 @@ Page({
       this.st.tag = cur;
       // 进入「去做」时若还没选分类，补上默认分类（以往靠 onTag 触发，现在默认就是它，需在此兜底）
       if (cur === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+      // 进入「无感」时若还没选分类，补上默认分类「不想」
+      if (cur === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
       this.checkEdit();
       this.rotateGreet();
-      this.recompute();
-      // 数据就绪后再渲染真实内容，避免首屏出现空卡片「闪一下」
+      // 数据就绪后再渲染真实内容，避免首屏出现空卡片「闪一下」；
+      // 必须在 recompute() 之前置 ready:true，否则流转聚焦时真实输入框尚未渲染，scroll/聚焦都失效
       this.setData({ ready: true });
+      this.recompute();
       // 悬浮球「备忘/购物」快速记：跳转后自动切到对应模块
       if (app.globalData && app.globalData.pendingTag) {
         const t = app.globalData.pendingTag;
@@ -88,6 +138,8 @@ Page({
     const g = app.globalData;
     if (!g.editRec) return;
     const r = g.editRec; g.editRec = null;
+    // 历史遗留 m='done' 记录（新流程已并入「可做」）：无对应字段定义，安全跳过编辑，避免崩溃
+    if (!store.FIELDS[r.m]) { this.st.edit = null; this.setData({}); return; }
     const main = store.FIELDS[r.m].main;
     const O = store.getOPT(main);
     this.st.edit = r;
@@ -117,15 +169,102 @@ Page({
     });
     // 记录本身没有分类（历史数据）时才补默认分类；有则只回显记录自己的值，避免默认+记录值同时选中
     if (r.m === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    this.setData({ editing: true });
+    if (r.m === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
+    // 「开始」流转进入：稍后在「保存修改」时才记录开始时间（这里只标记 startMode）
+    this.st.startMode = !!g.editStart; g.editStart = null;
+    // 「完成」流转进入：稍后在「保存修改」时才置「做了」并记录完成时间（这里只标记 completing）
+    this.st.completing = !!g.editComplete; g.editComplete = null;
+    // 「放弃」流转进入：稍后在「保存修改」时才置「不做」并记录放弃时间（这里只标记 abandoning）
+    this.st.abandoning = !!g.editAbandon; g.editAbandon = null;
+    // 「结束」流转进入（觉察/无感）：自动定位到「感受」输入框并弹出键盘，便于立刻记感受
+    // 结束时间不在这里落，稍后在「保存修改」时才记录并写云（这里只标记 ending）
+    this.st.ending = !!g.editEnding; g.editEnding = null;
+    this.st.focusFree = g.editEndFocus ? (r.m === 'obs' ? 'obsfeel' : (r.m === 'nope' ? 'nopefeel' : '')) : '';
+    g.editEndFocus = null;
+    // 展示哪些字段：点「完成」(action)→仅做了的感受/收获并聚焦；点「开始」(action)→仅进行中感受并聚焦；
+    // 点「放弃」(action)→仅“为什么不做了”并聚焦；普通点开编辑：做中→进行中感受；已做（做了）→进行中感受 与 做了的感受/收获 都可改；
+    // 已「不做」→“为什么不做了”可改
+    if (r.m === 'want') {
+      const st0 = r.status || '';
+      const isDone = st0 === 'done';
+      const isAbandon = st0 === 'abandon';
+      if (this.st.completing) { this.st.showDoing = false; this.st.showDone = true; this.st.showAbandon = false; }
+      else if (this.st.startMode) { this.st.showDoing = true; this.st.showDone = false; this.st.showAbandon = false; }
+      else if (this.st.abandoning) { this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = true; }
+      else { this.st.showDoing = (st0 === 'doing') || isDone; this.st.showDone = isDone; this.st.showAbandon = isAbandon; }
+      this.st.abandoning = this.st.abandoning || isAbandon; // 编辑「不做」记录时保持放弃态，保存不改状态/时间
+      this.st.doing = this.st.showDoing;
+    } else {
+      this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
+      this.st.abandoning = false; this.st.showAbandon = false;
+    }
+    // 编辑时回填时间字段，供「改时间」使用
+    // 做了的记录：legacy(m='done') 完成时间=ts、惦记=refTs；新流程(want+status done) 完成时间=doneAt、创建=ts
+    // 觉察(obs)：结束时间=endTs（无则默认当前，编辑时可改）
+    const isLegacyDone = r.m === 'done';
+    const isWantDone = (r.m === 'want') && (r.status === 'done');   // 仅「已做（做了）」记录回显结束时间；点「完成」流转时结束时间在保存时才记，不展示结束时间输入框
+    const isDoneView = isLegacyDone || isWantDone;
+    const isWantAbandon = (r.m === 'want') && (r.status === 'abandon' || this.st.abandoning);
+    const createTs = isLegacyDone ? (r.refTs || r.ts) : r.ts;   // 做了(legacy)：惦记=refTs；want-done/obs：创建=ts
+    const startTs = r.startedAt || 0;
+    let endTs = 0;
+    if (isLegacyDone) endTs = r.ts;                              // legacy：完成=ts
+    else if (isWantDone) endTs = r.doneAt || 0;                  // want-done：完成=doneAt
+    else if (r.m === 'obs' || r.m === 'nope') endTs = r.endTs || 0;   // 觉察/无感：结束=endTs；未结束(首次)不填，由「结束」按钮记录
+    const abandonTs = isWantAbandon ? (r.abandonedAt || Date.now()) : 0;  // 不做：放弃时间=abandonedAt，无则默认现在
+    const c = dtStr(createTs), s = dtStr(startTs), e = dtStr(endTs), ab = dtStr(abandonTs);
+    this.setData({
+      editing: true,
+      editCreateLabel: isLegacyDone ? '惦记于' : '创建时间',
+      editDate: c.date, editTime: c.time,
+      editHasStart: !!startTs,
+      editStartDate: s.date, editStartTime: s.time,
+      // 觉察/无感：点「改」且已有结束时间才回显结束时间供修改；点「结束」进入时不回显（结束时间在保存时才记）
+      editHasEnd: isDoneView || ((r.m === 'obs' || r.m === 'nope') && !!r.endTs && !this.st.ending),
+      editEndDate: e.date, editEndTime: e.time,
+      editHasAbandon: isWantAbandon,
+      editAbandonDate: ab.date, editAbandonTime: ab.time
+    });
   },
+
+  /* 编辑态：修改时间（创建 / 开始 / 结束） */
+  onEditDate(e) { this.setData({ editDate: e.detail.value }); },
+  onEditTime(e) { this.setData({ editTime: e.detail.value }); },
+  onEditStartDate(e) { this.setData({ editStartDate: e.detail.value }); },
+  onEditStartTime(e) { this.setData({ editStartTime: e.detail.value }); },
+  onEditEndDate(e) { this.setData({ editEndDate: e.detail.value }); },
+  onEditEndTime(e) { this.setData({ editEndTime: e.detail.value }); },
+  onEditAbandonDate(e) { this.setData({ editAbandonDate: e.detail.value }); },
+  onEditAbandonTime(e) { this.setData({ editAbandonTime: e.detail.value }); },
 
   recVM(r) {
     const dt = store.buildExt(r.m, r.ext, r.extSrc);
     const ago = store.agoOf(r.ts);
     const d = ago <= 0 ? '' : (ago === 1 ? '昨天' : (ago === 2 ? '前天' : store.dayLabel(ago))) + ' ';
     const task = store.isTask(r.m);
-    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '' };
+    const doingDays = (r.m === 'want' && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
+    // 用时/历时（与看页一致）：做了=用了/惦记了；觉察=历时
+    let dur = '';
+    const isDoneView = (r.m === 'done') || (r.m === 'want' && r.status === 'done');
+    if (isDoneView) {
+      const endTs = r.doneAt || r.ts;
+      const baseTs = r.m === 'done' ? (r.refTs || r.ts) : r.ts;
+      let durLabel = '', durMs = 0;
+      if (r.startedAt && endTs && r.startedAt <= endTs) { durMs = endTs - r.startedAt; durLabel = '用了'; }
+      else if (baseTs && endTs && baseTs <= endTs) { durMs = endTs - baseTs; durLabel = '惦记了'; }
+      const ds = fmtDur(durMs);
+      if (ds) dur = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
+    }
+    if ((r.m === 'obs' || r.m === 'nope') && r.endTs && r.ts && r.endTs > r.ts) {
+      const ds = fmtDur(r.endTs - r.ts);
+      if (ds) dur = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
+    }
+    // 不做 的历时：从创建到放弃（惦记了多久）
+    if (r.m === 'want' && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
+      const ds = fmtDur(r.abandonedAt - r.ts);
+      if (ds) dur = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
+    }
+    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur };
   },
 
   buildComposer() {
@@ -137,7 +276,18 @@ Page({
     }
     const main = f.main;
     const mainOpts = store.getOPT(main).map(v => ({ v, on: this.st.mainPick === v }));
-    const items = f.items.map((it, idx) => {
+    // 「可做」按流转状态过滤字段：进行中感受 仅做中/点开始/已做编辑时显示；做了的感受/收获 仅点完成/已做编辑时显示；
+    // 为什么不做了 仅点放弃/编辑「不做」时显示
+    let fitems = f.items;
+    if (tag === 'want') {
+      fitems = f.items.filter(it => {
+        if (it.free === 'doingNote') return !!this.st.showDoing;
+        if (it.free === 'doneFeel' || it.free === 'doneGain') return !!this.st.showDone;
+        if (it.free === 'abandonWhy') return !!this.st.showAbandon;
+        return true;
+      });
+    }
+    const items = fitems.map((it, idx) => {
       if (it.g) {
         const opts = store.getOPT(it.g).map(v => ({ v, on: (this.st.pick[it.g] || []).indexOf(v) >= 0 }));
         const ph = it.freeze ? '手填：加 ~ 才存入选项池' : '也可以手填，和选项一起记下（不加入选项）';
@@ -150,19 +300,45 @@ Page({
       }
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
     });
+    // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 为什么不做了；结束(觉察/无感) → 感受
+    const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
+    const focusIdx = focusKey ? items.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
     const MAINPH = { memo: '要记住什么 · 回车就记下', buy: '要买什么 · 可写「牛奶 2」' };
     // 备忘 / 购物：只保留一个输入框，不显示标题、选项池与管理入口
     const plain = store.isTask(tag);
-    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, mainPh: MAINPH[tag] || '手填或直接写一句 · 默认只记这次，加 ~ 存入选项池' };
+    // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
+    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 默认只记这次，加 ~ 存入选项池' };
   },
 
   recompute() {
     const recs = (app.globalData.records || []).slice(0, 3).map(r => this.recVM(r));
+    const composer = this.buildComposer();
+    const fi = composer.focusIdx;
+    const willFocus = fi >= 0;
+    // 进入流转（开始/完成/放弃）时：
+    // 1) 先把 scroll-view 滚回顶部（composer 在顶部），确保目标输入框落在可视区——
+    //    否则从看页返回时页面可能停在下方，输入框在屏外，scroll-view 内聚焦不弹键盘；
+    // 2) 先以 focusIdx=-1 渲染出未聚焦的 textarea（避免「新建即聚焦」不弹键盘）；
+    // 3) 延时一帧再翻转 focus 属性并程序化 ctx.focus()，稳定弹出键盘与光标。
+    // textarea 用 adjust-position=false，避免键盘弹出时二次滚动再次失焦。
     this.setData({
       modules: this.modulesVM(),
       tag: this.st.tag,
-      composer: this.buildComposer(),
+      composer,
+      focusIdx: willFocus ? -1 : fi,
+      // 进入流转（开始/完成/放弃/结束）：先把目标输入框滚到可视区顶部，配合 adjust-position 让键盘不遮挡
+      scrollTo: willFocus ? ('fld' + fi) : '',
+      scrollTop: willFocus ? 0 : this.data.scrollTop,
       recent: recs
+    }, () => {
+      if (!willFocus) return;
+      setTimeout(() => {
+        this.setData({ focusIdx: fi });
+        wx.createSelectorQuery().select('#fld' + fi).context(res => {
+          const ctx = res && res.context;
+          if (ctx && typeof ctx.focus === 'function') ctx.focus();
+        }).exec();
+      }, 300);
     });
   },
 
@@ -170,7 +346,9 @@ Page({
   onTag(e) {
     this.st.tag = e.currentTarget.dataset.k;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
     if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+    if (this.st.tag === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
     this.setData({ tag: this.st.tag });
     this.recompute();
   },
@@ -201,6 +379,12 @@ Page({
     if (idx != null) this.setData({ ['composer.items[' + idx + '].val']: e.detail.value });
   },
 
+  /* 输入框获得焦点：不再手动 scroll-into-view。
+     手动滚动会与 adjust-position 的原生键盘避让叠加（先被滚到顶部、又被原生推起一次），
+     导致键盘弹出时输入框“飞”到页面顶端。现在键盘避让统一交给 adjust-position 原生处理；
+     流转进入（开始/完成/放弃/结束）的预滚动仍在 recompute 里、发生在键盘弹出前，不受影响。 */
+  onFieldFocus() {},
+
   /* -------- 保存 -------- */
   doSave() {
     let f = store.FIELDS[this.st.tag];
@@ -208,12 +392,66 @@ Page({
       const d = (app.globalData.dims || []).find(x => x.k === this.st.tag);
       if (d) f = { main: 'm_' + this.st.tag, items: [{ g: 'm_' + this.st.tag, freeze: true, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
     }
-    // 编辑时保留创建时间（时间线用创建时间），新增才用现在
+    // 编辑时：按记录类型拼装时间
+    //  · 非 done：创建时间=ts；做了(legacy m='done')：结束时间=ts(完成)，创建(惦记)=refTs
+    //  · 新流程 want+done：创建时间=ts，完成时间=doneAt（可被「结束时间」输入框改写）
+    //  · 开始时间=startedAt（want 在做 / done 时存在）
     const editing = !!this.st.edit;
-    const rec = { m: this.st.tag, t: editing ? this.st.edit.t : nowStr(), ts: editing ? this.st.edit.ts : Date.now() };
+    const er = this.st.edit || {};
+    const erDoneLegacy = er.m === 'done';
+    const erWantDone = (er.m === 'want') && (er.status === 'done' || this.st.completing);
+    const erWantAbandon = (er.m === 'want') && (er.status === 'abandon' || this.st.abandoning);
+    const c = tsFromDate(this.data.editDate, this.data.editTime);
+    let startedAt = er.startedAt || 0;
+    if (this.data.editHasStart) startedAt = tsFromDate(this.data.editStartDate, this.data.editStartTime).ts;
+    let recTs, recT, refTs = er.refTs || 0;
+    if (erDoneLegacy) {
+      const e = tsFromDate(this.data.editEndDate, this.data.editEndTime);
+      recTs = e.ts; recT = e.t;   // 结束时间 = 完成时间
+      refTs = c.ts;               // 惦记(创建)时间
+    } else {
+      recTs = c.ts; recT = c.t;   // 创建时间
+    }
+    const rec = { m: this.st.tag, t: recT, ts: recTs };
     // 备忘/购物：勾选完成态（编辑时沿用原完成态）
-    rec.done = editing ? (!!this.st.edit.done) : false;
-    rec.doneAt = editing ? (this.st.edit.doneAt || 0) : 0;
+    rec.done = editing ? (!!er.done) : false;
+    rec.doneAt = editing ? (er.doneAt || 0) : 0;
+    // 保留流转相关字段（状态 / 开始时间 / 来源），避免编辑时被丢
+    rec.status = er.status || '';
+    rec.startedAt = startedAt;
+    // 「开始」流转进入：保存时才落「进行中感受」这一刻——状态置在做、开始时间记当前
+    if (this.st.startMode) { rec.status = 'doing'; rec.startedAt = Date.now(); }
+    // 「完成」流转进入：保存时才置「做了」并记录完成时间（默认现在）
+    if (this.st.completing) { rec.status = 'done'; rec.doneAt = Date.now(); }
+    // 「放弃」流转进入：保存时才置「不做」并记录放弃时间（默认现在）
+    if (this.st.abandoning) { rec.status = 'abandon'; rec.abandonedAt = Date.now(); }
+    if (er.ref) rec.ref = er.ref;
+    if (er.refTxt) rec.refTxt = er.refTxt;
+    if (erDoneLegacy) rec.refTs = refTs;
+    // 新流程「做了」记录(want+done)：完成时间改用「结束时间」输入框，用户改过才覆盖
+    if (erWantDone && this.data.editHasEnd) {
+      const e = tsFromDate(this.data.editEndDate, this.data.editEndTime);
+      if (e.ts) rec.doneAt = e.ts;
+    }
+    // 不做 记录(want+abandon)：放弃时间改用「放弃时间」输入框，用户改过才覆盖
+    if (erWantAbandon && this.data.editHasAbandon) {
+      const e = tsFromDate(this.data.editAbandonDate, this.data.editAbandonTime);
+      if (e.ts) rec.abandonedAt = e.ts;
+    }
+    // 觉察(obs)/无感(nope)：结束时间
+    // - 点「结束」进入（ending）：保存修改这一刻才落结束时间（默认现在），此前不写云；
+    // - 点「改」进来且显示结束时间输入框：用户改过才覆盖；
+    // - 未结束且非结束流转：保持原样，编辑内容不碰结束时间
+    if (er.m === 'obs' || er.m === 'nope') {
+      if (this.st.ending) {
+        rec.endTs = Date.now();
+      } else if (this.data.editHasEnd) {
+        const e = tsFromDate(this.data.editEndDate, this.data.editEndTime);
+        if (e.ts) rec.endTs = e.ts;
+      } else {
+        rec.endTs = er.endTs || 0;
+      }
+    }
     // 主项：手填时可加 ~ 前缀（默认只记这次，加 ~ 存入选项池）
     let mainRaw = this.st.mainPick || this.st.main || '';
     const mainOnce = store.isOnce(mainRaw);
@@ -222,6 +460,11 @@ Page({
     // 想做模块：分类为必选（默认已选「想做」）
     if (this.st.tag === 'want' && (!this.st.pick['wantKind'] || !this.st.pick['wantKind'].length)) {
       wx.showToast({ title: '请选择分类（想要/可做/喜欢）', icon: 'none' });
+      return;
+    }
+    // 无感模块：分类为必选（默认已选「不想」）
+    if (this.st.tag === 'nope' && (!this.st.pick['nopeKind'] || !this.st.pick['nopeKind'].length)) {
+      wx.showToast({ title: '请选择分类（不想/没兴趣/不喜欢）', icon: 'none' });
       return;
     }
     if (!this.st.mainPick && mainOnce && store.FIELDS[this.st.tag]) {
@@ -270,9 +513,10 @@ Page({
   afterSave(rec) {
     this.st.lastRec = rec;
     this.st.saved = { t: rec.t, txt: rec.txt };
-    this.st.edit = null;
+    this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
+    this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
-    this.setData({ saved: this.st.saved, editing: false, froze: this.st.froze });
+    this.setData({ saved: this.st.saved, editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', froze: this.st.froze });
     this.recompute();
     wx.showToast({ title: '已记下', icon: 'success', duration: 700 });
   },
@@ -303,8 +547,8 @@ Page({
     });
   },
   onEditCancel() {
-    this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
-    this.setData({ editing: false });
+    this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
     this.recompute();
   },
 
@@ -313,7 +557,59 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (this.data.recSel === id) { this.setData({ recSel: null, recSelRec: null }); return; }
     const r = (app.globalData.records || []).find(x => x.id === id);
-    this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt } : null });
+    this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs } : null });
+  },
+
+  /* 记录操作条统一入口（记页「最近」与看页共用 rec-actions 组件；行为各自实现，按钮集合只维护一处）
+     type: start | complete | abandon | restore | end | edit | del */
+  onRecAction(e) {
+    const type = e.detail.type;
+    const id = this.data.recSel; if (id == null) return;
+    const r = (app.globalData.records || []).find(x => x.id === id);
+    if (!r) return;
+    if (type === 'start' || type === 'complete' || type === 'abandon') {
+      if (r.m !== 'want') return;
+      app.globalData.editRec = r;
+      if (type === 'start') app.globalData.editStart = true;
+      if (type === 'complete') app.globalData.editComplete = true;
+      if (type === 'abandon') app.globalData.editAbandon = true;
+      this.setData({ recSel: null, recSelRec: null });
+      this.checkEdit(); this.recompute();
+      return;
+    }
+    if (type === 'restore') {
+      if (r.m !== 'want' || r.status !== 'abandon') return;
+      const now = Date.now();
+      r.status = ''; r.ts = now; r.t = nowStr();
+      r.abandonedAt = 0; r.startedAt = 0;
+      const es = r.extSrc || [], ex = r.ext || [];
+      const keep = [];
+      for (let i = 0; i < es.length; i++) { if (es[i] === 'free:abandonWhy') continue; keep.push(i); }
+      r.extSrc = keep.map(i => es[i]); r.ext = keep.map(i => ex[i]);
+      store.updateRecord(r).catch(() => {});
+      this.setData({ recSel: null, recSelRec: null });
+      this.recompute();
+      return;
+    }
+    if (type === 'end') {
+      if (r.m !== 'obs' && r.m !== 'nope') return;
+      // 不在这里落结束时间：只标记待结束，等点「保存修改」时才记录结束时间并写云
+      // 同时打开编辑态聚焦「感受」输入框、弹键盘，便于立刻记感受
+      app.globalData.editRec = r;
+      app.globalData.editEnding = true;
+      app.globalData.editEndFocus = true;
+      this.setData({ recSel: null, recSelRec: null });
+      this.checkEdit();
+      this.recompute();
+      return;
+    }
+    if (type === 'edit') {
+      app.globalData.editRec = store.decorate(r);
+      this.checkEdit(); this.recompute();
+      this.setData({ recSel: null, recSelRec: null, scrollTop: 0 });
+      return;
+    }
+    if (type === 'del') { this.onRecDel(); return; }
   },
 
   /* 点页面其它地方：收起记录操作条（失焦即关） */
@@ -332,17 +628,6 @@ Page({
     this.recompute();
   },
 
-  /* 点操作条「改」：回填到编辑区并滚到顶部 */
-  onRecEdit() {
-    const id = this.data.recSel; if (id == null) return;
-    const r = (app.globalData.records || []).find(x => x.id === id);
-    if (!r) return;
-    app.globalData.editRec = store.decorate(r);
-    this.checkEdit();
-    this.recompute();
-    this.setData({ recSel: null, recSelRec: null, scrollTop: 0 });
-  },
-
   /* 点操作条「删除」：删除并给出撤销机会 */
   onRecDel() {
     const id = this.data.recSel; if (id == null) return;
@@ -353,13 +638,19 @@ Page({
       app.globalData.records.splice(i, 1);
       this.setData({ recSel: null, recSelRec: null, delUndo: { m: store.recMname(r), txt: r.txt, dump: r } });
       this.recompute();
+      if (this._delTimer) clearTimeout(this._delTimer);
+      this._delTimer = setTimeout(() => {
+        if (this.data.delUndo) this.setData({ delUndo: null });
+      }, 3000);
     });
   },
 
   onUndoDel() {
     const u = this.data.delUndo; if (!u) return;
+    if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; }
     const dump = u.dump;
-    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0 };
+    // 删除后撤销：忠实还原原记录，保留状态（未做/在做/做了/不做）、开始时间与放弃时间
+    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0, status: dump.status || '', startedAt: dump.startedAt || 0, abandonedAt: dump.abandonedAt || 0 };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       app.globalData.records.unshift(store.decorate(rec));
@@ -373,8 +664,10 @@ Page({
     this.setData({ refreshing: true });
     store.reload().then(() => {
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+      this.st.startMode = false; this.st.completing = false; this.st.abandoning = false; this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false; this.st.ending = false;
       // 刷新后仍在「来做」时，补回默认分类（避免默认「想做」被清空）
       if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+      if (this.st.tag === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
       this.rotateGreet();
       this.recompute();
       this.setData({ refreshing: false });
