@@ -1,4 +1,5 @@
 Component({
+  options: { addGlobalClass: true },
   data: {
     selected: 0,
     theme: 'sand',
@@ -15,6 +16,9 @@ Component({
       const idx = e.currentTarget.dataset.index;
       const path = this.data.list[idx].pagePath;
       wx.switchTab({ url: path });
+    },
+    onFab() {
+      wx.navigateTo({ url: '/pages/list/list' });
     }
   }
 });

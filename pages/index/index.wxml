@@ -119,7 +119,4 @@
     <view class="tx">已删除「{{delUndo.txt}}」</view>
     <view class="tb" bindtap="onUndoDel">撤销</view>
   </view>
-
-  <!-- 清单悬浮入口 -->
-  <view class="fab" bindtap="goList" aria-label="清单">☑</view>
 </view>

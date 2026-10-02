@@ -56,7 +56,7 @@
 .greet-row .lg { font-size: 12px; color: var(--ink3); text-decoration: none; flex-shrink: 0; }
 
 /* ================= 记 · 输入区 ================= */
-.composer { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 10px 16px 16px; margin: 0 0 14px; }
+.composer { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 10px 16px 16px; margin: 0 0 22px; box-shadow: 0 20px 44px rgba(35,35,31,.16), 0 6px 12px rgba(35,35,31,.10); }
 .body-top .composer { padding-top: 10px; padding-left: 14px; padding-right: 14px; }
 .composer:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
 .suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
@@ -102,7 +102,7 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* ================= 看 · 时间线 ================= */
 .sect-t { font-size: 13px; font-weight: 800; color: var(--ink2); margin: 16px 0 9px; letter-spacing: .02em; }
 /* 清单悬浮入口（右下角，位于底部 tabBar 之上） */
-.fab { position: fixed; right: 16px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; letter-spacing: .02em; box-shadow: 0 6px 18px rgba(35,35,31,.22); z-index: 45; }
+.fab { position: fixed; right: 16px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; border: 3px solid #fff; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; box-shadow: 0 10px 22px rgba(35,35,31,.26), 0 3px 7px rgba(35,35,31,.16); z-index: 45; }
 .fab:active { transform: scale(.94); }
 .search { width: 100%; height: 40px; border: 1px solid var(--line2); border-radius: var(--r-in); padding: 0 13px; font-size: 14px; line-height: 40px; font-family: inherit; outline: none; background: #fff; caret-color: var(--accent); box-sizing: border-box; }
 .search:focus { border-color: var(--accent); box-shadow: var(--ring); }

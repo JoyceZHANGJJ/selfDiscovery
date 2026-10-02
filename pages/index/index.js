@@ -359,6 +359,11 @@ Page({
     }).catch(() => this.setData({ refreshing: false }));
   },
 
+  /* 点「最近」标题右侧「清单」：进入待办清单（备忘 / 购物） */
+  goList() {
+    wx.navigateTo({ url: '/pages/list/list' });
+  },
+
   /* -------- 选项管理：跳转到独立子页面（返回即回「记」页，不退出小程序） -------- */
   onManage(e) {
     const g = e.currentTarget.dataset.g;
