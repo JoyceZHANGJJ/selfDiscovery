@@ -10,18 +10,3 @@
     <text>{{item.text}}</text>
   </view>
 </view>
-
-<!-- 常驻悬浮球：快速记任意维度 -->
-<view class="fab" wx:if="{{!hidden}}">
-  <view wx:if="{{fabOpen}}" class="fab-menu">
-    <view
-      wx:for="{{fabList}}"
-      wx:key="k"
-      class="fab-item"
-      style="color: {{item.c}}; border-color: {{item.c}}"
-      data-tag="{{item.k}}"
-      bindtap="goTag"
-    >{{item.n}}</view>
-  </view>
-  <view class="fab-main {{fabOpen ? 'on' : ''}}" bindtap="toggleFab">{{fabOpen ? '×' : '＋'}}</view>
-</view>
