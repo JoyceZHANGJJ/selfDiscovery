@@ -21,7 +21,8 @@ Page({
   },
 
   rebuild() {
-    const recs = app.globalData.records || [];
+    // 回看只看觉察：备忘与购物是待办，不计入统计与事件聚合
+    const recs = (app.globalData.records || []).filter(r => r.m !== 'memo' && r.m !== 'buy');
     this.setData({
       sum: this.buildSummary(recs),
       kpis: this.buildKpis(recs),

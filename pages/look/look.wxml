@@ -24,6 +24,33 @@
         <view wx:if="{{stats.extra}}" class="st-ex">{{stats.extra}}</view>
       </view>
 
+      <!-- 待办清单（备忘 / 购物，不走时间流，平铺成清单） -->
+      <block wx:if="{{tasks.show}}">
+        <view class="sect-t">{{tasks.tit}}</view>
+        <view wx:if="{{tasks.sum}}" class="tsum">{{tasks.sum}}</view>
+        <view wx:for="{{tasks.undone}}" wx:key="id" class="rec list {{sel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" bindtap="onRecTap">
+          <view class="edge" style="background:{{item.c}}"></view>
+          <view class="hd">
+            <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          </view>
+          <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
+        </view>
+        <view wx:if="{{tasks.doneN}}" class="dnlab">已完成 · {{tasks.doneN}}</view>
+        <view wx:for="{{tasks.done}}" wx:key="id" class="rec list done {{sel===item.id?'sel':''}}" data-id="{{item.id}}" bindtap="onRecTap">
+          <view class="edge" style="background:{{item.c}}"></view>
+          <view class="hd">
+            <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          </view>
+          <view class="done-at">{{item.doneLabel}}</view>
+        </view>
+      </block>
+
       <!-- 时间线 -->
       <block wx:if="{{days.length}}">
         <view wx:for="{{days}}" wx:key="day" wx:for-item="grp">
@@ -37,7 +64,7 @@
           </view>
         </view>
       </block>
-      <view wx:else class="empty-mini">没有匹配的记录</view>
+      <view wx:elif="{{empty}}" class="empty-mini">没有匹配的记录</view>
     </view>
   </scroll-view>
 

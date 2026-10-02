@@ -133,11 +133,64 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .dm-nope { background: rgba(122,110,155,.15); }
 .dm-done { background: rgba(61,106,165,.14); }
 .dm-custom { background: rgba(35,35,31,.08); }
+.dm-memo { background: rgba(154,140,122,.18); }
+.dm-buy { background: rgba(192,133,82,.16); }
 .f { font-size: 11px; color: var(--ink3); margin-right: 3px; }
 .sep { font-style: normal; font-size: 11px; color: var(--line2); margin: 0 5px; }
 .it { margin-right: 14px; }
 .it:last-child { margin-right: 0; }
 .k { color: var(--ink3); margin-right: 5px; font-size: 11.5px; }
+/* 备忘 / 购物：输入区只留一个输入框，一行高度、文字垂直居中 */
+.plain-in { margin-top: 4px; height: 34px; min-height: 34px; line-height: 34px; padding: 0 12px; }
+.plain-in:first-child { margin-top: 0; }
+
+/* ================= 骨架屏（首屏加载占位） ================= */
+.sk-line, .sk-box, .sk-btn, .sk-rec, .sk-dot, .sk-hr {
+  background: var(--soft); position: relative; overflow: hidden;
+}
+.sk-line, .sk-box, .sk-btn, .sk-rec, .sk-dot, .sk-hr, .sk-line::after, .sk-box::after, .sk-btn::after, .sk-rec::after { border-radius: 8px; }
+.sk-line::after, .sk-box::after, .sk-btn::after, .sk-rec::after, .sk-dot::after, .sk-hr::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent);
+  transform: translateX(-100%); animation: sk-shine 1.25s ease-in-out infinite;
+}
+@keyframes sk-shine { 100% { transform: translateX(100%); } }
+.sk-line { height: 13px; margin-bottom: 8px; border-radius: 6px; }
+.sk-sm { height: 10px; }
+.sk-w60 { width: 60%; } .sk-w40 { width: 40%; } .sk-w30 { width: 30%; }
+.sk-row { display: flex; align-items: center; gap: 7px; margin: 14px 0 12px; }
+.sk-row .sk-line { margin: 0; }
+.sk-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.sk-box { height: 52px; border-radius: 12px; margin-bottom: 4px; }
+.sk-hr { height: 1px; margin: 14px 0 12px; border-radius: 0; }
+.sk-hr::after { display: none; }
+.sk-btn { height: 42px; border-radius: var(--r-btn); margin-top: 12px; }
+.sk-rec { height: 62px; border-radius: 14px; margin-bottom: 9px; }
+.sk .sk-line:last-of-type { margin-bottom: 0; }
+
+/* 备忘 / 购物：可勾选完成 —— 勾选后划线，并记下完成时间 */
+.rec .ck { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--line2); flex-shrink: 0; align-self: center; position: relative; transition: background .15s, border-color .15s; }
+.rec .ck:active { transform: scale(.9); }
+.rec.done .ck { background: var(--accent); border-color: var(--accent); }
+.rec.done .ck::after { content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 5px; height: 9px; border: 1.7px solid #fff; border-top: 0; border-left: 0; transform: rotate(42deg); }
+.rec.done .tv { color: var(--ink3); text-decoration: line-through; }
+.rec.done .edge { opacity: .35; }
+.rec.done .tw, .rec.done .dm { opacity: .6; }
+.rec .done-at { font-size: 11.5px; color: var(--accent); margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+/* 备忘 / 购物清单：不走时间流，平铺成列表 */
+.rec.list { padding: 10px 13px; margin: 0 0 7px; border-radius: 12px; box-shadow: none; }
+.rec.list .hd { gap: 9px; }
+/* 清单行：事项标题完整显示不省略；原因/用途可省略；时间必显 */
+.rec.list .mn { flex-shrink: 0; white-space: nowrap; }
+.rec.list .tv { flex: 0 0 auto; white-space: nowrap; }
+.rec.list .twr { display: flex; align-items: baseline; gap: 5px; flex: 1 1 auto; justify-content: flex-end; min-width: 0; font-size: 11.5px; color: var(--ink3); }
+.rec.list .twx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rec.list .twd { flex-shrink: 0; }
+.rec.list .twt { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rec.list .tw { flex-shrink: 0; white-space: nowrap; margin-left: auto; }
+.tsum { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
+.dnlab { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink3); margin: 14px 0 3px; letter-spacing: .06em; }
+.dnlab::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
 /* ================= 回看 ================= */
 .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }

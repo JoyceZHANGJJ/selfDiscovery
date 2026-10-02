@@ -8,7 +8,9 @@ const MODULES = [
   { k: 'now', n: '此刻', c: '#5E9A94' },
   { k: 'want', n: '想做', c: '#C0A05A' },
   { k: 'nope', n: '不想', c: '#948AA8' },
-  { k: 'done', n: '做了', c: '#6E8CB0' }
+  { k: 'done', n: '做了', c: '#6E8CB0' },
+  { k: 'memo', n: '备忘', c: '#9A8C7A' },
+  { k: 'buy', n: '购物', c: '#C08552' }
 ];
 
 const OPT = {
@@ -21,6 +23,7 @@ const OPT = {
   nopeThing: ['应酬', '刷手机', '加班', '回消息'],
   nopeDeg: ['微微', '有点', '很', '非常', '极度'],
   nopeMood: ['抵触', '心累', '反感'],
+  memoItem: [], buyItem: [],
   doneItem: ['跑步', '读书', '打扫', '写周报', '冥想'],
   doneFeel: ['踏实', '轻松', '平静'],
   doneGain: ['完成感', '心情变好', '学到了'],
@@ -28,9 +31,9 @@ const OPT = {
 };
 
 const GLABEL = {
-  obsWhat: '什么事', obsStart: '怎么开始的', genDoing: '正在做的事', genFeel: '感受',
+  obsWhat: '什么事', obsStart: '怎么开始的', genDoing: '正在做的事', genFeel: '情绪',
   genWant: '此刻想做的事', wantItem: '想做的事', nopeThing: '不想的事', nopeDeg: '程度', nopeMood: '不想的情绪',
-  doneItem: '做了的事', doneFeel: '做了的感受', doneGain: '收获', obsMood: '做完心情如何'
+  doneItem: '做了的事', doneFeel: '做了的感受', doneGain: '收获', obsMood: '做完心情如何', memoItem: '要记住什么', buyItem: '要买什么'
 };
 
 const OPTGROUPS = [
@@ -60,7 +63,8 @@ const FIELDS = {
     { free: 'obsfeel', label: '感受（自由记录 · 不进列表）', ph: '做完那一刻心里冒出来的话', ta: true }
   ] },
   now: { main: 'genDoing', items: [
-    { g: 'genFeel', freeze: false, single: false },
+    { g: 'genFeel', freeze: false, single: false, noInput: true },
+    { free: 'nownote', label: '感受', ph: '这一刻心里的感觉，随便写', ta: true },
     { g: 'genWant', freeze: true, single: true }
   ] },
   want: { main: 'wantItem', items: [
@@ -76,7 +80,10 @@ const FIELDS = {
   done: { main: 'doneItem', items: [
     { g: 'doneFeel', freeze: false, single: false },
     { g: 'doneGain', freeze: true, single: false }
-  ] }
+  ] },
+  /* 备忘 / 购物：只记一句话，没有细节；加 ~ 前缀可把这条存进选项池下次点选 */
+  memo: { main: 'memoItem', items: [ { free: 'memonote', label: '原因', ph: '为什么记这条？可不填', ta: true } ] },
+  buy:  { main: 'buyItem',  items: [ { free: 'buynote', label: '干什么用', ph: '买来做什么？可不填', ta: true } ] }
 };
 
 const THEMES = [
@@ -110,7 +117,7 @@ const DCOLORS = ['#7C9A86', '#5E9A94', '#C0A05A', '#948AA8', '#6E8CB0', '#B4544E
 // 细节回读标签：来源 -> 字段名
 const COLMAP = {
   obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
-  'free:obsfeel': '感受', genFeel: '感受', genWant: '此刻想做',
+  'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:memonote': '原因', 'free:buynote': '干什么用',
   'free:trigger': '诱因', 'free:hope': '希望实现成',
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '不想感受', 'free:after': '之后',
   doneFeel: '做了感受', doneGain: '做了收获'
@@ -211,7 +218,27 @@ function decorate(r) {
   o.day = dayLabel(o.ago);
   o.t = normTime(o.t, o.ts);
   o.extSrc = fixExtSrc(o.m, o.ext, o.extSrc);
+  o.done = !!o.done;
+  o.doneAt = o.doneAt || 0;
+  // 备忘「原因」/ 购物「什么用」：从细节里提取对应 free 字段
+  o.reason = '';
+  o.usefor = '';
+  const _es = o.extSrc || [], _ex = o.ext || [];
+  for (let i = 0; i < _es.length; i++) {
+    if (!_ex[i]) continue;
+    if (_es[i] === 'free:memonote') o.reason = _ex[i];
+    else if (_es[i] === 'free:buynote') o.usefor = _ex[i];
+  }
   return o;
+}
+// 备忘 / 购物 = 待办型记录
+function isTask(m) { return m === 'memo' || m === 'buy'; }
+// 完成时间文案：已完成 · X月X日 HH:MM
+function doneLabel(ts) {
+  if (!ts) return '已完成';
+  const d = new Date(ts);
+  const hh = ('0' + d.getHours()).slice(-2), mm = ('0' + d.getMinutes()).slice(-2);
+  return '已完成 · ' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hh + ':' + mm;
 }
 // 修正历史数据的来源：整条细节都挂 fallback:<模块> 时，按字段顺序重新对齐回真实来源
 function fixExtSrc(m, ext, extSrc) {
@@ -254,18 +281,18 @@ function loadRecords() {
   return new Promise((resolve) => {
     recCol().orderBy('ts', 'desc').limit(300).get().then(res => {
       const list = (res.data || []).map(d => decorate({
-        id: d._id, _rid: d._id, m: d.m, t: d.t, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts
+        id: d._id, _rid: d._id, m: d.m, t: d.t, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, done: !!d.done, doneAt: d.doneAt || 0
       }));
       resolve(list);
     }).catch(() => resolve([]));
   });
 }
 function addRecord(rec) {
-  const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), createTime: db().serverDate() };
+  const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0, createTime: db().serverDate() };
   return recCol().add({ data }).then(res => res._id);
 }
 function updateRecord(rec) {
-  return recCol().doc(rec._rid).update({ data: { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now() } });
+  return recCol().doc(rec._rid).update({ data: { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0 } });
 }
 function deleteRecord(rec) {
   return recCol().doc(rec._rid).remove();
@@ -502,7 +529,7 @@ function reload() {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, agoOf, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, agoOf, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel,
   loadRecords, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption,
   isDefault, addDelDef, clearDelDef,

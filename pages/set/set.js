@@ -129,13 +129,29 @@ Page({
     if (!txt.trim()) { wx.showToast({ title: '先粘贴内容', icon: 'none' }); return; }
     const parsed = this.parseImport(txt);
     if (!parsed.recs.length) { wx.showToast({ title: '没有可导入的记录', icon: 'none' }); return; }
-    Promise.all(parsed.recs.map(r =>
+    // 判重：同一模块 + 内容 + 时间戳 视为同一条，避免重复导入（如同一份文本导入两次）
+    const existing = app.globalData.records || [];
+    const seen = new Set(existing.map(r => (r.m || '') + '\u0001' + (r.txt || '') + '\u0001' + (r.ts || '')));
+    const toAdd = [], dup = [];
+    parsed.recs.forEach(r => {
+      const key = (r.m || '') + '\u0001' + (r.txt || '') + '\u0001' + (r.ts || '');
+      if (seen.has(key)) { dup.push(r); return; }
+      seen.add(key); toAdd.push(r);
+    });
+    if (!toAdd.length) {
+      this.setData({ importOverlay: false });
+      this.setTabBarHidden(false);
+      wx.showToast({ title: '都是重复记录，未导入', icon: 'none' });
+      return;
+    }
+    Promise.all(toAdd.map(r =>
       store.addRecord(r).then(rid => { r._rid = rid; r.id = rid; app.globalData.records.push(store.decorate(r)); })
     )).then(() => {
       app.globalData.records.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       this.setData({ importOverlay: false, recCount: app.globalData.records.length });
       this.setTabBarHidden(false);
-      wx.showToast({ title: '已导入 ' + parsed.recs.length + ' 条', icon: 'none' });
+      const msg = '已导入 ' + toAdd.length + ' 条' + (dup.length ? ' · 跳过重复 ' + dup.length : '');
+      wx.showToast({ title: msg, icon: 'none' });
     });
   },
   // 解析表头：抽出日期与时间，返回 { ts, t }

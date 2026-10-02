@@ -11,6 +11,7 @@ Page({
   data: {
     theme: 'sand',
     statusH: 20,
+    ready: false,
     modules: [],
     tag: 'obs',
     greet: { t: '', s: '' },
@@ -39,6 +40,14 @@ Page({
       this.checkEdit();
       this.rotateGreet();
       this.recompute();
+      // 数据就绪后再渲染真实内容，避免首屏出现空卡片「闪一下」
+      this.setData({ ready: true });
+      // 悬浮球「备忘/购物」快速记：跳转后自动切到对应模块
+      if (app.globalData && app.globalData.pendingTag) {
+        const t = app.globalData.pendingTag;
+        app.globalData.pendingTag = null;
+        if (t !== this.st.tag) this.onTag({ currentTarget: { dataset: { k: t } } });
+      }
     });
   },
 
@@ -106,7 +115,8 @@ Page({
     const dt = store.buildExt(r.m, r.ext, r.extSrc);
     const ago = store.agoOf(r.ts);
     const d = ago <= 0 ? '' : (ago === 1 ? '昨天' : (ago === 2 ? '前天' : store.dayLabel(ago))) + ' ';
-    return { id: r.id, m: store.mname(r.m), c: store.mcolor(r.m), txt: r.txt, t: r.t, d, dt };
+    const task = store.isTask(r.m);
+    return { id: r.id, m: store.mname(r.m), c: store.mcolor(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '' };
   },
 
   buildComposer() {
@@ -131,7 +141,10 @@ Page({
       }
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
     });
-    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, mainPh: '手填或直接写一句 · 默认只记这次，加 ~ 存入选项池' };
+    const MAINPH = { memo: '要记住什么 · 回车就记下', buy: '要买什么 · 可写「牛奶 2」' };
+    // 备忘 / 购物：只保留一个输入框，不显示标题、选项池与管理入口
+    const plain = store.isTask(tag);
+    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, mainPh: MAINPH[tag] || '手填或直接写一句 · 默认只记这次，加 ~ 存入选项池' };
   },
 
   recompute() {
@@ -188,6 +201,9 @@ Page({
     // 编辑时保留创建时间（时间线用创建时间），新增才用现在
     const editing = !!this.st.edit;
     const rec = { m: this.st.tag, t: editing ? this.st.edit.t : nowStr(), ts: editing ? this.st.edit.ts : Date.now() };
+    // 备忘/购物：勾选完成态（编辑时沿用原完成态）
+    rec.done = editing ? (!!this.st.edit.done) : false;
+    rec.doneAt = editing ? (this.st.edit.doneAt || 0) : 0;
     // 主项：手填时可加 ~ 前缀（默认只记这次，加 ~ 存入选项池）
     let mainRaw = this.st.mainPick || this.st.main || '';
     const mainOnce = store.isOnce(mainRaw);
@@ -285,6 +301,17 @@ Page({
     this.setData({ recSel: id, recSelRec: r ? { m: store.mname(r.m), txt: r.txt } : null });
   },
 
+  /* 备忘/购物：勾选切换完成态（划线 + 记录完成时间） */
+  onRecCheck(e) {
+    const id = e.currentTarget.dataset.id;
+    const r = (app.globalData.records || []).find(x => x.id === id);
+    if (!r || !store.isTask(r.m)) return;
+    r.done = !r.done;
+    r.doneAt = r.done ? Date.now() : 0;
+    store.updateRecord(r).catch(() => {});
+    this.recompute();
+  },
+
   /* 点操作条「改」：回填到编辑区并滚到顶部 */
   onRecEdit() {
     const id = this.data.recSel; if (id == null) return;
@@ -312,7 +339,7 @@ Page({
   onUndoDel() {
     const u = this.data.delUndo; if (!u) return;
     const dump = u.dump;
-    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts };
+    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0 };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       app.globalData.records.unshift(store.decorate(rec));

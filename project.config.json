@@ -24,7 +24,11 @@
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      { "type": "folder", "value": "resource" },
+      { "type": "suffix", "value": ".mp4" },
+      { "type": "suffix", "value": ".mov" }
+    ],
     "include": []
   },
   "appid": "wx17f1e304ced6ae53",
