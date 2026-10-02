@@ -140,10 +140,10 @@ const COLMAP = {
   obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
   'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:memonote': '原因', 'free:buynote': '干什么用',
   'free:trigger': '诱因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
-  nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '不想感受', 'free:after': '之后',
+  nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受'
 };
-const FALLBACK = { obs: '感受', want: '诱因', nope: '不想感受', now: '感受', like: '当时感受' };
+const FALLBACK = { obs: '感受', want: '诱因', nope: '感受', now: '感受', like: '当时感受' };
 
 /* ---------------- 纯计算 ---------------- */
 function dayLabel(ago) {

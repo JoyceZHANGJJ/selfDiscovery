@@ -48,7 +48,6 @@ Page({
     greet: { t: '', s: '' },
     composer: {},
     recent: [],
-    saved: null,
     froze: null,
     editing: false,
     refreshing: false,
@@ -74,7 +73,7 @@ Page({
 
   st: {
     tag: 'obs', main: '', mainPick: null, pick: {}, typed: {}, free: {},
-    edit: null, lastRec: null, ren: null, optUndo: null,
+    edit: null, ren: null, optUndo: null,
     startMode: false, completing: false, doing: false, showDoing: false, showDone: false,
     abandoning: false, showAbandon: false, ending: false, focusFree: ''
   },
@@ -93,6 +92,8 @@ Page({
       if (cur === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
       // 进入「无感」时若还没选分类，补上默认分类「不想」
       if (cur === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
+      // 回到记页且没有待编辑记录时，清掉可能残留的编辑态，避免所有操作一直被拦
+      if (!app.globalData.editRec) this.setData({ editing: false });
       this.checkEdit();
       this.rotateGreet();
       // 数据就绪后再渲染真实内容，避免首屏出现空卡片「闪一下」；
@@ -321,16 +322,20 @@ Page({
     // 2) 先以 focusIdx=-1 渲染出未聚焦的 textarea（避免「新建即聚焦」不弹键盘）；
     // 3) 延时一帧再翻转 focus 属性并程序化 ctx.focus()，稳定弹出键盘与光标。
     // textarea 用 adjust-position=false，避免键盘弹出时二次滚动再次失焦。
-    this.setData({
+    const patch = {
       modules: this.modulesVM(),
       tag: this.st.tag,
       composer,
       focusIdx: willFocus ? -1 : fi,
       // 进入流转（开始/完成/放弃/结束）：先把目标输入框滚到可视区顶部，配合 adjust-position 让键盘不遮挡
       scrollTo: willFocus ? ('fld' + fi) : '',
-      scrollTop: willFocus ? 0 : this.data.scrollTop,
       recent: recs
-    }, () => {
+    };
+    // 只在流转聚焦时强制回到顶部。平时不要把 scrollTop 原样写回——
+    // 「滚动到保存按钮」会把居中位置存进 scrollTop，若每次渲染都套用，
+    // 刷新、切 tab 回来等场景都会被反复拉回那个居中位置（即使已退出编辑态）
+    if (willFocus) patch.scrollTop = 0;
+    this.setData(patch, () => {
       if (!willFocus) return;
       setTimeout(() => {
         this.setData({ focusIdx: fi });
@@ -344,6 +349,7 @@ Page({
 
   /* -------- 交互 -------- */
   onTag(e) {
+    if (this.guardEdit()) return;   // 编辑态：不允许切换维度
     this.st.tag = e.currentTarget.dataset.k;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
@@ -384,6 +390,53 @@ Page({
      导致键盘弹出时输入框“飞”到页面顶端。现在键盘避让统一交给 adjust-position 原生处理；
      流转进入（开始/完成/放弃/结束）的预滚动仍在 recompute 里、发生在键盘弹出前，不受影响。 */
   onFieldFocus() {},
+
+  /* -------- 编辑态（回显）锁定 -------- */
+  // composer 内的点击在这里截止，不冒泡到 body（编辑当前记卡内容是允许的）
+  noop() {},
+
+  // 编辑态下，除「编辑当前记卡内容」与「保存修改 / 取消」以外的操作都拦下，
+  // 并把「保存修改」按钮滚到屏幕中间，提示先把这一条处理完
+  guardEdit() {
+    if (!this.data.editing) return false;
+    this.scrollSaveToCenter();
+    this.tipSaveFirst();
+    return true;
+  },
+
+  // 每次被拦下的点击都提示一次。连续点击时先 hideToast，
+  // 否则上一条 toast 还在显示，新的可能不弹出（表现为「只有第一次有提示」）
+  tipSaveFirst() {
+    if (wx.hideToast) wx.hideToast();
+    wx.showToast({ title: '请先保存修改或取消', icon: 'none', duration: 800 });
+  },
+
+  // 主题切换在编辑态被锁：滚动到保存按钮并提示（与页面内其它无效操作一致）
+  onLocked() { this.guardEdit(); },
+
+  // 把「保存修改」按钮滚到滚动区垂直居中
+  scrollSaveToCenter() {
+    const q = wx.createSelectorQuery().in(this);
+    q.select('#savebar').boundingClientRect();
+    q.select('.screen').boundingClientRect();
+    q.select('.screen').scrollOffset();
+    q.exec(res => {
+      const save = res[0], sv = res[1], off = res[2];
+      if (!save || !sv) return;
+      // 目标：按钮中心落在滚动区中心 → 计算需要再滚动多少
+      const delta = save.top - (sv.top + (sv.height - save.height) / 2);
+      let top = Math.max(0, ((off && off.scrollTop) || 0) + delta);
+      // scroll-top 写入与当前相同的值不会触发滚动，做 1px 微调确保每次点击都生效
+      if (Math.abs(top - (this.data.scrollTop || 0)) < 1) top += 1;
+      this.setData({ scrollTo: '', scrollTop: top });
+    });
+  },
+
+  // 编辑区之外（最近列表、空白处等）的点击
+  onBodyTap() {
+    if (this.guardEdit()) return;
+    this.closeRecSel();
+  },
 
   /* -------- 保存 -------- */
   doSave() {
@@ -510,13 +563,19 @@ Page({
       });
     }
   },
+  // 「可做 / 无感」的分类是必选项：清空表单后要把默认分类补回来，
+  // 否则分类选中态丢失，下一条还会因「请选择分类」而记不进去
+  ensureDefaultKind() {
+    if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+    if (this.st.tag === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
+  },
+
   afterSave(rec) {
-    this.st.lastRec = rec;
-    this.st.saved = { t: rec.t, txt: rec.txt };
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
-    this.setData({ saved: this.st.saved, editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', froze: this.st.froze });
+    this.ensureDefaultKind();   // 记下后仍在 可做/无感 时，把默认分类选回来
+    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', froze: this.st.froze });
     this.recompute();
     wx.showToast({ title: '已记下', icon: 'success', duration: 700 });
   },
@@ -529,6 +588,7 @@ Page({
     this.st.froze = { txt: v, g };
   },
   onFrozeUndo() {
+    if (this.guardEdit()) return;
     const f = this.st.froze; if (!f) return;
     const O = app.globalData.OPT;
     if (O[f.g]) O[f.g] = O[f.g].filter(x => x !== f.txt);
@@ -537,23 +597,16 @@ Page({
     this.setData({ froze: null });
     this.recompute();
   },
-  onUndoSave() {
-    const r = this.st.lastRec; if (!r) return;
-    store.deleteRecord(r).then(() => {
-      app.globalData.records = app.globalData.records.filter(x => x._rid !== r._rid);
-      this.st.saved = null; this.st.lastRec = null;
-      this.setData({ saved: null });
-      this.recompute();
-    });
-  },
   onEditCancel() {
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.ensureDefaultKind();   // 取消编辑后仍在 可做/无感 时，把默认分类选回来
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
     this.recompute();
   },
 
   /* 点「最近」记录：选中并弹出「改 / 删除」操作条 */
   onRecentTap(e) {
+    if (this.guardEdit()) return;   // 编辑态：不允许选中其它记录
     const id = e.currentTarget.dataset.id;
     if (this.data.recSel === id) { this.setData({ recSel: null, recSelRec: null }); return; }
     const r = (app.globalData.records || []).find(x => x.id === id);
@@ -563,6 +616,7 @@ Page({
   /* 记录操作条统一入口（记页「最近」与看页共用 rec-actions 组件；行为各自实现，按钮集合只维护一处）
      type: start | complete | abandon | restore | end | edit | del */
   onRecAction(e) {
+    if (this.guardEdit()) return;   // 编辑态：不允许对其它记录做流转/改/删
     const type = e.detail.type;
     const id = this.data.recSel; if (id == null) return;
     const r = (app.globalData.records || []).find(x => x.id === id);
@@ -619,6 +673,7 @@ Page({
 
   /* 备忘/购物：勾选切换完成态（划线 + 记录完成时间） */
   onRecCheck(e) {
+    if (this.guardEdit()) return;
     const id = e.currentTarget.dataset.id;
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r || !store.isTask(r.m)) return;
@@ -630,6 +685,7 @@ Page({
 
   /* 点操作条「删除」：删除并给出撤销机会 */
   onRecDel() {
+    if (this.guardEdit()) return;
     const id = this.data.recSel; if (id == null) return;
     const i = (app.globalData.records || []).findIndex(x => x.id === id);
     if (i < 0) return;
@@ -646,6 +702,7 @@ Page({
   },
 
   onUndoDel() {
+    if (this.guardEdit()) return;
     const u = this.data.delUndo; if (!u) return;
     if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; }
     const dump = u.dump;
@@ -661,6 +718,8 @@ Page({
 
   /* 下拉刷新：从云端重新拉取全部数据 */
   onRefresh() {
+    // 编辑态：下拉刷新会丢掉未保存的编辑，拦下并滚到「保存修改」
+    if (this.data.editing) { this.setData({ refreshing: false }); this.guardEdit(); return; }
     this.setData({ refreshing: true });
     store.reload().then(() => {
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
@@ -676,11 +735,13 @@ Page({
 
   /* 点「最近」标题右侧「清单」：进入待办清单（备忘 / 购物） */
   goList() {
+    if (this.guardEdit()) return;
     wx.navigateTo({ url: '/pages/list/list' });
   },
 
   /* -------- 选项管理：跳转到独立子页面（返回即回「记」页，不退出小程序） -------- */
   onManage(e) {
+    if (this.guardEdit()) return;   // 编辑态：不允许跳去管理选项
     const g = e.currentTarget.dataset.g;
     const url = '/pages/options/options?group=' + encodeURIComponent(g);
     wx.navigateTo({

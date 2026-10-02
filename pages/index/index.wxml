@@ -1,6 +1,6 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
   <scroll-view class="screen" scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{scrollTop}}" scroll-into-view="{{scrollTo}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh" bindscroll="closeRecSel">
-    <view class="body body-top" bindtap="closeRecSel">
+    <view class="body body-top" bindtap="onBodyTap">
       <!-- 骨架屏：数据未就绪时占位，避免首屏空卡片闪动 -->
       <block wx:if="{{!ready}}">
         <view class="composer sk">
@@ -24,7 +24,7 @@
 
       <block wx:else>
       <!-- 输入区（含问候与模块标签，整块卡片） -->
-      <view class="composer">
+      <view class="composer" catchtap="noop">
         <!-- 问候 -->
         <view class="greet-row">
           <view class="greet-wrap">
@@ -98,7 +98,7 @@
           <picker class="ev" mode="time" value="{{editAbandonTime}}" bindchange="onEditAbandonTime"><view class="evv">{{editAbandonTime}}</view></picker>
         </view>
 
-        <view class="savebar">
+        <view class="savebar" id="savebar">
           <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
           <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
         </view>
@@ -107,10 +107,7 @@
           <view class="tx">已固化：{{froze.txt}}</view>
           <view class="tb" bindtap="onFrozeUndo">撤销固化</view>
         </view>
-        <view wx:if="{{saved}}" class="toastline">
-          <view class="tx">刚记下 · {{saved.t}} · {{saved.txt}}</view>
-          <view class="tb" bindtap="onUndoSave">撤销再记一条</view>
-        </view>
+
       </view>
 
       <!-- 最近 -->
@@ -144,5 +141,5 @@
     <view class="tb" bindtap="onUndoDel">撤销</view>
   </view>
 
-  <theme-switcher />
+  <theme-switcher lock="{{editing}}" bind:locked="onLocked" />
 </view>

@@ -2,6 +2,10 @@
 const store = require('../../utils/store.js');
 
 Component({
+  properties: {
+    // 编辑态锁定时不切主题，改为通知页面（页面会把「保存修改」滚到中间）
+    lock: { type: Boolean, value: false }
+  },
   data: {
     ac: '#2F8F7B',
     name: '',
@@ -35,6 +39,7 @@ Component({
       this.setData({ ac: t.ac, name: t.n });
     },
     onTap() {
+      if (this.data.lock) { this.triggerEvent('locked'); return; }
       const k = wx.getStorageSync('theme') || 'mint';
       const idx = store.THEMES.findIndex(x => x.k === k);
       const next = store.THEMES[(idx + 1) % store.THEMES.length];

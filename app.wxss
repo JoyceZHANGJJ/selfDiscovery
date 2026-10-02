@@ -180,8 +180,11 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rec .edge { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
 .rec.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .rec .hd { display: flex; align-items: baseline; gap: 8px; }
-.rec .mn { font-size: 11px; font-weight: 700; }
-.rec .tv { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--ink); word-break: break-all; line-height: 1.5; }
+/* 维度名（觉察/无感…）：11px 下 700 在手机上不够明显，提到 800（与问候/小节标题同级强调） */
+.rec .mn { font-size: 11px; font-weight: 800; }
+/* 事件项（主内容）加重：用 700 而不是 600——手机端中文字体常缺 600 这一档，
+   WebView 不合成中间字重时会回落到 400，导致加重看不出来；700 各端都能稳定渲染 */
+.rec .tv { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); word-break: break-all; line-height: 1.5; }
 .rec .tw { font-size: 11.5px; color: var(--ink3); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .rec .dt { margin-top: 6px; line-height: 1.9; font-size: 12.5px; color: var(--ink); }
 .dm { display: inline-flex; align-items: center; flex-shrink: 0; font-size: 11px; font-weight: 700; line-height: 1.5; border-radius: 99px; padding: 2px 8px; background: rgba(35,35,31,.06); }
@@ -278,7 +281,7 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rev-row:last-child { border-bottom: none; }
 .rev-k { display: flex; align-items: center; gap: 5px; flex-shrink: 0; width: 72px; font-size: 12px; font-weight: 700; color: var(--ink2); }
 .rev-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.rev-v { font-size: 13px; color: var(--ink); font-weight: 600; line-height: 1.4; flex: 1; min-width: 0; word-break: break-word; }
+.rev-v { font-size: 13px; color: var(--ink); font-weight: 700; line-height: 1.4; flex: 1; min-width: 0; word-break: break-word; }
 .evfold { margin-top: 15px; background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; }
 .evfold-h { display: flex; align-items: center; gap: 8px; padding: 14px 16px; }
 .evfold-h .evfold-t { font-size: 14px; font-weight: 700; color: var(--ink); }
