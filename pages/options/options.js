@@ -1,0 +1,112 @@
+// pages/options/options.js —— 选项管理（独立页，返回即回到「记」）
+const store = require('../../utils/store.js');
+const app = getApp();
+
+Page({
+  data: {
+    theme: 'sand',
+    statusH: 20,
+    group: '',
+    label: '',
+    opts: [],
+    newVal: '',
+    undo: null
+  },
+
+  onLoad(q) {
+    const group = decodeURIComponent(q.group || '');
+    this.group = group;
+    this.setData({ group, label: store.GLABEL[group] || '管理选项' });
+    this.refresh();
+    this.diag();
+  },
+
+  // 诊断：打印当前云环境 + options 集合实际可见条数（模拟器/手机对比用）
+  diag() {
+    try {
+      const db = wx.cloud.database();
+      db.collection('options').count()
+        .then(r => console.log('[诊断] 环境=', (wx.cloud.database().config && wx.cloud.database().config.env) || '-', 'options 云端总条数=', r.total))
+        .catch(e => console.error('[诊断] options 读取失败（多为集合不存在或无读权限）：', e));
+    } catch (e) { console.error('[诊断] 云未初始化：', e); }
+  },
+
+  onShow() {
+    const t = wx.getStorageSync('theme') || 'sand';
+    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
+    this.setData({ theme: t, statusH: info.statusBarHeight || 20 });
+    this.refresh();
+  },
+
+  // 读取最新选项池（store 为单例，与首页共享 app.globalData.OPT）
+  refresh() {
+    const opts = store.getOPT(this.group).map(v => ({ v, ren: false }));
+    this.setData({ opts, undo: null });
+  },
+
+  onRenStart(e) {
+    const v = e.currentTarget.dataset.v;
+    const opts = this.data.opts.map(o => o.v === v ? { v, ren: true } : o);
+    this.setData({ opts, _renVal: v });
+  },
+  onRenInput(e) { this.setData({ _renVal: e.detail.value }); },
+  onRenSave(e) {
+    const ov = e.currentTarget.dataset.v;
+    const nv = (this.data._renVal || '').trim();
+    if (!nv || nv === ov) { this.refresh(); return; }
+    const O = app.globalData.OPT;
+    // 全局替换（所有选项组 + 既有记录）
+    Object.keys(O).forEach(g => { const idx = O[g].indexOf(ov); if (idx >= 0) O[g][idx] = nv; });
+    app.globalData.records.forEach(r => {
+      if (r.txt === ov) r.txt = nv;
+      if (r.ext) r.ext = r.ext.map(x => x === ov ? nv : x);
+    });
+    const ps = [store.renameOption(this.group, ov, nv)];
+    if (store.isDefault(this.group, ov)) {
+      // 默认项改名：旧值标记删除，新值落库持久化
+      ps.push(store.addDelDef(this.group, ov));
+      if (O[this.group].indexOf(nv) < 0) O[this.group].push(nv);
+      ps.push(store.addOption(this.group, nv));
+    }
+    if (store.isDefault(this.group, nv)) ps.push(store.clearDelDef(this.group, nv)); // 新值恰好是默认项，清除删除标记
+    Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
+    this.refresh();
+  },
+  onOptDel(e) {
+    const v = e.currentTarget.dataset.v;
+    const O = app.globalData.OPT;
+    if (O[this.group]) O[this.group] = O[this.group].filter(x => x !== v);
+    const ps = [store.removeOption(this.group, v)];
+    if (store.isDefault(this.group, v)) ps.push(store.addDelDef(this.group, v)); // 删的是默认项，记录删除标记
+    Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
+    this.setData({ undo: { v } });
+    this.refresh();
+  },
+  onOptUndo() {
+    const u = this.data.undo; if (!u) return;
+    const O = app.globalData.OPT;
+    if (!O[this.group]) O[this.group] = [];
+    if (O[this.group].indexOf(u.v) < 0) O[this.group].push(u.v);
+    const ps = [store.addOption(this.group, u.v)];
+    if (store.isDefault(this.group, u.v)) ps.push(store.clearDelDef(this.group, u.v)); // 还原被删的默认项
+    Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
+    this.setData({ undo: null });
+    this.refresh();
+  },
+  onNewInput(e) { this.setData({ newVal: e.detail.value }); },
+  onNewAdd() {
+    const v = (this.data.newVal || '').trim();
+    if (!v) return;
+    const O = app.globalData.OPT, g = this.group;
+    if (!O[g]) O[g] = [];
+    if (O[g].indexOf(v) < 0) {
+      O[g].push(v);
+      const ps = [store.addOption(g, v)];
+      if (store.isDefault(g, v)) ps.push(store.clearDelDef(g, v)); // 加回的是曾被删的默认项
+      Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
+    }
+    this.setData({ newVal: '' });
+    this.refresh();
+  },
+  onClose() { wx.navigateBack(); }
+});

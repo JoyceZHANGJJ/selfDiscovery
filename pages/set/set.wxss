@@ -1,0 +1,11 @@
+/* 设置页微调 */
+.dot { width: 8px; height: 8px; border-radius: 50%; }
+.mini-b { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; }
+.mini-b.del { color: var(--danger); border-color: #E5C9C7; }
+.gr-row { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.gr-t { flex: 1; font-size: 13px; color: var(--ink); min-width: 0; word-break: break-all; }
+.gr-in { flex: 1; min-width: 0; }
+.gr-add { font-size: 12.5px; color: var(--accent); padding: 9px 2px; }
+.gr-reset { font-size: 12.5px; color: var(--ink3); padding: 11px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
+.ta { width: 100%; }
+.hint { font-size: 11.5px; color: var(--ink3); }

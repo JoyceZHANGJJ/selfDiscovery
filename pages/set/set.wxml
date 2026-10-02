@@ -1,0 +1,113 @@
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <scroll-view class="screen" scroll-y type="list">
+    <view class="body">
+      <view class="sect-t">设置</view>
+
+      <!-- 外观 -->
+      <view class="srow">
+        <view class="sl">外观 · 主题</view>
+        <view class="themes">
+          <view wx:for="{{themes}}" wx:key="k" class="th {{theme===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTheme"><i style="background:{{item.bg}};box-shadow:inset 0 0 0 2px {{item.ac}}"></i></view>
+        </view>
+      </view>
+
+      <!-- 问候语轮换 -->
+      <view class="srow" bindtap="toggleGreet">
+        <view class="sl">问候语轮换</view>
+        <view class="sr">{{greetOpen?'▾':'▸'}}</view>
+      </view>
+      <view wx:if="{{greetOpen}}" class="gwrap open">
+        <view class="gbody">
+          <view class="sect-t" style="margin:6px 0 8px">白天（5:00–18:00）</view>
+          <view wx:for="{{greets.day}}" wx:key="index" class="gr-row">
+            <block wx:if="{{geEdit && geEdit.pool==='day' && geEdit.idx===index}}">
+              <input class="gr-in mini-in" value="{{geEditVal}}" bindinput="onGeEditInput" adjust-position="{{false}}" cursor-spacing="20" />
+              <view class="mini-b" bindtap="confirmGeEdit">保存</view>
+              <view class="mini-b" bindtap="cancelGeEdit">取消</view>
+            </block>
+            <block wx:else>
+              <view class="gr-t">{{item}}</view>
+              <view class="mini-b" data-pool="day" data-idx="{{index}}" bindtap="editGreet">改</view>
+              <view class="mini-b del" data-pool="day" data-idx="{{index}}" bindtap="delGreet">删</view>
+            </block>
+          </view>
+          <view wx:if="{{geNew==='day'}}" class="gr-row">
+            <input class="gr-in mini-in" placeholder="新增一句…" value="{{geNewVal}}" bindinput="onGeNewInput" adjust-position="{{false}}" cursor-spacing="20" />
+            <view class="mini-b" data-pool="day" bindtap="confirmGeNew">添加</view>
+          </view>
+          <view wx:else class="gr-add" data-pool="day" bindtap="addGreetTap">＋ 新增一句</view>
+
+          <view class="sect-t" style="margin:14px 0 8px">夜里（18:00–5:00）</view>
+          <view wx:for="{{greets.night}}" wx:key="index" class="gr-row">
+            <block wx:if="{{geEdit && geEdit.pool==='night' && geEdit.idx===index}}">
+              <input class="gr-in mini-in" value="{{geEditVal}}" bindinput="onGeEditInput" adjust-position="{{false}}" cursor-spacing="20" />
+              <view class="mini-b" bindtap="confirmGeEdit">保存</view>
+              <view class="mini-b" bindtap="cancelGeEdit">取消</view>
+            </block>
+            <block wx:else>
+              <view class="gr-t">{{item}}</view>
+              <view class="mini-b" data-pool="night" data-idx="{{index}}" bindtap="editGreet">改</view>
+              <view class="mini-b del" data-pool="night" data-idx="{{index}}" bindtap="delGreet">删</view>
+            </block>
+          </view>
+          <view wx:if="{{geNew==='night'}}" class="gr-row">
+            <input class="gr-in mini-in" placeholder="新增一句…" value="{{geNewVal}}" bindinput="onGeNewInput" adjust-position="{{false}}" cursor-spacing="20" />
+            <view class="mini-b" data-pool="night" bindtap="confirmGeNew">添加</view>
+          </view>
+          <view wx:else class="gr-add" data-pool="night" bindtap="addGreetTap">＋ 新增一句</view>
+
+          <view class="gr-reset" bindtap="resetGreet">恢复默认问候语</view>
+        </view>
+      </view>
+
+      <!-- 数据 -->
+      <view class="sect-t" style="margin-top:18px">数据</view>
+      <view class="srow"><view class="sl">导出全部记录</view><view class="sr" bindtap="onExport">复制</view></view>
+      <view class="srow"><view class="sl">导入记录</view><view class="sr" bindtap="onImportTap">粘贴</view></view>
+      <view class="srow"><view class="sl">清空所有记录</view><view class="sr danger" bindtap="onClear">清空</view></view>
+
+      <!-- 自定义标签 -->
+      <view class="sect-t" style="margin-top:18px">自定义标签</view>
+      <view class="srow" bindtap="onAddDimTap"><view class="sl">新增维度</view><view class="sr">＋ 新增</view></view>
+      <view wx:if="{{dims.length===0}}" class="empty-mini">还没有自定义维度</view>
+      <view wx:for="{{dims}}" wx:key="k" class="srow">
+        <view class="sl"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{item.c}};margin-right:8px"></view>{{item.n}}</view>
+        <view class="sv">自定义 · {{item.opt}} 个选项</view>
+        <view class="mini-b del" data-k="{{item.k}}" bindtap="delDim">移除</view>
+      </view>
+
+      <!-- 关于 -->
+      <view class="sect-t" style="margin-top:18px">关于</view>
+      <view class="srow"><view class="sl">选项池</view><view class="sv">{{optCount}} 组</view></view>
+      <view class="srow"><view class="sl">数据位置</view><view class="sv">云开发数据库</view></view>
+      <view class="srow"><view class="sl">当前记录</view><view class="sv">{{recCount}} 条</view></view>
+    </view>
+  </scroll-view>
+
+  <!-- 导入浮层 -->
+  <view wx:if="{{importOverlay}}" class="sheet">
+    <view class="sh-h"><view class="st">导入记录</view><view class="sx" bindtap="closeImport">✕</view></view>
+    <view class="sh-sub">粘贴导出的文本，一行一条</view>
+    <view class="sh-list">
+      <textarea class="ta" adjust-position="{{false}}" cursor-spacing="20" style="width:100%;min-height:180px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.6;background:var(--soft);color:var(--ink);box-sizing:border-box" value="{{importText}}" bindinput="onImportInput" maxlength="-1" placeholder="日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）"></textarea>
+      <view class="hint" style="font-size:11.5px;color:var(--ink3);padding:6px 0">只新增，不覆盖已有记录。</view>
+    </view>
+    <view class="sh-foot">
+      <view class="btn gh" bindtap="closeImport">取消</view>
+      <view class="btn" bindtap="doImport">导入</view>
+    </view>
+  </view>
+
+  <!-- 新增维度浮层 -->
+  <view wx:if="{{dimOverlay}}" class="sheet">
+    <view class="sh-h"><view class="st">新增维度</view><view class="sx" bindtap="confirmDim">✓</view></view>
+    <view class="sh-sub">维度会顺次排在后面，带一个内容选项池和一个补充输入框</view>
+    <view class="sh-list">
+      <input class="mini-in" placeholder="维度名称，如「运动」" value="{{dimName}}" bindinput="onDimName" adjust-position="{{false}}" cursor-spacing="20" />
+      <view class="themes" style="margin-top:14px;justify-content:flex-start">
+        <view wx:for="{{colors}}" wx:key="*this" class="th {{dimColor===item?'on':''}}" data-c="{{item}}" bindtap="onDimColor"><i style="background:{{item}}"></i></view>
+      </view>
+    </view>
+    <view class="sh-foot"><view class="btn" bindtap="confirmDim">新增</view></view>
+  </view>
+</view>

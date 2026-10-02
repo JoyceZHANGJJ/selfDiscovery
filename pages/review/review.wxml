@@ -1,0 +1,47 @@
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh">
+    <view class="body">
+      <view class="sect-t">回看</view>
+
+      <!-- 总结 -->
+      <view class="rev-sum">
+        <view wx:for="{{sum}}" wx:key="k" class="rev-row">
+          <view class="rev-k"><view class="rev-dot" style="background:{{item.c}}"></view>{{item.k}}</view>
+          <view class="rev-v">{{item.v || '—'}}</view>
+        </view>
+      </view>
+
+      <!-- KPI -->
+      <view class="kpis">
+        <view wx:for="{{kpis}}" wx:key="l" class="kpi"><view class="n">{{item.n}}</view><view class="l">{{item.l}}</view></view>
+      </view>
+
+      <!-- 热力 -->
+      <view class="bars">
+        <view class="sect-t" style="margin:0 0 4px">近 30 天</view>
+        <view class="heat"><i wx:for="{{heat.cells}}" wx:key="index" class="l{{item.lv}}"></i></view>
+        <view class="heat-sum">{{heat.sum}}</view>
+      </view>
+
+      <!-- 事件维度 -->
+      <view class="evfold {{ev.open?'open':''}}">
+        <view class="evfold-h" bindtap="onToggleEv">
+          <view class="evfold-t">事件</view>
+          <view class="evfold-c">{{ev.total}} 条 · {{ev.groups.length}} 个</view>
+          <view class="evfold-chev">▸</view>
+        </view>
+        <view wx:if="{{ev.open}}" class="evfold-b">
+          <view wx:for="{{ev.groups}}" wx:key="txt" wx:for-item="g" class="ev-grp">
+            <view class="ev-grp-h"><view class="ev-gn">{{g.txt}}</view><view class="ev-gc">{{g.count}}</view></view>
+            <view wx:for="{{g.dims}}" wx:for-item="dm" wx:key="n" class="ev-dim">
+              <view class="ev-dim-h"><view class="dot" style="background:{{dm.c}}"></view>{{dm.n}}<view class="ev-dim-c">{{dm.rows.length}}</view></view>
+              <view wx:for="{{dm.rows}}" wx:for-item="row" wx:key="index" class="ev-row">
+                <text class="ev-d">{{row.d}}</text><text class="ev-x">{{row.x}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

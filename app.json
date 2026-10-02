@@ -1,24 +1,29 @@
 {
   "pages": [
-    "pages/index/index"
+    "pages/index/index",
+    "pages/look/look",
+    "pages/review/review",
+    "pages/set/set",
+    "pages/options/options"
   ],
   "window": {
     "navigationBarTextStyle": "black",
-    "navigationStyle": "custom"
+    "navigationStyle": "custom",
+    "backgroundColor": "#FAF8F4"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#8B8779",
+    "selectedColor": "#7C9A86",
+    "backgroundColor": "#FAF8F4",
+    "list": [
+      { "pagePath": "pages/index/index", "text": "记" },
+      { "pagePath": "pages/look/look", "text": "看" },
+      { "pagePath": "pages/review/review", "text": "回看" },
+      { "pagePath": "pages/set/set", "text": "设置" }
+    ]
   },
   "style": "v2",
-  "renderer": "skyline",
-  "rendererOptions": {
-    "skyline": {
-      "defaultDisplayBlock": true,
-      "defaultContentBox": true,
-      "tagNameStyleIsolation": "legacy",
-      "disableABTest": true,
-      "sdkVersionBegin": "3.0.0",
-      "sdkVersionEnd": "15.255.255"
-    }
-  },
-  "componentFramework": "glass-easel",
   "sitemapLocation": "sitemap.json",
   "lazyCodeLoading": "requiredComponents"
 }

@@ -1,7 +1,82 @@
-<!--index.wxml-->
-<navigation-bar title="Weixin" back="{{false}}" color="black" background="#FFF"></navigation-bar>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <view class="container">
-    Weixin
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <scroll-view class="screen" scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{scrollTop}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh">
+    <view class="body body-top">
+      <!-- 输入区（含问候与模块标签，整块卡片） -->
+      <view class="composer">
+        <!-- 问候 -->
+        <view class="greet-row">
+          <view class="greet-wrap">
+            <view class="greet">{{greet.t}}</view>
+            <view class="greet-sub">{{greet.s}}</view>
+          </view>
+        </view>
+
+        <!-- 模块标签 -->
+        <view class="tagrow">
+          <view wx:for="{{modules}}" wx:key="k" class="tg {{tag===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTag">
+            <view class="dot" style="background:{{item.c}}"></view>{{item.n}}
+          </view>
+        </view>
+
+        <view class="ehead"><view class="et">{{composer.mainLabel}}</view><view class="mg" data-g="{{composer.main}}" bindtap="onManage">✎ 管理</view></view>
+        <view class="chips">
+          <view wx:for="{{composer.mainOpts}}" wx:key="*this" class="chip {{item.on?'on':''}}" data-v="{{item.v}}" bindtap="onMainChip">{{item.v}}</view>
+        </view>
+        <textarea class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{false}}" cursor-spacing="20"></textarea>
+
+        <view class="extra-h">细节 · 都可跳过</view>
+        <view wx:for="{{composer.items}}" wx:key="index" class="extra {{item.first?'first':''}}">
+          <view class="qrow">
+            <view class="ql">{{item.label}}</view>
+            <view wx:if="{{item.type==='g'}}" class="mg" data-g="{{item.group}}" bindtap="onManage">✎ 管理</view>
+          </view>
+          <block wx:if="{{item.type==='g' || item.type==='fx'}}">
+            <view class="chips">
+              <view wx:for="{{item.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{item.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
+            </view>
+            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{false}}" cursor-spacing="20" />
+          </block>
+          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" adjust-position="{{false}}"></textarea>
+        </view>
+
+        <view class="savebar">
+          <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
+          <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
+        </view>
+
+        <view wx:if="{{froze}}" class="freezeline">
+          <view class="tx">已固化：{{froze.txt}}</view>
+          <view class="tb" bindtap="onFrozeUndo">撤销固化</view>
+        </view>
+        <view wx:if="{{saved}}" class="toastline">
+          <view class="tx">刚记下 · {{saved.t}} · {{saved.txt}}</view>
+          <view class="tb" bindtap="onUndoSave">撤销再记一条</view>
+        </view>
+      </view>
+
+      <!-- 最近 -->
+      <view class="sect-t">最近</view>
+      <view wx:if="{{recent.length===0}}" class="empty-mini">还没有记录</view>
+      <view wx:for="{{recent}}" wx:key="id" class="rec {{recSel===item.id?'sel':''}}" data-id="{{item.id}}" bindtap="onRecentTap">
+        <view class="edge" style="background:{{item.c}}"></view>
+        <view class="hd"><text class="mn" style="color:{{item.c}}">{{item.m}}</text><text class="tv">{{item.txt}}</text><text class="tw">{{item.d}}{{item.t}}</text></view>
+        <view class="dt">
+          <text wx:for="{{item.dt}}" wx:for-item="d" wx:key="index" class="it"><text class="k" wx:if="{{d.lbl}}">{{d.lbl}}</text>{{d.v}}</text>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 记录操作条（选中记录后出现） -->
+  <view class="actbar {{recSel!=null?'on':''}}">
+    <view wx:if="{{recSelRec}}" class="tx">{{recSelRec.m}} · {{recSelRec.txt}}</view>
+    <view class="edit" bindtap="onRecEdit">改</view>
+    <view class="del" bindtap="onRecDel">删除</view>
   </view>
-</scroll-view>
+
+  <!-- 删除撤销 -->
+  <view wx:if="{{delUndo}}" class="toastline undo-bar">
+    <view class="tx">已删除「{{delUndo.txt}}」</view>
+    <view class="tb" bindtap="onUndoDel">撤销</view>
+  </view>
+</view>

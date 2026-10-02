@@ -1,0 +1,54 @@
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onRefresh" refresher-triggered="{{refreshing}}">
+    <view class="body">
+      <view class="sect-t">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
+      <input class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{false}}" cursor-spacing="20" />
+
+      <view class="filters">
+        <view class="ft {{filter==='all'?'on':''}}" data-f="all" bindtap="onFilter">全部</view>
+        <view wx:for="{{modules}}" wx:key="k" class="ft {{filter===item.k?'on':''}}" data-f="{{item.k}}" bindtap="onFilter">
+          <text class="fd" style="background:{{item.c}}"></text>{{item.n}}
+        </view>
+      </view>
+
+      <!-- 统计 -->
+      <view class="bars">
+        <view class="sect-t" style="margin:0 0 8px">统计 · {{filter==='all'?'全部':filterName}}</view>
+        <view wx:if="{{stats.all}}" class="st-sum">共 <b>{{stats.total}}</b> 条</view>
+        <view wx:else class="st-sum">{{stats.lead}}</view>
+        <view wx:for="{{stats.bars}}" wx:key="n" class="barrow">
+          <view class="bn">{{item.n}}</view>
+          <view class="bb"><view class="bf" style="width:{{item.w}};background:{{item.c}}"></view></view>
+          <view class="bv">{{item.n2}}</view>
+        </view>
+        <view wx:if="{{stats.extra}}" class="st-ex">{{stats.extra}}</view>
+      </view>
+
+      <!-- 时间线 -->
+      <block wx:if="{{days.length}}">
+        <view wx:for="{{days}}" wx:key="day" wx:for-item="grp">
+          <view class="daylab">{{grp.day}}</view>
+          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec {{sel===r.id?'sel':''}}" data-id="{{r.id}}" bindtap="onRecTap">
+            <view class="edge" style="background:{{r.c}}"></view>
+            <view class="hd"><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text class="tv">{{r.txt}}</text><text class="tw">{{r.d}}{{r.t}}</text></view>
+            <view class="dt">
+              <text wx:for="{{r.dt}}" wx:for-item="d" wx:key="index" class="it"><text class="k" wx:if="{{d.lbl}}">{{d.lbl}}</text>{{d.v}}</text>
+            </view>
+          </view>
+        </view>
+      </block>
+      <view wx:else class="empty-mini">没有匹配的记录</view>
+    </view>
+  </scroll-view>
+
+  <view class="actbar {{sel!=null?'on':''}}">
+    <view wx:if="{{selRec}}" class="tx">{{selRec.m}} · {{selRec.txt}}</view>
+    <view class="edit" bindtap="onActEdit">改</view>
+    <view class="del" bindtap="onActDel">删除</view>
+  </view>
+
+  <view wx:if="{{delUndo}}" class="toastline undo-bar">
+    <view class="tx">已删除「{{delUndo.txt}}」</view>
+    <view class="tb" bindtap="onUndoDel">撤销</view>
+  </view>
+</view>

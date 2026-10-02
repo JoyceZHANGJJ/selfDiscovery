@@ -1,0 +1,31 @@
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <view class="screen">
+    <view class="body-opt">
+      <view class="op-h">
+        <view class="bk" bindtap="onClose">‹ 返回</view>
+        <view class="tt">{{label}}</view>
+      </view>
+      <view class="op-sub">{{opts.length}} 项 · 点「改名」可改，删除后点撤销可恢复</view>
+
+      <scroll-view class="op-list" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:if="{{opts.length===0}}" class="sh-empty">这组还没有选项 · 在下方加一项即可</view>
+        <view wx:for="{{opts}}" wx:key="*this" class="opt-row">
+          <input wx:if="{{item.ren}}" class="mini-in" value="{{item.v}}" bindinput="onRenInput" bindconfirm="onRenSave" data-v="{{item.v}}" adjust-position="{{false}}" cursor-spacing="20" />
+          <view wx:else class="ov">{{item.v}}</view>
+          <view wx:if="{{!item.ren}}" class="mini-b" data-v="{{item.v}}" bindtap="onRenStart">改名</view>
+          <view wx:if="{{item.ren}}" class="mini-b" data-v="{{item.v}}" bindtap="onRenSave">保存</view>
+          <view class="mini-b del" data-v="{{item.v}}" bindtap="onOptDel">删</view>
+        </view>
+        <view class="op-new">
+          <input class="mini-in" placeholder="新增一项…" value="{{newVal}}" bindinput="onNewInput" bindconfirm="onNewAdd" confirm-type="done" adjust-position="{{false}}" cursor-spacing="20" />
+          <view class="mini-b add" bindtap="onNewAdd">添加</view>
+        </view>
+      </scroll-view>
+
+      <view wx:if="{{undo}}" class="undoline">
+        <view class="tx">已删除「{{undo.v}}」· 历史记录未动</view>
+        <view class="tb" bindtap="onOptUndo">撤销</view>
+      </view>
+    </view>
+  </view>
+</view>

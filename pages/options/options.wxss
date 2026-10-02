@@ -1,0 +1,17 @@
+.app { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif; line-height: 1.6; }
+.screen { display: flex; flex-direction: column; width: 100%; max-width: 640px; height: 100%; margin: 0 auto; box-sizing: border-box; }
+.body-opt { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: calc(var(--status-h, 20px) + 6px) 14px calc(14px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+.op-h { display: flex; align-items: center; gap: 12px; padding: 4px 0 2px; }
+.op-h .bk { font-size: 16px; color: var(--accent); font-weight: 700; flex-shrink: 0; padding: 4px 6px 4px 0; }
+.op-h .tt { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+.op-sub { font-size: 12px; color: var(--ink3); padding: 4px 2px 12px; }
+.op-list { flex: 1; min-height: 0; }
+.op-new { display: flex; gap: 8px; margin: 10px 0 4px; flex-shrink: 0; }
+
+/* 复用全局 .opt-row / .ov / .mini-in / .undoline / .sh-empty，仅补按钮样式 */
+.opt-row { background: var(--surface); }
+.op-new { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; flex-shrink: 0; }
+.op-new .mini-in { flex: 1; min-width: 0; width: auto; }
+.mini-b { font-size: 12.5px; color: var(--accent); padding: 4px 8px; flex-shrink: 0; }
+.mini-b.del { color: var(--danger); }
+.mini-b.add { border: 1px solid var(--accent); border-radius: 99px; }

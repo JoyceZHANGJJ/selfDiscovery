@@ -1,0 +1,22 @@
+.tabbar {
+  display: flex;
+  border-top: 1px solid var(--line, #EAE5DC);
+  background: var(--bg, #FAF8F4);
+  flex-shrink: 0;
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px));
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  max-width: 640px;
+  margin: 0 auto;
+  z-index: 40;
+}
+.tbb {
+  flex: 1; text-align: center; font-size: 12px; color: var(--ink3, #8B8779);
+  padding: 9px 0 5px; position: relative;
+}
+.tbb.on { color: var(--accent, #7C9A86); font-weight: 800; }
+.tbb.on::before {
+  content: ''; position: absolute; top: 3px; left: 50%; transform: translateX(-50%);
+  width: 16px; height: 2.5px; border-radius: 99px; background: var(--accent, #7C9A86);
+}
+.tbb .ic { display: block; font-size: 15px; line-height: 1.3; }
