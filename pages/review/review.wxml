@@ -36,7 +36,7 @@
             <view wx:for="{{g.dims}}" wx:for-item="dm" wx:key="n" class="ev-dim">
               <view class="ev-dim-h"><view class="dot" style="background:{{dm.c}}"></view>{{dm.n}}<view class="ev-dim-c">{{dm.rows.length}}</view></view>
               <view wx:for="{{dm.rows}}" wx:for-item="row" wx:key="index" class="ev-row">
-                <text class="ev-d">{{row.d}}</text><text class="ev-x">{{row.x}}</text>
+                <text class="ev-d">{{row.d}}</text><text wx:for="{{row.x}}" wx:for-item="it" wx:key="index" class="it"><text class="k" wx:if="{{it.lbl}}">{{it.lbl}}</text>{{it.v}}</text>
               </view>
             </view>
           </view>
@@ -44,4 +44,6 @@
       </view>
     </view>
   </scroll-view>
+
+  <theme-switcher />
 </view>

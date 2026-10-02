@@ -9,9 +9,11 @@
 .op-new { display: flex; gap: 8px; margin: 10px 0 4px; flex-shrink: 0; }
 
 /* 复用全局 .opt-row / .ov / .mini-in / .undoline / .sh-empty，仅补按钮样式 */
-.opt-row { background: var(--surface); }
+.opt-row { background: var(--surface); height: 50px; box-sizing: border-box; display: flex; align-items: center; }
+.opt-row.drag { box-shadow: 0 6px 16px rgba(0,0,0,.18); opacity: .9; transform: scale(1.02); }
 .op-new { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; flex-shrink: 0; }
 .op-new .mini-in { flex: 1; min-width: 0; width: auto; }
+.hv { color: var(--ink3); font-size: 16px; padding: 0 6px 0 2px; letter-spacing: -2px; }
 .mini-b { font-size: 12.5px; color: var(--accent); padding: 4px 8px; flex-shrink: 0; }
 .mini-b.del { color: var(--danger); }
 .mini-b.add { border: 1px solid var(--accent); border-radius: 99px; }

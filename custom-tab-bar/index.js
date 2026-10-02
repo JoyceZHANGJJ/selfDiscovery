@@ -2,7 +2,7 @@ Component({
   options: { addGlobalClass: true },
   data: {
     selected: 0,
-    theme: 'sand',
+    theme: 'mint',
     hidden: false,
     list: [
       { pagePath: '/pages/index/index', text: '记', icon: '✎' },

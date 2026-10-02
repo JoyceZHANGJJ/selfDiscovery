@@ -10,7 +10,10 @@ Page({
     label: '',
     opts: [],
     newVal: '',
-    undo: null
+    undo: null,
+    dragging: false,
+    dragIdx: -1,
+    rowH: 58
   },
 
   onLoad(q) {
@@ -36,6 +39,11 @@ Page({
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: t, statusH: info.statusBarHeight || 20 });
     this.refresh();
+  },
+
+  onHide() {
+    // 兜底：离开页面时结束可能残留的拖拽状态
+    if (this.data.dragging) this.setData({ dragging: false, dragIdx: -1 });
   },
 
   // 读取最新选项池（store 为单例，与首页共享 app.globalData.OPT）
@@ -76,11 +84,41 @@ Page({
     const v = e.currentTarget.dataset.v;
     const O = app.globalData.OPT;
     if (O[this.group]) O[this.group] = O[this.group].filter(x => x !== v);
+    if (O[this.group]) store.setOptOrder(this.group, O[this.group]);
     const ps = [store.removeOption(this.group, v)];
     if (store.isDefault(this.group, v)) ps.push(store.addDelDef(this.group, v)); // 删的是默认项，记录删除标记
     Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     this.setData({ undo: { v } });
     this.refresh();
+  },
+  // 长按进入拖拽：锁定列表滚动，记录起点
+  onDragStart(e) {
+    const idx = +e.currentTarget.dataset.idx;
+    if (!this.data.opts[idx] || this.data.opts[idx].ren) return; // 改名中不可拖
+    this._startY = e.touches[0].clientY;
+    this._baseIdx = idx;
+    this.setData({ dragging: true, dragIdx: idx });
+    wx.vibrateShort && wx.vibrateShort({ type: 'light' });
+  },
+  // 拖动中：按手指位移换算目标位置并实时换位
+  onDragMove(e) {
+    if (!this.data.dragging) return;
+    const delta = e.touches[0].clientY - this._startY;
+    let target = this._baseIdx + Math.round(delta / this.data.rowH);
+    const len = this.data.opts.length;
+    if (target < 0) target = 0;
+    if (target > len - 1) target = len - 1;
+    if (target === this.data.dragIdx) return;
+    const arr = this.data.opts.slice();
+    const item = arr.splice(this.data.dragIdx, 1)[0];
+    arr.splice(target, 0, item);
+    this.setData({ opts: arr, dragIdx: target });
+    store.setOptOrder(this.group, arr.map(o => o.v));
+  },
+  // 松手：结束拖拽，恢复滚动
+  onDragEnd() {
+    if (!this.data.dragging) return;
+    this.setData({ dragging: false, dragIdx: -1 });
   },
   onOptUndo() {
     const u = this.data.undo; if (!u) return;
@@ -101,6 +139,7 @@ Page({
     if (!O[g]) O[g] = [];
     if (O[g].indexOf(v) < 0) {
       O[g].push(v);
+      store.setOptOrder(g, O[g]);
       const ps = [store.addOption(g, v)];
       if (store.isDefault(g, v)) ps.push(store.clearDelDef(g, v)); // 加回的是曾被删的默认项
       Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));

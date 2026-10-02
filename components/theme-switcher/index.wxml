@@ -1,0 +1,3 @@
+<view class="tsw" style="{{style}}" bindtap="onTap" aria-label="切换主题">
+  <view class="tsdot" style="background:{{ac}}"></view>
+</view>

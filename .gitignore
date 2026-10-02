@@ -17,3 +17,9 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
+
+# 本地调试目录（云开发容器调试产物）
+.cloudbase/
+
+# 本地优化建议文档（不入库）
+优化建议.md

@@ -10,9 +10,8 @@ function fmtDay(ts) {
 
 Page({
   data: {
-    theme: 'sand',
+    theme: 'mint',
     statusH: 20,
-    themes: [],
     greets: { day: [], night: [] },
     greetOpen: false,
     geEdit: null,
@@ -33,14 +32,13 @@ Page({
 
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: wx.getStorageSync('theme') || 'sand', statusH: info.statusBarHeight || 20 });
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, hidden: false, theme: wx.getStorageSync('theme') || 'sand' });
+    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20 });
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, hidden: false, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));
       const O = app.globalData.OPT || {};
       const optCount = Object.keys(O).reduce((s, k) => s + (O[k] ? O[k].length : 0), 0);
       this.setData({
-        themes: store.THEMES,
         colors: store.DCOLORS,
         greets: this.g,
         dims: (app.globalData.dims || []).map(d => ({ k: d.k, n: d.n, c: d.c, opt: (d.opt || []).length })),
@@ -48,13 +46,6 @@ Page({
         optCount
       });
     });
-  },
-
-  /* 外观 */
-  onTheme(e) {
-    const k = e.currentTarget.dataset.k;
-    wx.setStorageSync('theme', k);
-    this.setData({ theme: k });
   },
 
   /* 问候语 */
@@ -98,16 +89,23 @@ Page({
   persistGreets() { app.globalData.greets = this.g; store.saveGreets(this.g); },
 
   /* 数据：导出 / 导入 / 清空 */
-  exportText() {
-    const recs = app.globalData.records || [];
-    const head = '# 自我觉察 · 导出\n# 时间：' + fmtDay(Date.now()) + ' · 共 ' + recs.length + ' 条\n# 格式：日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）\n';
+  exportText(recs) {
+    const head = '# ' + (app.APP_NAME || '识己手札') + ' · 导出\n# 时间：' + fmtDay(Date.now()) + ' · 共 ' + recs.length + ' 条\n# 格式：日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）\n';
     const body = recs.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0)).map(r =>
       fmtDay(r.ts) + ' ' + (r.t || '') + ' | ' + store.mname(r.m) + ' | ' + String(r.txt || '') + ((r.ext && r.ext.length) ? ' | ' + r.ext.join('、') : '')
     );
     return head + body.join('\n') + '\n';
   },
+  // 导出：单独全量拉取（不依赖被截断的本地内存，覆盖全部历史记录）
   onExport() {
-    wx.setClipboardData({ data: this.exportText(), success: () => wx.showToast({ title: '已复制到剪贴板', icon: 'none' }) });
+    wx.showLoading({ title: '导出中', mask: true });
+    store.loadAllRecords({}).then(recs => {
+      wx.hideLoading();
+      wx.setClipboardData({ data: this.exportText(recs), success: () => wx.showToast({ title: '已复制到剪贴板', icon: 'none' }) });
+    }).catch(() => {
+      wx.hideLoading();
+      wx.setClipboardData({ data: this.exportText(app.globalData.records || []), success: () => wx.showToast({ title: '已复制到剪贴板', icon: 'none' }) });
+    });
   },
   onImportTap() { this.setData({ importOverlay: true, importText: '' }); this.setTabBarHidden(true); },
   onImportInput(e) { this.setData({ importText: e.detail.value }); },

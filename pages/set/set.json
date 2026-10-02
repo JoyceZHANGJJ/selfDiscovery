@@ -1,4 +1,6 @@
 {
-  "usingComponents": {},
+  "usingComponents": {
+    "theme-switcher": "/components/theme-switcher/index"
+  },
   "navigationStyle": "custom"
 }

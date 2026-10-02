@@ -1,6 +1,6 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
-  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onRefresh" refresher-triggered="{{refreshing}}">
-    <view class="body">
+  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onRefresh" refresher-triggered="{{refreshing}}" bindscroll="closeSel" bindscrolltolower="onLoadMore">
+    <view class="body" bindtap="closeSel">
       <view class="sect-t">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
       <input class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{false}}" cursor-spacing="20" />
 
@@ -11,8 +11,16 @@
         </view>
       </view>
 
-      <!-- 统计 -->
-      <view class="bars">
+      <!-- 快捷时间选择 -->
+      <view class="ranges">
+        <view class="rg {{range==='all'?'on':''}}" data-r="all" bindtap="onRange">全部</view>
+        <view class="rg {{range==='today'?'on':''}}" data-r="today" bindtap="onRange">今天</view>
+        <view class="rg {{range==='7d'?'on':''}}" data-r="7d" bindtap="onRange">近7天</view>
+        <view class="rg {{range==='30d'?'on':''}}" data-r="30d" bindtap="onRange">近30天</view>
+      </view>
+
+      <!-- 统计（备忘 / 购物不展示） -->
+      <view class="bars" wx:if="{{!stats.hide}}">
         <view class="sect-t" style="margin:0 0 8px">统计 · {{filter==='all'?'全部':filterName}}</view>
         <view wx:if="{{stats.all}}" class="st-sum">共 <b>{{stats.total}}</b> 条</view>
         <view wx:else class="st-sum">{{stats.lead}}</view>
@@ -24,38 +32,65 @@
         <view wx:if="{{stats.extra}}" class="st-ex">{{stats.extra}}</view>
       </view>
 
-      <!-- 待办清单（备忘 / 购物，不走时间流，平铺成清单） -->
+      <!-- 待办清单（备忘 / 购物，不走时间流，平铺成清单）；待完成 / 已完成 可折叠 -->
       <block wx:if="{{tasks.show}}">
         <view class="sect-t">{{tasks.tit}}</view>
         <view wx:if="{{tasks.sum}}" class="tsum">{{tasks.sum}}</view>
-        <view wx:for="{{tasks.undone}}" wx:key="id" class="rec list {{sel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" bindtap="onRecTap">
-          <view class="edge" style="background:{{item.c}}"></view>
-          <view class="hd">
-            <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
-            <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
-            <text class="tv">{{item.txt}}</text>
-            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+
+        <!-- 待完成 -->
+        <view wx:if="{{tasks.undone.length}}">
+          <view class="tfhd" bindtap="onTaskFold" data-k="undone">
+            <view class="tt">待完成 · {{tasks.undone.length}}</view>
+            <view class="tl"></view>
+            <view class="tc {{tasks.openU?'open':''}}">▸</view>
           </view>
-          <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
+          <block wx:if="{{tasks.openU}}">
+            <view wx:for="{{tasks.undone}}" wx:key="id" class="rec list {{sel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" catchtap="onRecTap">
+              <view class="edge" style="background:{{item.c}}"></view>
+              <view class="hd">
+                <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
+                <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+                <text class="tv">{{item.txt}}</text>
+                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+              </view>
+              <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
+            </view>
+          </block>
         </view>
-        <view wx:if="{{tasks.doneN}}" class="dnlab">已完成 · {{tasks.doneN}}</view>
-        <view wx:for="{{tasks.done}}" wx:key="id" class="rec list done {{sel===item.id?'sel':''}}" data-id="{{item.id}}" bindtap="onRecTap">
-          <view class="edge" style="background:{{item.c}}"></view>
-          <view class="hd">
-            <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
-            <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
-            <text class="tv">{{item.txt}}</text>
-            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+
+        <!-- 已完成 -->
+        <view wx:if="{{tasks.done.length}}">
+          <view class="tfhd" bindtap="onTaskFold" data-k="done">
+            <view class="tt">已完成 · {{tasks.done.length}}</view>
+            <view class="tl"></view>
+            <view class="tc {{tasks.openD?'open':''}}">▸</view>
           </view>
-          <view class="done-at">{{item.doneLabel}}</view>
+          <block wx:if="{{tasks.openD}}">
+            <view wx:for="{{tasks.done}}" wx:key="id" class="rec list done {{sel===item.id?'sel':''}}" data-id="{{item.id}}" catchtap="onRecTap">
+              <view class="edge" style="background:{{item.c}}"></view>
+              <view class="hd">
+                <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
+                <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+                <text class="tv">{{item.txt}}</text>
+                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+              </view>
+              <view class="done-at">{{item.doneLabel}}</view>
+            </view>
+          </block>
         </view>
       </block>
+
+      <!-- 想做模块二级分类筛选：时间线上方 -->
+      <view wx:if="{{filter==='want' && kinds.length}}" class="filters kinds">
+        <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
+        <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
+      </view>
 
       <!-- 时间线 -->
       <block wx:if="{{days.length}}">
         <view wx:for="{{days}}" wx:key="day" wx:for-item="grp">
           <view class="daylab">{{grp.day}}</view>
-          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec {{sel===r.id?'sel':''}}" data-id="{{r.id}}" bindtap="onRecTap">
+          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec {{sel===r.id?'sel':''}}" data-id="{{r.id}}" catchtap="onRecTap">
             <view class="edge" style="background:{{r.c}}"></view>
             <view class="hd"><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text class="tv">{{r.txt}}</text><text class="tw">{{r.d}}{{r.t}}</text></view>
             <view class="dt">
@@ -64,6 +99,11 @@
           </view>
         </view>
       </block>
+      <view wx:if="{{days.length || tasks.show}}" class="loadmore">
+        <text wx:if="{{loading}}">加载中…</text>
+        <text wx:elif="{{hasMore}}">上拉加载更多</text>
+        <text wx:else>— 已经到底了 —</text>
+      </view>
       <view wx:elif="{{empty}}" class="empty-mini">没有匹配的记录</view>
     </view>
   </scroll-view>
@@ -78,4 +118,6 @@
     <view class="tx">已删除「{{delUndo.txt}}」</view>
     <view class="tb" bindtap="onUndoDel">撤销</view>
   </view>
+
+  <theme-switcher />
 </view>

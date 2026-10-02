@@ -1,1 +1,9 @@
-/* pages/look/look.wxss */
+/* pages/look/look.wxss —— 看页补充样式（其余沿用 app.wxss） */
+
+/* 快捷时间筛选 */
+.ranges { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.rg { font-size: 13px; color: var(--ink3); padding: 5px 12px; border-radius: 999px; background: var(--soft); line-height: 1; }
+.rg.on { color: #fff; background: var(--accent); }
+
+/* 上拉加载更多 */
+.loadmore { text-align: center; color: var(--ink4); font-size: 12px; padding: 14px 0 24px; }

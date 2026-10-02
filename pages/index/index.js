@@ -9,7 +9,7 @@ function nowStr() {
 
 Page({
   data: {
-    theme: 'sand',
+    theme: 'mint',
     statusH: 20,
     ready: false,
     modules: [],
@@ -34,9 +34,16 @@ Page({
 
   onShow() {
     this.ensureTheme();
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 0, theme: wx.getStorageSync('theme') || 'sand' });
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 0, theme: store.curTheme() });
     store.ensureAll().then(() => {
-      this.st.tag = this.data.tag;
+      const mods = this.modulesVM();
+      const def = mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k);
+      // 当前选中无效（如删掉了「观察」维度）时，回落到默认：有观察则观察，否则第一个维度
+      let cur = this.data.tag;
+      if (!mods.some(m => m.k === cur)) { cur = def; this.setData({ tag: def }); }
+      this.st.tag = cur;
+      // 进入「去做」时若还没选分类，补上默认分类（以往靠 onTag 触发，现在默认就是它，需在此兜底）
+      if (cur === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
       this.checkEdit();
       this.rotateGreet();
       this.recompute();
@@ -52,7 +59,7 @@ Page({
   },
 
   ensureTheme() {
-    const t = wx.getStorageSync('theme') || 'sand';
+    const t = store.curTheme();
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: t, statusH: info.statusBarHeight || 20 });
   },
@@ -108,6 +115,8 @@ Page({
       if (O.indexOf(val) >= 0) (this.st.pick[src] = this.st.pick[src] || []).push(val);
       else if (!store.isNoInput(src)) this.st.typed[src] = val; // 非预设选项的手填值（隐藏输入的组不留残值）
     });
+    // 记录本身没有分类（历史数据）时才补默认分类；有则只回显记录自己的值，避免默认+记录值同时选中
+    if (r.m === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
     this.setData({ editing: true });
   },
 
@@ -116,7 +125,7 @@ Page({
     const ago = store.agoOf(r.ts);
     const d = ago <= 0 ? '' : (ago === 1 ? '昨天' : (ago === 2 ? '前天' : store.dayLabel(ago))) + ' ';
     const task = store.isTask(r.m);
-    return { id: r.id, m: store.mname(r.m), c: store.mcolor(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '' };
+    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '' };
   },
 
   buildComposer() {
@@ -161,6 +170,7 @@ Page({
   onTag(e) {
     this.st.tag = e.currentTarget.dataset.k;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
     this.setData({ tag: this.st.tag });
     this.recompute();
   },
@@ -209,6 +219,11 @@ Page({
     const mainOnce = store.isOnce(mainRaw);
     rec.txt = store.stripOnce(mainRaw);
     if (!rec.txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
+    // 想做模块：分类为必选（默认已选「想做」）
+    if (this.st.tag === 'want' && (!this.st.pick['wantKind'] || !this.st.pick['wantKind'].length)) {
+      wx.showToast({ title: '请选择分类（想要/可做/喜欢）', icon: 'none' });
+      return;
+    }
     if (!this.st.mainPick && mainOnce && store.FIELDS[this.st.tag]) {
       const mg = f.main;
       const O = app.globalData.OPT;
@@ -298,7 +313,12 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (this.data.recSel === id) { this.setData({ recSel: null, recSelRec: null }); return; }
     const r = (app.globalData.records || []).find(x => x.id === id);
-    this.setData({ recSel: id, recSelRec: r ? { m: store.mname(r.m), txt: r.txt } : null });
+    this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt } : null });
+  },
+
+  /* 点页面其它地方：收起记录操作条（失焦即关） */
+  closeRecSel() {
+    if (this.data.recSel != null) this.setData({ recSel: null, recSelRec: null });
   },
 
   /* 备忘/购物：勾选切换完成态（划线 + 记录完成时间） */
@@ -331,7 +351,7 @@ Page({
     const r = app.globalData.records[i];
     store.deleteRecord(r).then(() => {
       app.globalData.records.splice(i, 1);
-      this.setData({ recSel: null, recSelRec: null, delUndo: { m: store.mname(r.m), txt: r.txt, dump: r } });
+      this.setData({ recSel: null, recSelRec: null, delUndo: { m: store.recMname(r), txt: r.txt, dump: r } });
       this.recompute();
     });
   },
@@ -353,6 +373,8 @@ Page({
     this.setData({ refreshing: true });
     store.reload().then(() => {
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+      // 刷新后仍在「来做」时，补回默认分类（避免默认「想做」被清空）
+      if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
       this.rotateGreet();
       this.recompute();
       this.setData({ refreshing: false });

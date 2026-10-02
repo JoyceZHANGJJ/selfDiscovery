@@ -1,6 +1,6 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
-  <scroll-view class="screen" scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{scrollTop}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh">
-    <view class="body body-top">
+  <scroll-view class="screen" scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{scrollTop}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh" bindscroll="closeRecSel">
+    <view class="body body-top" bindtap="closeRecSel">
       <!-- 骨架屏：数据未就绪时占位，避免首屏空卡片闪动 -->
       <block wx:if="{{!ready}}">
         <view class="composer sk">
@@ -33,11 +33,16 @@
           </view>
         </view>
 
-        <!-- 模块标签 -->
-        <view class="tagrow">
-          <view wx:for="{{modules}}" wx:key="k" class="tg {{tag===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTag">
-            <view class="dot" style="background:{{item.c}}"></view>{{item.n}}
-          </view>
+        <!-- 模块标签（横向滚动，维度多也不挤） -->
+        <view class="tagrow-wrap">
+          <scroll-view class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}">
+            <view class="tagrow">
+              <view wx:for="{{modules}}" wx:key="k" class="tg {{tag===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTag">
+                <view class="dot" style="background:{{item.c}}"></view>{{item.n}}
+              </view>
+            </view>
+          </scroll-view>
+          <view class="tagrow-fade"></view>
         </view>
 
         <!-- 备忘 / 购物：纯主输入框，不要标题、选项池与管理入口 -->
@@ -89,7 +94,7 @@
       <!-- 最近 -->
       <view class="sect-t">最近</view>
       <view wx:if="{{recent.length===0}}" class="empty-mini">还没有记录</view>
-      <view wx:for="{{recent}}" wx:key="id" class="rec {{item.task?'list':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" bindtap="onRecentTap">
+      <view wx:for="{{recent}}" wx:key="id" class="rec {{item.task?'list':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" catchtap="onRecentTap">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
@@ -119,4 +124,6 @@
     <view class="tx">已删除「{{delUndo.txt}}」</view>
     <view class="tb" bindtap="onUndoDel">撤销</view>
   </view>
+
+  <theme-switcher />
 </view>

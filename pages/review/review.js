@@ -4,7 +4,7 @@ const app = getApp();
 
 Page({
   data: {
-    theme: 'sand',
+    theme: 'mint',
     statusH: 20,
     sum: [],
     kpis: [],
@@ -15,8 +15,8 @@ Page({
 
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: wx.getStorageSync('theme') || 'sand', statusH: info.statusBarHeight || 20 });
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'sand' });
+    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20 });
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(() => { this.rebuild(); });
   },
 
@@ -78,7 +78,7 @@ Page({
       order.forEach(m => {
         const rs = g.mods[m.k]; if (!rs || !rs.length) return;
         const rows = rs.map(r => {
-          const det = store.buildExt(r.m, r.ext, r.extSrc).map(it => it.lbl ? it.lbl + '：' + it.v : it.v).join(' · ');
+          const det = store.buildExt(r.m, r.ext, r.extSrc); // 结构化细节 [{lbl,v}]，与记录页同款渲染
           const ago = store.agoOf(r.ts);
           const d = ago <= 0 ? '' : (ago === 1 ? '昨天' : (ago === 2 ? '前天' : store.dayLabel(ago))) + ' ';
           return { d: d + r.t, x: det };

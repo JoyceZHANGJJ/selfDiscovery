@@ -5,11 +5,12 @@
         <view class="bk" bindtap="onClose">‹ 返回</view>
         <view class="tt">{{label}}</view>
       </view>
-      <view class="op-sub">{{opts.length}} 项 · 点「改名」可改，删除后点撤销可恢复</view>
+      <view class="op-sub">{{opts.length}} 项 · 改名可改，删后可撤销，长按行可拖动排序</view>
 
-      <scroll-view class="op-list" scroll-y enhanced show-scrollbar="{{false}}">
+      <scroll-view class="op-list" scroll-y="{{!dragging}}" enhanced show-scrollbar="{{false}}" bindtouchmove="onDragMove" bindtouchend="onDragEnd" bindtouchcancel="onDragEnd">
         <view wx:if="{{opts.length===0}}" class="sh-empty">这组还没有选项 · 在下方加一项即可</view>
-        <view wx:for="{{opts}}" wx:key="*this" class="opt-row">
+        <view wx:for="{{opts}}" wx:for-index="idx" wx:key="*this" class="opt-row {{dragging && dragIdx===idx ? 'drag' : ''}}" data-idx="{{idx}}" bindlongpress="onDragStart">
+          <view class="hv">⋮⋮</view>
           <input wx:if="{{item.ren}}" class="mini-in" value="{{item.v}}" bindinput="onRenInput" bindconfirm="onRenSave" data-v="{{item.v}}" adjust-position="{{false}}" cursor-spacing="20" />
           <view wx:else class="ov">{{item.v}}</view>
           <view wx:if="{{!item.ren}}" class="mini-b" data-v="{{item.v}}" bindtap="onRenStart">改名</view>
