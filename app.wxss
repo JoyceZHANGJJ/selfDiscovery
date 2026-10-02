@@ -93,6 +93,30 @@
   --accent: #C9B25E; --accent-soft: #F4EED7; --danger: #B4544E;
   --c-obs: #3E97A0; --c-now: #4E8FB5; --c-want: #C2934A; --c-nope: #8A7BB0; --c-done: #5C86B8;
 }
+/* 暖阳：温柔杏橘，暖奶油底 */
+.theme-apricot {
+  --bg: #FFF8F2; --surface: #FFFFFF; --soft: #FAEEE2; --line: #F2E4D7; --line2: #E7D6C5;
+  --ink: #2F2621; --ink2: #57493D; --ink3: #8A7967; --ink4: #B2A392;
+  --ring: 0 0 0 3px rgba(214,138,90,.15);
+  --accent: #D68A5A; --accent-soft: #FAEBE1; --danger: #C0574F;
+  --c-obs: #84A878; --c-now: #6E9BB5; --c-want: #C89A55; --c-nope: #A98BAE; --c-done: #7E90B5;
+}
+/* 蜜桃：柔和蜜桃粉，暖粉底 */
+.theme-peach {
+  --bg: #FFF7F6; --surface: #FFFFFF; --soft: #FBEEEB; --line: #F4E2DE; --line2: #EAD3CE;
+  --ink: #302523; --ink2: #57443F; --ink3: #8B746E; --ink4: #B39D97;
+  --ring: 0 0 0 3px rgba(201,128,122,.15);
+  --accent: #C9807A; --accent-soft: #F9ECEA; --danger: #B4544E;
+  --c-obs: #7FA88C; --c-now: #6E9BB5; --c-want: #C89A55; --c-nope: #A98BB0; --c-done: #7E90B5;
+}
+/* 奶茶：温暖奶棕，米奶底 */
+.theme-latte {
+  --bg: #FAF5EF; --surface: #FFFFFF; --soft: #F2EAE0; --line: #E8DFD2; --line2: #DCD0BE;
+  --ink: #2C2620; --ink2: #544A3E; --ink3: #857A69; --ink4: #ADA292;
+  --ring: 0 0 0 3px rgba(169,129,99,.15);
+  --accent: #A98163; --accent-soft: #F1E7DC; --danger: #B4544E;
+  --c-obs: #7FA88C; --c-now: #6E9BB5; --c-want: #C2934A; --c-nope: #A98BB0; --c-done: #7E90B5;
+}
 
 /* ================= 基础布局 ================= */
 .app { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif; line-height: 1.6; --r-card: 16px; --r-btn: 12px; --r-in: 14px; }

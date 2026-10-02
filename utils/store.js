@@ -106,7 +106,11 @@ const THEMES = [
   // { k: 'fog', n: '雾灰', bg: '#F7F8F9', ac: '#6E757B' },
   { k: 'amber', n: '琥珀', bg: '#FFFCF5', ac: '#C98A2B' },
   // { k: 'lilac', n: '浅紫', bg: '#F7F5FC', ac: '#9A8BC0' },
-  { k: 'butter', n: '鹅黄', bg: '#FBF8EE', ac: '#C9B25E' }
+  { k: 'butter', n: '鹅黄', bg: '#FBF8EE', ac: '#C9B25E' },
+  // 温柔 / 温暖色系
+  { k: 'apricot', n: '暖阳', bg: '#FFF8F2', ac: '#D68A5A' },
+  { k: 'peach', n: '蜜桃', bg: '#FFF7F6', ac: '#C9807A' },
+  { k: 'latte', n: '奶茶', bg: '#FAF5EF', ac: '#A98163' }
 ];
 
 // 读取当前主题；若 storage 里是已被删除的废弃主题（如早期的雾蓝/赤陶等），回落默认 mint，
@@ -262,6 +266,15 @@ function recMname(r) {
     const i = es.indexOf('wantKind');
     const k = i >= 0 ? ex[i] : '';
     return k ? stateName + '·' + k : stateName;
+  }
+  // 无感：拼接分类（不想/没兴趣/不喜欢）。nopeKind 在细节里是隐藏项，
+  // 只能挂在维度名上展示，否则这条记录看不出属于哪一类
+  if (r.m === 'nope') {
+    const base = mname(r.m);
+    const es = r.extSrc || [], ex = r.ext || [];
+    const i = es.indexOf('nopeKind');
+    const k = i >= 0 ? ex[i] : '';
+    return k ? base + '·' + k : base;
   }
   return mname(r.m);
 }
