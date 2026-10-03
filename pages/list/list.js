@@ -6,7 +6,6 @@ Page({
   data: {
     theme: 'sand',
     statusH: 20,
-    refreshing: false,
     seg: 'all',            // all | memo | buy
     cmemo: store.mcolor('memo'),
     cbuy: store.mcolor('buy'),
@@ -15,7 +14,10 @@ Page({
     sum: '',
     undone: [],
     done: [],
-    empty: false
+    empty: false,
+    // 长按就地编辑：这一条直接变成输入框
+    edId: '',
+    edTxt: ''
   },
 
   onShow() {
@@ -69,12 +71,53 @@ Page({
     this.rebuild();
   },
 
+  /* 页面级下拉刷新入口（原生下拉回弹，与记页一致） */
+  onPullDownRefresh() { this.onRefresh(); },
+
   onRefresh() {
-    this.setData({ refreshing: true });
     store.loadRecords().then(list => {
       app.globalData.records = list;
-      this.setData({ refreshing: false });
+      wx.stopPullDownRefresh();
       this.rebuild();
-    }).catch(() => this.setData({ refreshing: false }));
+    }).catch(() => wx.stopPullDownRefresh());
+  },
+
+  /* ---------------- 长按就地编辑 ---------------- */
+  findRec(id) {
+    return (app.globalData.records || []).find(x => x.id === id) || null;
+  },
+
+  /* 长按某条待办：这一行直接变成输入框 */
+  onLongPress(e) {
+    const id = e.currentTarget.dataset.id;
+    const r = this.findRec(id);
+    if (!r || !store.isTask(r.m)) return;
+    this.setData({ edId: id, edTxt: r.txt || '' });
+  },
+
+  onEdTxt(e) { this.setData({ edTxt: e.detail.value }); },
+
+  /* 保存：失焦 / 键盘「完成」/ 点「保存」都走这里；改空或没改动则不落云 */
+  onEditSave() {
+    const id = this.data.edId;
+    if (!id) return;
+    const txt = (this.data.edTxt || '').trim();
+    const r = this.findRec(id);
+    const close = () => this.setData({ edId: '', edTxt: '' });
+    if (!r || !store.isTask(r.m) || !txt || txt === r.txt) { close(); return; }
+    r.txt = txt;
+    store.updateRecord(r).catch(() => {});
+    close();
+    this.rebuild();
+    wx.showToast({ title: '已更新', icon: 'none' });
+  },
+
+  /* 还要改分类、时间等更多字段：跳记页做完整编辑 */
+  onEditHome(e) {
+    const r = this.findRec(e.currentTarget.dataset.id);
+    if (!r || !store.isTask(r.m)) return;
+    app.globalData.editRec = store.decorate(r);
+    this.setData({ edId: '', edTxt: '' });
+    wx.switchTab({ url: '/pages/index/index' });
   }
 });
