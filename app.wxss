@@ -172,6 +172,11 @@
 textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-height: 20px; }
 .mini-in:focus { background: var(--surface); border-color: var(--accent); box-shadow: var(--ring); }
 .savebar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+/* 吸底操作行（记页）：记卡在视口里时，这一行始终贴在视口底部（bottom 由页面按时键盘高度给），
+   卡片滚出视口后它随卡片一起离开——配合不透明底色，滚动的列表不会从它下面透出来 */
+.savebar.sticky { position: sticky; z-index: 22; background: var(--bg); padding: 10px 0 6px; }
+/* 吸到底部时给一点过渡，避免像"硬贴在列表上" */
+.savebar.sticky::before { content: ''; position: absolute; left: 0; right: 0; top: -14px; height: 14px; background: linear-gradient(to bottom, rgba(255,255,255,0), var(--bg)); pointer-events: none; }
 .btn { flex: 1; padding: 11px 0; border-radius: var(--r-btn); background: var(--accent, #2F8F7B); color: #fff; font-size: 14.5px; font-weight: 700; border: 0; text-align: center; }
 .btn:active { opacity: .88; }
 .btn.gh { background: var(--soft); color: var(--ink2); border: 1px solid var(--line2); }
@@ -272,7 +277,8 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 清单行：事项标题完整显示（超长自动折行，不省略不溢出）；原因/用途可省略；时间必显 */
 .rec.list .mn { flex-shrink: 0; white-space: nowrap; }
 .rec.list .tv { flex: 1 1 auto; min-width: 0; white-space: normal; word-break: break-all; }
-.rec.list .twr { display: flex; align-items: baseline; gap: 5px; flex: 1 1 auto; justify-content: flex-end; min-width: 0; font-size: 11.5px; color: var(--ink3); }
+/* 时间那行不伸展（flex-grow:0）：否则会和事项标题平分宽度，把标题挤成两行、右侧留一片空白 */
+.rec.list .twr { display: flex; align-items: baseline; gap: 5px; flex: 0 1 auto; justify-content: flex-end; min-width: 0; font-size: 11.5px; color: var(--ink3); }
 .rec.list .twx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .rec.list .twd { flex-shrink: 0; }
 .rec.list .twt { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -280,6 +286,11 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 清单标题超长：隐藏原因/用途，标题占满整行自动折行，右侧只留时间 */
 .rec.list.long .twx, .rec.list.long .twd { display: none; }
 .rec.list.long .twr { flex: 0 0 auto; }
+/* 正在被就地编辑的那一行（清单 / 看 共用）：原内容隐身，
+   卡片本身会被同尺寸的 inline-editor 整个盖住，这里只是保险 */
+.rec.list.blank .hd,
+.rec.list.blank .done-at,
+.rec.list.blank .edge { opacity: 0; }
 .tsum { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
 .dnlab { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink3); margin: 14px 0 3px; letter-spacing: .06em; }
 .dnlab::after { content: ''; flex: 1; height: 1px; background: var(--line); }
@@ -393,3 +404,19 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 
 /* 纯文本省略 */
 .ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ================= 程序名（记 / 看 共用） =================
+   按胶囊矩形 fixed 定位，平时被原生胶囊盖住；下拉刷新把页面（含这个 fixed 元素）推下去时才露出来 */
+.brand { display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 46; /* 高于状态栏遮罩(45)，下拉露出时不被渐变冲淡 */ }
+/* 常亮：跟随主题的强调色 + 主题色柔光 */
+.brand .bc { font-size: 14px; color: var(--accent); font-weight: 800; letter-spacing: .03em; text-shadow: 0 0 10px var(--accent-soft), 0 0 2px var(--accent-soft); }
+/* 下拉刷新时：逐字浮现（每个字依次延迟） */
+.brand.play .bc { animation: brandIn .5s cubic-bezier(.2, .8, .2, 1) both; }
+.brand.play .bc:nth-child(1) { animation-delay: 0s; }
+.brand.play .bc:nth-child(2) { animation-delay: .07s; }
+.brand.play .bc:nth-child(3) { animation-delay: .14s; }
+.brand.play .bc:nth-child(4) { animation-delay: .21s; }
+@keyframes brandIn {
+  from { opacity: 0; transform: translateY(8px) scale(.9); }
+  to { opacity: 1; transform: none; }
+}

@@ -1,6 +1,6 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
   <view class="statusbar-mask"></view>
-  <!-- 整页改为页面级滚动（与记页一致）：输入框不再套在 scroll-view 里，避免安卓上光标/文字飘出去 -->
+  <!-- 整页页面级滚动（与记页一致）：输入框不套在 scroll-view 内，避免安卓上光标/文字飘出去 -->
   <view class="screen">
     <view class="body">
       <view class="sect-t">{{tit}}</view>
@@ -15,44 +15,34 @@
       </view>
 
       <block wx:if="{{show}}">
-        <view wx:for="{{undone}}" wx:key="id" class="rec list {{edId===item.id?'eding':''}}" data-id="{{item.id}}" bindlongpress="onLongPress">
+        <!-- 行只负责显示；编辑由页面唯一的 inline-editor 组件叠上来（见页尾） -->
+        <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list {{edId===item.id?'blank':''}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">
-            <block wx:if="{{edId===item.id}}">
-              <input class="mini-in ein" value="{{edTxt}}" focus="{{true}}" maxlength="200" confirm-type="done" adjust-position="{{true}}" always-embed="{{true}}" cursor-spacing="24" bindinput="onEdTxt" bindconfirm="onEditSave" bindblur="onEditSave" />
-              <view class="ebt" catchtap="onEditSave">保存</view>
-              <view class="ebt gh" data-id="{{item.id}}" catchtap="onEditHome">首页改</view>
-            </block>
-            <block wx:else>
-              <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
-              <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
-              <text class="tv">{{item.txt}}</text>
-              <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
-            </block>
+            <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
           </view>
         </view>
 
         <view wx:if="{{done.length}}" class="dnlab">已完成 · {{done.length}}</view>
-        <view wx:for="{{done}}" wx:key="id" class="rec list done {{edId===item.id?'eding':''}}" data-id="{{item.id}}" bindlongpress="onLongPress">
+        <view wx:for="{{done}}" wx:key="id" id="erow-{{item.id}}" class="rec list done {{edId===item.id?'blank':''}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">
-            <block wx:if="{{edId===item.id}}">
-              <input class="mini-in ein" value="{{edTxt}}" focus="{{true}}" maxlength="200" confirm-type="done" adjust-position="{{true}}" always-embed="{{true}}" cursor-spacing="24" bindinput="onEdTxt" bindconfirm="onEditSave" bindblur="onEditSave" />
-              <view class="ebt" catchtap="onEditSave">保存</view>
-              <view class="ebt gh" data-id="{{item.id}}" catchtap="onEditHome">首页改</view>
-            </block>
-            <block wx:else>
-              <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
-              <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
-              <text class="tv">{{item.txt}}</text>
-              <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
-            </block>
+            <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
           </view>
-          <view wx:if="{{edId!==item.id}}" class="done-at">{{item.doneLabel}}</view>
+          <view class="done-at">{{item.doneLabel}}</view>
         </view>
       </block>
 
       <view wx:if="{{empty}}" class="empty-mini">还没有备忘或购物记录</view>
     </view>
+
+    <!-- 待办就地编辑：与记页 / 看页共用同一个组件 -->
+    <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:home="onEditHome" />
   </view>
 </view>
