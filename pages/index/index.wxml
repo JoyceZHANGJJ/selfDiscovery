@@ -1,26 +1,24 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
-  <scroll-view class="screen" scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{scrollTop}}" scroll-into-view="{{scrollTo}}" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh" bindscroll="closeRecSel">
-    <view class="body body-top" bindtap="onBodyTap">
+  <view class="statusbar-mask"></view>
+  <!-- 整页使用页面级滚动（不再用 scroll-view）：
+       页面滚动时微信会同步原生输入层位置，安卓上光标/文字飘出输入框的问题从根上消失 -->
+  <view class="screen" bindtap="onBodyTap">
+    <view class="body body-page">
       <!-- 骨架屏：数据未就绪时占位，避免首屏空卡片闪动 -->
-      <block wx:if="{{!ready}}">
-        <view class="composer sk">
-          <view class="sk-line sk-w60"></view>
-          <view class="sk-line sk-w40 sk-sm"></view>
-          <view class="sk-row">
-            <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
-            <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
-            <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
-            <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
-          </view>
-          <view class="sk-box"></view>
-          <view class="sk-hr"></view>
-          <view class="sk-line sk-w30 sk-sm"></view>
-          <view class="sk-btn"></view>
+      <view wx:if="{{!ready}}" class="composer sk">
+        <view class="sk-line sk-w60"></view>
+        <view class="sk-line sk-w40 sk-sm"></view>
+        <view class="sk-row">
+          <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
+          <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
+          <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
+          <view class="sk-dot"></view><view class="sk-line sk-w40"></view>
         </view>
-        <view class="sect-t">最近</view>
-        <view class="sk-rec"></view>
-        <view class="sk-rec"></view>
-      </block>
+        <view class="sk-box"></view>
+        <view class="sk-hr"></view>
+        <view class="sk-line sk-w30 sk-sm"></view>
+        <view class="sk-btn"></view>
+      </view>
 
       <block wx:else>
       <!-- 输入区（含问候与模块标签，整块卡片） -->
@@ -47,7 +45,7 @@
 
         <!-- 备忘 / 购物：纯主输入框，不要标题、选项池与管理入口 -->
         <block wx:if="{{composer.plain}}">
-          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" id="fldmain" bindfocus="onFieldFocus" />
+          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
             <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
@@ -70,7 +68,7 @@
             <view class="chips">
               <view wx:for="{{item.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{item.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
             </view>
-            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="24" id="fld{{index}}" bindfocus="onFieldFocus" />
+            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="fld{{index}}" bindfocus="onFieldFocus" />
           </block>
           <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
         </view>
@@ -107,13 +105,21 @@
           <view class="tx">已固化：{{froze.txt}}</view>
           <view class="tb" bindtap="onFrozeUndo">撤销固化</view>
         </view>
-
       </view>
+      </block>
+    </view>
+  </view>
 
-      <!-- 最近 -->
+  <!-- 最近列表：跟随页面滚动（不再单独限高，避免内容不足时底部留一大块空白） -->
+  <view class="screen listpane">
+    <view class="body body-list" bindtap="onBodyTap">
       <view class="sect-t">最近</view>
-      <view wx:if="{{recent.length===0}}" class="empty-mini">还没有记录</view>
-      <view wx:for="{{recent}}" wx:key="id" class="rec {{item.task?'list':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" catchtap="onRecentTap">
+      <view wx:if="{{!ready}}">
+        <view class="sk-rec"></view>
+        <view class="sk-rec"></view>
+      </view>
+      <view wx:if="{{ready && recent.length===0}}" class="empty-mini">还没有记录</view>
+      <view wx:for="{{recent}}" wx:key="id" class="rec {{item.task?'list':''}} {{item.longTxt?'long':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" catchtap="onRecentTap">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
@@ -128,9 +134,8 @@
         </view>
         <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
       </view>
-      </block>
     </view>
-  </scroll-view>
+  </view>
 
   <!-- 记录操作条（选中记录后出现）：记页与看页共用一套组件，按钮集合/可见性只维护一处 -->
   <rec-actions rec="{{recSelRec}}" visible="{{recSel!=null}}" bind:action="onRecAction" />
@@ -139,6 +144,11 @@
   <view wx:if="{{delUndo}}" class="toastline undo-bar">
     <view class="tx">已删除「{{delUndo.txt}}」</view>
     <view class="tb" bindtap="onUndoDel">撤销</view>
+  </view>
+
+  <!-- 程序名：按胶囊矩形定位，平时被原生胶囊挡住，下拉时随页面下移才露出来 -->
+  <view wx:if="{{brandH}}" class="brand {{brandPlay?'play':''}}" style="position:fixed;top:{{brandTop}}px;left:{{brandLeft}}px;width:{{brandW}}px;height:{{brandH}}px;">
+    <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
   </view>
 
   <theme-switcher lock="{{editing}}" bind:locked="onLocked" />

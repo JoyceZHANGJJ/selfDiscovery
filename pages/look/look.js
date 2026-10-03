@@ -42,6 +42,7 @@ Page({
     empty: false,
     refreshing: false,
     scrollTo: '',       // 聚焦搜索框时把其滚到可视区顶部，避免被键盘遮挡
+    scrollTop: 0,       // 程序化回顶用（再点一次底部「看」）
 
     // 游标分页 + 快捷时间
     range: 'all',
@@ -49,7 +50,7 @@ Page({
     rangeStart: null,
     hasMore: true,
     loading: false,
-    total: 0
+    stat: {}          // 后端统计结果：{ byMod } / { bySt } / { total, tops, ext }
   },
 
   onLoad() {
@@ -116,10 +117,53 @@ Page({
     return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur: durLine, from: fromLine };
   },
 
-  buildStats(filter, list, totalOverride) {
+  // 统计面板：默认用后端统计结果（count / 聚合，不受列表分页影响）；
+  // useClient=true（搜索态）时改用当前已加载的全量搜索结果在客户端算
+  buildStats(filter, list, useClient) {
     // 备忘 / 购物是待办，不展示统计，只在下面清单里看
     if (filter === 'memo' || filter === 'buy') return { hide: true };
-    // 「可做」维度：统计各流转状态（未做 / 在做 / 做了 / 不做），不按事项逐条统计
+    if (useClient) return this.buildStatsFromList(filter, list);
+    const stat = this.data.stat || {};
+    // 「可做」维度：统计各流转状态（未做 / 在做 / 做了 / 不做）
+    if (filter === 'want') {
+      const cnt = stat.bySt || { todo: 0, doing: 0, done: 0, abandon: 0 };
+      const defs = [
+        { n: '未做', k: 'todo', c: '#C0A05A' },
+        { n: '在做', k: 'doing', c: '#5E9A94' },
+        { n: '做了', k: 'done', c: '#7C9A86' },
+        { n: '不做', k: 'abandon', c: '#948AA8' }
+      ];
+      const mx = Math.max(1, cnt.todo, cnt.doing, cnt.done, cnt.abandon);
+      const total = cnt.todo + cnt.doing + cnt.done + cnt.abandon;
+      const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
+      return { all: false, title: '可做 · 流转', lead: `共 ${total} 条`, bars, extra: '' };
+    }
+    // 「全部」：各觉察维度条数（不含备忘/购物，与下面清单口径区分开）
+    const allMods = store.MODULES.filter(m => !store.isTask(m.k));
+    if (filter === 'all') {
+      const byMod = stat.byMod || {};
+      const counts = allMods.map(m => ({ n: m.n, c: m.c, n2: byMod[m.k] || 0 }));
+      const mx = Math.max(1, ...counts.map(c => c.n2));
+      const total = counts.reduce((s, c) => s + c.n2, 0);
+      return { all: true, total, bars: counts.map(c => ({ n: c.n, c: c.c, n2: c.n2, w: Math.round(c.n2 / mx * 100) + '%' })) };
+    }
+    // 单维度：总数 + 事项 Top（后端聚合）
+    const tops = stat.tops || [];
+    const total = stat.total || 0;
+    const mxv = tops.length ? tops[0].n : 1;
+    const bars = tops.slice(0, 4).map(t => ({ n: t.txt, c: store.mcolor(filter), n2: t.n, w: Math.round(t.n / mxv * 100) + '%' }));
+    const labelMap = { obs: '觉察最多的事', now: '最常在做的事', want: '最常想做的事', nope: '最常不想的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西', like: '最常喜欢的事' };
+    let extra = '';
+    if (filter === 'obs' && total) {
+      const e = stat.ext || {};
+      const fg = e['忘了时间'] || 0, chg = e['充电'] || 0, tire = e['耗电'] || 0;
+      extra = `忘了时间 ${fg}/${total}（${Math.round(fg / total * 100)}%）· 充电 ${chg} · 耗电 ${tire}`;
+    }
+    return { all: false, title: store.mname(filter), lead: tops.length ? `${labelMap[filter]}：${tops[0].txt} · ${tops[0].n} 次` : '这个模块还没有记录', bars, extra };
+  },
+
+  // 客户端统计（搜索态专用：list 是搜索后的全量结果）
+  buildStatsFromList(filter, list) {
     if (filter === 'want') {
       const cnt = { todo: 0, doing: 0, done: 0, abandon: 0 };
       list.forEach(r => {
@@ -136,18 +180,16 @@ Page({
         { n: '不做', k: 'abandon', c: '#948AA8' }
       ];
       const mx = Math.max(1, cnt.todo, cnt.doing, cnt.done, cnt.abandon);
-      const total = list.length;
       const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
-      return { all: false, title: '可做 · 流转', lead: `共 ${total} 条`, bars, extra: '' };
+      return { all: false, title: '可做 · 流转', lead: `共 ${list.length} 条`, bars, extra: '' };
     }
-    // 「全部」统计不计备忘/购物：它们属于待办，单独在清单里看（展示全部觉察维度，不截断）
+    // 「全部」统计不计备忘/购物
     const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m)) : list;
     const allMods = store.MODULES.filter(m => !store.isTask(m.k));
     if (filter === 'all') {
       const counts = allMods.map(m => ({ n: m.n, c: m.c, n2: awareList.filter(r => r.m === m.k).length }));
       const mx = Math.max(1, ...counts.map(c => c.n2));
-      const total = totalOverride != null ? totalOverride : awareList.length;
-      return { all: true, total, bars: counts.map(c => ({ n: c.n, c: c.c, n2: c.n2, w: Math.round(c.n2 / mx * 100) + '%' })) };
+      return { all: true, total: awareList.length, bars: counts.map(c => ({ n: c.n, c: c.c, n2: c.n2, w: Math.round(c.n2 / mx * 100) + '%' })) };
     }
     const acc = {};
     list.forEach(r => { acc[r.txt] = (acc[r.txt] || 0) + 1; });
@@ -191,7 +233,7 @@ Page({
     const map = {}, days = [];
     aware.forEach(r => { if (!map[r.day]) { map[r.day] = []; days.push(r.day); } map[r.day].push(this.recVM(r)); });
     const groups = days.map(d => ({ day: d, recs: map[d] }));
-    const stats = this.buildStats(effM, list, q ? null : this.data.total);
+    const stats = this.buildStats(effM, list, !!q);
     this.setData({
       modules: this.modulesVM(),
       filterName: effM === 'all' ? '全部' : store.mname(effM),
@@ -233,7 +275,7 @@ Page({
     this._cursor = null;
     this.setData({ recs: [], hasMore: true, loading: false, empty: false });
     this.loadMore(true);
-    this.loadCount();
+    this.loadStats();
   },
   // 加载一页（first=true 为首屏/刷新）；有搜索词时走全量搜索
   loadMore(first) {
@@ -248,7 +290,9 @@ Page({
       limit: 20,
       m: q.m,
       startTs: this.data.rangeStart,
-      state: q.state
+      state: q.state,
+      // 已加载的文档 id：配合 lte 游标去重，避免同毫秒记录被跳过或重复
+      excludeIds: first ? null : (this.data.recs || []).map(r => r._rid)
     };
     store.loadRecordsPage(params).then(({ list, hasMore, nextCursor }) => {
       this._cursor = nextCursor;
@@ -257,19 +301,45 @@ Page({
       this.setData({ recs, hasMore, loading: false }, () => {
         this.rebuild();
         if (first && this.data.refreshing) this.setData({ refreshing: false });
+        // 没有更多了 + 内容够长 → 这时才提示可以点底部当前 tab 回顶
+        if (!hasMore && recs.length > 10) this.hintTabTop();
       });
     }).catch(() => {
       this._loading = false;
       this.setData({ loading: false, hasMore: false, refreshing: false });
     });
   },
-  // 上拉触底：加载更多
+  // 上拉触底：加载更多（提示回顶只在「真的到底」时触发，见 loadMore 回调）
   onLoadMore() { this.loadMore(false); },
-  // 统计当前 模块 + 时间范围 下的总数
-  loadCount() {
-    const q = this.effQuery();
-    store.countRecords({ m: q.m, state: q.state, startTs: this.data.rangeStart }).then(t => {
-      this.setData({ total: t }, () => { if (!this.data.q.trim()) this.rebuild(); });
+
+  // 滚到底部了：让底部「看」图标跳一下，提示可以点它回顶
+  hintTabTop() {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().hint();
+  },
+  // 统计当前 模块 + 时间范围（后端统计，不受列表分页影响；搜索态由 rebuild 在客户端算）
+  loadStats() {
+    const f = this.data.filter;
+    const startTs = this.data.rangeStart;
+    if (this.data.q.trim()) return;
+    if (f === 'memo' || f === 'buy') { this.setData({ stat: {} }, () => this.rebuild()); return; }
+    if (f === 'all') {
+      store.countByModule({ startTs }).then(byMod => this.setData({ stat: { byMod } }, () => this.rebuild()));
+      return;
+    }
+    if (f === 'want') {
+      store.countByStatus({ startTs }).then(bySt => this.setData({ stat: { bySt } }, () => this.rebuild()));
+      return;
+    }
+    const jobs = [store.countRecords({ m: f, startTs }), store.countByTxt({ m: f, startTs })];
+    if (f === 'obs') {
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTag: '忘了时间' }));
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTag: '充电' }));
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTag: '耗电' }));
+    }
+    Promise.all(jobs).then(([total, tops, fg, chg, tire]) => {
+      const stat = { total: total || 0, tops: tops || [] };
+      if (f === 'obs') stat.ext = { '忘了时间': fg || 0, '充电': chg || 0, '耗电': tire || 0 };
+      this.setData({ stat }, () => this.rebuild());
     });
   },
   // 搜索：全量拉取后客户端过滤（搜索需覆盖全部记录，不走游标分页）
@@ -341,6 +411,14 @@ Page({
   },
 
   /* 下拉刷新：重置首屏（首屏加载完会自动收起 refresher） */
+  /* 再点一次底部「看」：列表回到顶部 */
+  onTabReselect() {
+    this.closeSel();
+    // scroll-top 写入与当前值相同不会触发滚动，先给个非 0 值再归零
+    this.setData({ scrollTo: '', scrollTop: this.data.scrollTop === 0 ? 1 : 0 });
+    setTimeout(() => this.setData({ scrollTop: 0 }), 30);
+  },
+
   onRefresh() {
     this.setData({ refreshing: true });
     this.resetLoad();

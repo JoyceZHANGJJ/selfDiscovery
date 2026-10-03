@@ -1,5 +1,6 @@
 // pages/set/set.js —— 设置
 const store = require('../../utils/store.js');
+const CHANGELOG = require('../../utils/changelog.js');
 const app = getApp();
 
 function fmtDay(ts) {
@@ -25,7 +26,10 @@ Page({
     importOverlay: false,
     importText: '',
     recCount: 0,
-    optCount: 0
+    optCount: 0,
+    logOverlay: false,
+    logs: CHANGELOG,
+    logLatest: (CHANGELOG[0] || {}).d || ''
   },
 
   g: null,
@@ -112,13 +116,17 @@ Page({
   closeImport() { this.setData({ importOverlay: false }); this.setTabBarHidden(false); },
   // 系统返回（Android 返回键 / iOS 左滑）：浮层打开时只关浮层，不退出小程序
   onBackPress() {
-    if (this.data.importOverlay || this.data.dimOverlay) {
-      this.setData({ importOverlay: false, dimOverlay: false });
+    if (this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay) {
+      this.setData({ importOverlay: false, dimOverlay: false, logOverlay: false });
       this.setTabBarHidden(false);
       return true;
     }
     return false;
   },
+
+  /* 更新日志 */
+  openLog() { this.setData({ logOverlay: true }); this.setTabBarHidden(true); },
+  closeLog() { this.setData({ logOverlay: false }); this.setTabBarHidden(false); },
   setTabBarHidden(h) {
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ hidden: !!h });
   },

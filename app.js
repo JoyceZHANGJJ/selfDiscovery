@@ -44,14 +44,20 @@ App({
     });
   },
 
+  // 启动自检：确认三个集合可达。
+  // 集合不存在（控制台里没建过）时会报 no baseresponse —— 记录功能不受影响，
+  // 但依赖该集合的配置（问候语 / 自定义维度 / 选项顺序）只能存本地，需在控制台建集合后才会同步云端。
   pingCloud() {
     try {
       const db = wx.cloud.database();
       db.collection('records').count()
         .then(res => console.log('[云自检] records 集合已连通，当前记录数：', res.total))
-        .catch(err => console.error('[云自检] records 集合访问失败：', err));
-      db.collection('options').count().catch(err => console.error('[云自检] options 集合访问失败：', err));
-      db.collection('usercfg').count().catch(err => console.error('[云自检] usercfg 集合访问失败：', err));
+        .catch(err => console.error('[云自检] records 集合访问失败（记录读写会受影响）：', err));
+      db.collection('options').count()
+        .catch(err => console.warn('[云自检] options 集合不可用（集合可能未创建）：', err && err.errMsg || err));
+      db.collection('usercfg').count()
+        .catch(err => console.warn('[云自检] usercfg 集合不可用（集合可能未创建）；'
+          + '请在云开发控制台新建该集合，否则问候语/自定义维度/选项顺序只存本地：', err && err.errMsg || err));
     } catch (e) {
       console.error('[云自检] 云能力初始化异常：', e);
     }

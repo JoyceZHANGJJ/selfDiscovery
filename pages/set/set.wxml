@@ -1,4 +1,5 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <view class="statusbar-mask"></view>
   <scroll-view class="screen" scroll-y type="list">
     <view class="body">
       <view class="sect-t">设置</view>
@@ -72,7 +73,7 @@
       <view class="sect-t" style="margin-top:18px">关于</view>
       <view class="srow"><view class="sl">选项池</view><view class="sv">{{optCount}} 组</view></view>
       <view class="srow"><view class="sl">数据位置</view><view class="sv">云开发数据库</view></view>
-      <view class="srow"><view class="sl">当前记录</view><view class="sv">{{recCount}} 条</view></view>
+      <view class="srow" bindtap="openLog"><view class="sl">更新日志</view><view class="sv">最近 {{logLatest}} ▸</view></view>
     </view>
   </scroll-view>
 
@@ -104,4 +105,18 @@
   </view>
 
   <theme-switcher />
+
+  <!-- 更新日志浮层 -->
+  <view wx:if="{{logOverlay}}" class="sheet">
+    <view class="sh-h"><view class="st">更新日志</view><view class="sx" bindtap="closeLog">✕</view></view>
+    <view class="sh-sub">按时间倒序，记录每次功能升级</view>
+    <view class="sh-list">
+      <view wx:for="{{logs}}" wx:key="d" class="lg-b">
+        <view class="lg-d">{{item.d}}</view>
+        <view wx:for="{{item.items}}" wx:for-item="x" wx:key="index" class="lg-i">· {{x}}</view>
+      </view>
+      <view wx:if="{{logs.length===0}}" class="sh-empty">还没有更新记录</view>
+    </view>
+    <view class="sh-foot"><view class="btn gh" bindtap="closeLog">关闭</view></view>
+  </view>
 </view>
