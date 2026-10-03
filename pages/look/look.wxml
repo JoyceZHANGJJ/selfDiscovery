@@ -35,7 +35,7 @@
         <view class="rg {{range==='30d'?'on':''}}" data-r="30d" bindtap="onRange">近30天</view>
       </view>
 
-      <!-- 统计（备忘 / 购物不展示） -->
+      <!-- 统计（待办 / 随记不展示） -->
       <view class="bars" wx:if="{{!stats.hide}}">
         <view class="sect-t" style="margin:0 0 8px">统计 · {{filter==='all'?'全部':filterName}}</view>
         <view wx:if="{{stats.all}}" class="st-sum">共 <b>{{stats.total}}</b> 条</view>
@@ -48,15 +48,21 @@
         <view wx:if="{{stats.extra}}" class="st-ex">{{stats.extra}}</view>
       </view>
 
-      <!-- 待办清单（备忘 / 购物，不走时间流，平铺成清单）；待完成 / 已完成 可折叠 -->
+      <!-- 待办 · 类别：全部 + 各类别（类别实时取选项池，「✎ 管理」里加新类别后自动多一项） -->
+      <view wx:if="{{filter==='todo' && kinds.length}}" class="filters states">
+        <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
+        <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
+      </view>
+
+      <!-- 待办清单（按类别分项；不走时间流，平铺成清单）；待完成 / 已完成 可折叠 -->
       <block wx:if="{{tasks.show}}">
         <view class="sect-t">{{tasks.tit}}</view>
         <view wx:if="{{tasks.sum}}" class="tsum">{{tasks.sum}}</view>
 
         <!-- 待完成 -->
-        <view wx:if="{{tasks.undone.length}}">
+        <view wx:if="{{tasks.undoneN}}">
           <view class="tfhd" bindtap="onTaskFold" data-k="undone">
-            <view class="tt">待完成 · {{tasks.undone.length}}</view>
+            <view class="tt">待完成 · {{tasks.undoneN}}</view>
             <view class="tl"></view>
             <view class="tc {{tasks.openU?'open':''}}">▸</view>
           </view>
@@ -65,12 +71,13 @@
               <view class="edge" style="background:{{item.c}}"></view>
               <view class="hd">
                 <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
-                <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+                <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all' || filter==='todo'}}">{{item.m}}</text>
                 <text class="tv">{{item.txt}}</text>
                 <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
               </view>
               <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
             </view>
+            <view wx:if="{{tasks.undoneHide}}" class="moreline" data-k="u" bindtap="onTaskMore">显示更多（还有 {{tasks.undoneHide}} 条）</view>
           </block>
         </view>
 
@@ -82,19 +89,20 @@
             <view class="tc {{tasks.openD?'open':''}}">▸</view>
           </view>
           <block wx:if="{{tasks.openD}}">
-            <view wx:for="{{tasks.doneGroups}}" wx:key="day" wx:for-item="g">
-              <view class="daylab">{{g.day}}</view>
+            <view wx:for="{{tasks.doneGroups}}" wx:key="key" wx:for-item="g">
+              <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="d" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
               <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
                 <view class="edge" style="background:{{item.c}}"></view>
                 <view class="hd">
                   <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
-                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all' || filter==='todo'}}">{{item.m}}</text>
                   <text class="tv">{{item.txt}}</text>
                   <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
                 </view>
                 <view class="done-at">{{item.doneAtText}}</view>
               </view>
             </view>
+            <view wx:if="{{tasks.doneHide}}" class="moreline" data-k="d" bindtap="onTaskMore">显示更早（还有 {{tasks.doneHide}} 天）</view>
           </block>
         </view>
 
@@ -106,25 +114,26 @@
             <view class="tc {{tasks.openA?'open':''}}">▸</view>
           </view>
           <block wx:if="{{tasks.openA}}">
-            <view wx:for="{{tasks.abandGroups}}" wx:key="day" wx:for-item="g">
-              <view class="daylab">{{g.day}}</view>
+            <view wx:for="{{tasks.abandGroups}}" wx:key="key" wx:for-item="g">
+              <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="a" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
               <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
                 <view class="edge" style="background:{{item.c}}"></view>
                 <view class="hd">
                   <!-- 已放弃的圈里画个 ×，且不可点：完成走「恢复」而不是直接勾掉 -->
                   <view class="ck"></view>
-                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all' || filter==='todo'}}">{{item.m}}</text>
                   <text class="tv">{{item.txt}}</text>
                   <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
                 </view>
                 <view class="done-at">{{item.abandAtText}}</view>
               </view>
             </view>
+            <view wx:if="{{tasks.abandHide}}" class="moreline" data-k="a" bindtap="onTaskMore">显示更早（还有 {{tasks.abandHide}} 天）</view>
           </block>
         </view>
       </block>
 
-      <!-- 觉察 · 分类：与「可做」的流转状态筛选同一个位置（分类是存在 ext 里的细节值，选项取池子） -->
+      <!-- 觉察 · 喜恶：与「可做」的流转状态筛选同一个位置（喜恶是存在 ext 里的细节值，选项取池子） -->
       <view wx:if="{{filter==='obs' && kinds.length}}" class="filters states">
         <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>

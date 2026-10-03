@@ -4,45 +4,111 @@
     <view class="body">
       <view class="sect-t">回看</view>
 
-      <!-- 总结 -->
-      <view class="rev-sum">
-        <view wx:for="{{sum}}" wx:key="k" class="rev-row">
-          <view class="rev-k"><view class="rev-dot" style="background:{{item.c}}"></view>{{item.k}}</view>
-          <view class="rev-v">{{item.v || '—'}}</view>
+      <!-- 周 / 月复盘，以及最后的「全部」（主题档案，全历史） -->
+      <view class="filters">
+        <view class="ft {{view==='week'?'on':''}}" data-v="week" bindtap="onView">周</view>
+        <view class="ft {{view==='month'?'on':''}}" data-v="month" bindtap="onView">月</view>
+        <view class="ft {{view==='all'?'on':''}}" data-v="all" bindtap="onView">全部</view>
+      </view>
+
+      <!-- ================= 全部：主题档案 =================
+           以内容为轴：每一条内容出现多少次、跨多久、按时间怎么分布，展开看它自身的变化 -->
+      <block wx:if="{{view==='all'}}">
+        <view class="dochead">{{docHead}}</view>
+        <view class="filters" style="margin:0 0 9px">
+          <view class="ft {{docSort==='n'?'on':''}}" data-s="n" bindtap="onDocSort">最常出现</view>
+          <view class="ft {{docSort==='recent'?'on':''}}" data-s="recent" bindtap="onDocSort">最近出现</view>
         </view>
-      </view>
 
-      <!-- KPI -->
-      <view class="kpis">
-        <view wx:for="{{kpis}}" wx:key="l" class="kpi"><view class="n">{{item.n}}</view><view class="l">{{item.l}}</view></view>
-      </view>
+        <view wx:for="{{docs}}" wx:key="txt" wx:for-item="d" wx:for-index="i" class="doc {{d.open?'open':''}}">
+          <view class="doc-h" data-i="{{i}}" bindtap="onDocTap">
+            <view class="doc-t">{{d.txt}}</view>
+            <view wx:if="{{d.hasChange}}" class="doc-tag">变</view>
+            <view class="doc-n">{{d.n}} 次</view>
+            <view class="doc-chev">▸</view>
+          </view>
+          <view class="doc-m">
+            <view wx:for="{{d.mods}}" wx:for-item="m" wx:key="k" class="doc-mn"><view class="dot" style="background:{{m.c}}"></view>{{m.nm}} {{m.n}}</view>
+            <view class="doc-span">{{d.metaTxt}}</view>
+          </view>
 
-      <!-- 热力 -->
-      <view class="bars">
-        <view class="sect-t" style="margin:0 0 4px">近 30 天</view>
-        <view class="heat"><i wx:for="{{heat.cells}}" wx:key="index" class="l{{item.lv}}"></i></view>
-        <view class="heat-sum">{{heat.sum}}</view>
-      </view>
-
-      <!-- 事件维度 -->
-      <view class="evfold {{ev.open?'open':''}}">
-        <view class="evfold-h" bindtap="onToggleEv">
-          <view class="evfold-t">事件</view>
-          <view class="evfold-c">{{ev.total}} 条 · {{ev.groups.length}} 个</view>
-          <view class="evfold-chev">▸</view>
-        </view>
-        <view wx:if="{{ev.open}}" class="evfold-b">
-          <view wx:for="{{ev.groups}}" wx:key="txt" wx:for-item="g" class="ev-grp">
-            <view class="ev-grp-h"><view class="ev-gn">{{g.txt}}</view><view class="ev-gc">{{g.count}}</view></view>
-            <view wx:for="{{g.dims}}" wx:for-item="dm" wx:key="n" class="ev-dim">
-              <view class="ev-dim-h"><view class="dot" style="background:{{dm.c}}"></view>{{dm.n}}<view class="ev-dim-c">{{dm.rows.length}}</view></view>
-              <view wx:for="{{dm.rows}}" wx:for-item="row" wx:key="index" class="ev-row">
-                <text class="ev-d">{{row.d}}</text><text wx:if="{{row.desc}}" class="ev-desc">{{row.desc}}</text><text wx:for="{{row.x}}" wx:for-item="it" wx:key="index" class="it"><text class="k" wx:if="{{it.lbl}}">{{it.lbl}}</text>{{it.v}}</text>
-              </view>
+          <block wx:if="{{d.open}}">
+            <view class="doc-sec">
+              <view class="doc-sec-l">时间分布</view>
+              <view class="heat doc-heat"><i wx:for="{{d.months}}" wx:key="index" class="l{{item.lv}}"></i></view>
             </view>
+            <view wx:if="{{d.changes.length}}" class="doc-sec">
+              <view class="doc-sec-l">变化</view>
+              <view wx:for="{{d.changes}}" wx:for-item="c" wx:key="l" class="doc-chg"><text class="cl">{{c.l}}</text><text class="cv">{{c.v}}</text></view>
+            </view>
+            <view wx:if="{{d.notes.length}}" class="doc-sec">
+              <view class="doc-sec-l">要点</view>
+              <view wx:for="{{d.notes}}" wx:for-item="nt" wx:key="index" class="doc-note"><text class="nd">{{nt.d}}</text><text class="nv">{{nt.v}}</text></view>
+            </view>
+            <view wx:if="{{!d.changes.length && !d.notes.length}}" class="doc-sec doc-dim">这条只有记录，没留下细节</view>
+          </block>
+        </view>
+
+        <view wx:if="{{docTotal > docs.length}}" class="doc-more" bindtap="onDocMore">显示更多（还有 {{docTotal - docs.length}} 个）</view>
+        <view wx:if="{{docTotal===0}}" class="empty-mini">还没有可回看的内容</view>
+      </block>
+
+      <!-- ================= 周 / 月复盘 ================= -->
+      <block wx:else>
+        <view class="revper">
+          <view class="revnav" bindtap="onPrev">‹</view>
+          <view class="revper-c">
+            <view class="revper-l">{{curLabel}}</view>
+            <view class="revper-s">{{curRel}} · {{preText}}</view>
+          </view>
+          <view class="revnav {{offset>=0?'off':''}}" bindtap="onNext">›</view>
+        </view>
+
+        <!-- 概览 -->
+        <view class="kpis">
+          <view wx:for="{{kpis}}" wx:key="l" class="kpi">
+            <view class="n">{{item.n}}</view>
+            <view class="l">{{item.l}}</view>
+            <view wx:if="{{item.s}}" class="s {{item.cls}}">{{item.s}}</view>
           </view>
         </view>
-      </view>
+
+        <!-- 各维度：本期条数 + 与上期的增减 -->
+        <view class="bars">
+          <view class="sect-t" style="margin:0 0 10px">各维度</view>
+          <view wx:for="{{dims}}" wx:key="k" class="barrow">
+            <view class="bn">{{item.n}}</view>
+            <view class="bb"><view class="bf" style="width:{{item.w}};background:{{item.c}}"></view></view>
+            <view class="bv"><text>{{item.v}}</text><text wx:if="{{item.dt}}" class="bd {{item.up?'up':'dn'}}">{{item.dt}}</text></view>
+          </view>
+        </view>
+
+        <!-- 流转：可做（新增 / 做了 / 放弃）、待办（记了 / 完成） -->
+        <view class="bars">
+          <view class="sect-t" style="margin:0 0 10px">流转</view>
+          <view wx:for="{{flow}}" wx:key="l" class="flowrow">
+            <view class="bn">{{item.l}}</view>
+            <view class="flowit" wx:for="{{item.items}}" wx:for-item="x" wx:key="n"><text class="fl">{{x.n}}</text><text class="fv">{{x.v}}</text></view>
+          </view>
+        </view>
+
+        <!-- 记得最多的：各维度 Top 3 -->
+        <view class="bars">
+          <view class="sect-t" style="margin:0 0 8px">记得最多的</view>
+          <view wx:if="{{!tops.length}}" class="empty-mini">本期还没有记录</view>
+          <view wx:for="{{tops}}" wx:key="n" wx:for-item="g" class="topg">
+            <view class="topg-h"><view class="dot" style="background:{{g.c}}"></view>{{g.n}}</view>
+            <view wx:for="{{g.items}}" wx:for-item="it" wx:key="t" class="topi"><text class="tt">{{it.t}}</text><text class="tn">{{it.n}}</text></view>
+          </view>
+        </view>
+
+        <!-- 本期每天：条数分布 -->
+        <view class="bars">
+          <view class="sect-t" style="margin:0 0 0">本期每天</view>
+          <view class="heat"><i wx:for="{{trend}}" wx:key="index" class="l{{item.lv}}"></i></view>
+          <view class="heat-sum">{{trendSum}}</view>
+        </view>
+      </block>
     </view>
   </scroll-view>
 

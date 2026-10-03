@@ -65,6 +65,7 @@ Page({
     recSel: null,
     recSelRec: null,
     delUndo: null,
+    saveUndo: null,       // 刚记下那条的确认条（写清记进了哪里）
     // 吸底操作行（记下 / 保存修改 / 取消）的 bottom：默认抬到底部 tab 栏之上，键盘弹出时再抬到键盘之上
     barBottom: 'calc(58px + env(safe-area-inset-bottom, 0px))',
     // 待办长按就地编辑（与清单 / 看页共用的 inline-editor 组件）
@@ -122,9 +123,13 @@ Page({
       this.st.tag = cur;
       // 进入「去做」时若还没选分类，补上默认分类（以往靠 onTag 触发，现在默认就是它，需在此兜底）
       if (cur === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+      // 待办同理：进入时若没选类别，补上默认「备忘」
+      if (cur === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
       // 回到记页且没有待编辑记录时，清掉可能残留的编辑态，避免所有操作一直被拦
       // （从「管理选项」页返回时除外：编辑中的内容与状态要原样保留）
       if (!app.globalData.editRec && !this.st.fromManage) this.setData({ editing: false });
+      // 从「管理选项」返回：把刚改名过的选项同步到已选中的 chip / 手填值上，避免旧名残留
+      if (this.st.fromManage) this.applyRenames();
       this.st.fromManage = false;
       this.checkEdit();
       this.rotateGreet();
@@ -213,6 +218,7 @@ Page({
     });
     // 记录本身没有分类（历史数据）时才补默认分类；有则只回显记录自己的值，避免默认+记录值同时选中
     if (r.m === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+    if (r.m === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
     // 「开始」流转进入：稍后在「保存修改」时才记录开始时间（这里只标记 startMode）
     this.st.startMode = !!g.editStart; g.editStart = null;
     // 「完成」流转进入：稍后在「保存修改」时才置「做了」并记录完成时间（这里只标记 completing）
@@ -274,6 +280,23 @@ Page({
     wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
 
+  /* 从「管理选项」返回：把这次会话里改过名的选项，同步到已经选中的 chip / 手填值上。
+     不这么做的话，旧名会以「池里没有的值＝临时 chip」的方式和新名并排显示，
+     看着就是同一个选项出现了两个（保存时还会把旧名写回记录）。 */
+  applyRenames() {
+    const rm = store.takeRenameMap();
+    const keys = Object.keys(rm);
+    if (!keys.length) return;
+    keys.forEach(g => {
+      const m = rm[g];
+      if (this.st.pick[g]) {
+        const seen = {};
+        this.st.pick[g] = this.st.pick[g].map(v => m[v] || v).filter(v => !seen[v] && (seen[v] = 1));
+      }
+      if (this.st.typed[g] && m[this.st.typed[g]]) this.st.typed[g] = m[this.st.typed[g]];
+    });
+  },
+
   /* 编辑态：修改时间（创建 / 开始 / 结束） */
   onEditDate(e) { this.setData({ editDate: e.detail.value }); },
   onEditTime(e) { this.setData({ editTime: e.detail.value }); },
@@ -311,7 +334,7 @@ Page({
       const ds = fmtDur(r.abandonedAt - r.ts);
       if (ds) dur = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
-    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur,
+    return { id: r.id, m: store.recMname(r), c: task ? store.taskColor(r) : store.mcolor(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur,
       // 清单标题超长：隐藏原因/用途，标题独占整行自动折行（右侧只留时间）
       longTxt: task && String(r.txt || '').length > 12 };
   },
@@ -348,7 +371,7 @@ Page({
     const showDeg = tag === 'obs' &&
       ((this.st.pick['obsMood'] || []).length > 0 || (this.st.pick['obsDeg'] || []).length > 0);
     // 展示顺序与存储顺序解耦：觉察的细节在编辑器里排成
-    // 「分类 → 感受（情绪 chips + 档位副行 + 自由输入框）→ 怎么开始的 → 沉浸 → 精力」，
+    // 「喜恶 → 感受（情绪 chips + 档位副行 + 自由输入框）→ 怎么开始的 → 沉浸 → 精力」，
     // 但保存仍按 f.items 的原顺序写 ext/extSrc，导出/导入的按顺序对齐因此不受影响
     if (tag === 'obs') {
       const key = (it) => it.g || (it.fx ? 'fx:' + it.fx : 'free:' + it.free);
@@ -381,9 +404,10 @@ Page({
     // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 为什么不做了；结束(觉察) → 感受
     const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
     const focusIdx = focusKey ? items.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
-    const MAINPH = { memo: '要记住什么 · 回车就记下', buy: '要买什么 · 可写「牛奶 2」' };
-    // 备忘 / 购物：只保留一个输入框，不显示标题、选项池与管理入口
-    const plain = store.isTask(tag);
+    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下' };
+    // 待办 / 随记：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行
+    // （待办多一行「类别」，随记 items 为空；见 index.wxml 的 plain 分支）
+    const plain = store.isTask(tag) || tag === 'jot';
     // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
     return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
       // 「归类」不需要输入框：从选项池点选即可（要靠「✎ 管理」增删），
@@ -438,6 +462,7 @@ Page({
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
     if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+    if (this.st.tag === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
     this.setData({ tag: this.st.tag });
     this.recompute();
   },
@@ -646,6 +671,11 @@ Page({
       wx.showToast({ title: '请选择分类（想要/可做/喜欢）', icon: 'none' });
       return;
     }
+    // 待办：类别为必选（默认已选「备忘」）
+    if (this.st.tag === 'todo' && (!this.st.pick['todoKind'] || !this.st.pick['todoKind'].length)) {
+      wx.showToast({ title: '请选择类别', icon: 'none' });
+      return;
+    }
     const ext = [], extSrc = [];
     f.items.forEach(it => {
       if (it.g) {
@@ -681,16 +711,19 @@ Page({
   // 否则分类选中态丢失，下一条还会因「请选择分类」而记不进去
   ensureDefaultKind() {
     if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+    if (this.st.tag === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
   },
 
   afterSave(rec) {
+    const isEdit = !!this.st.edit;   // 先记下：编辑保存与新记下的提示不同（编辑没有「撤销这条」这回事）
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.ensureDefaultKind();   // 记下后仍在 可做 时，把默认分类选回来
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
     this.recompute();
-    wx.showToast({ title: '已记下', icon: 'success', duration: 700 });
+    if (isEdit) { wx.showToast({ title: '已更新', icon: 'none', duration: 800 }); return; }
+    this._showSavedBar(rec);
   },
   onEditCancel() {
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
@@ -808,9 +841,10 @@ Page({
     const id = this.data.recSel; if (id == null) return;
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r) return;
-    // 待办（备忘 / 购物）：放弃 / 恢复只动状态与时间，不进编辑态（完成仍走条目上的勾选框）
-    if (r.m === 'memo' || r.m === 'buy') {
-      if (type !== 'abandon' && type !== 'restore') return;
+    // 待办（备忘 / 购物）：放弃 / 恢复只动状态与时间，不进编辑态（完成仍走条目上的勾选框）；
+    //   改 / 删除照常走下面的统一分支——之前这里把 edit / del 也一并 return 掉了，
+    //   于是操作条上的「改」「删除」点了没反应（清单页是好的，只有记页 / 看页这样）
+    if (store.isTask(r.m) && (type === 'abandon' || type === 'restore')) {
       if (type === 'abandon') { r.status = 'abandon'; r.abandonedAt = Date.now(); }
       else { r.status = ''; r.abandonedAt = 0; }
       store.updateRecord(r).catch(() => {});
@@ -874,6 +908,7 @@ Page({
     const patch = {};
     if (this.data.recSel != null) { patch.recSel = null; patch.recSelRec = null; }
     if (this.data.delUndo) { patch.delUndo = null; this._stopDelTimer(); }
+    if (this.data.saveUndo) { patch.saveUndo = null; this._stopSaveTimer(); }
     if (Object.keys(patch).length) this.setData(patch);
   },
   _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
@@ -882,6 +917,48 @@ Page({
     this._delTimer = setTimeout(() => {
       if (this.data.delUndo) this.setData({ delUndo: null });
     }, 3000);
+  },
+
+  /* 记下后的确认条：写清记进了哪个模块（觉察还会带上喜恶），并按模块给一个动作——
+     待办（备忘 / 购物）给「撤销」：它常常是随手一句、更容易打错，与悬浮球快捷记同一套心智；
+     其它维度（觉察 / 此刻 / 可做）给「改一下」：那些是逐项填过的，要改就回编辑态，不是整条重来。
+     3.2 秒后自动收起，点别处也收起 */
+  _showSavedBar(rec) {
+    this.setData({ saveUndo: { id: rec.id, name: store.recMname(rec), txt: rec.txt, task: store.isTask(rec.m) } });
+    this._stopSaveTimer();
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
+      if (this.data.saveUndo) this.setData({ saveUndo: null });
+    }, 3200);
+  },
+  _stopSaveTimer() { if (this._saveTimer) { clearTimeout(this._saveTimer); this._saveTimer = null; } },
+  /* 确认条上的「改一下」：直接进入刚记下那条的编辑态
+     （省掉「去最近列表里找到它 → 点一下 → 点改」三步；走同一套 checkEdit，会滚回顶部露出记卡） */
+  onEditSaved() {
+    if (this.guardEdit()) return;
+    const u = this.data.saveUndo; if (!u) return;
+    this._stopSaveTimer();
+    this.setData({ saveUndo: null });
+    const r = (app.globalData.records || []).find(x => x.id === u.id);
+    if (!r) return;
+    app.globalData.editRec = r;
+    this.checkEdit();
+    this.recompute();
+  },
+  /* 确认条上的「撤销」（待办）：删掉刚记下的那条并给个说法（与悬浮球快捷记一致） */
+  onUndoSaved() {
+    if (this.guardEdit()) return;
+    const u = this.data.saveUndo; if (!u) return;
+    this._stopSaveTimer();
+    this.setData({ saveUndo: null });
+    const arr = app.globalData.records || [];
+    const i = arr.findIndex(r => r.id === u.id);
+    if (i < 0) return;
+    const r = arr[i];
+    store.deleteRecord(r).catch(() => {});
+    arr.splice(i, 1);
+    this.recompute();
+    wx.showToast({ title: '已撤销', icon: 'none' });
   },
 
   /* 备忘/购物：勾选切换完成态（划线 + 记录完成时间） */
@@ -932,8 +1009,9 @@ Page({
     });
   },
 
-  /* 悬浮球「＋」快捷记下一条待办后：只刷新「最近」，不碰正在输入的内容 */
-  onQuickTodo() { this.recompute(); },
+  /* 悬浮球「＋」快捷记下一条待办后：只刷新「最近」，不碰正在输入的内容；
+     同时收掉记卡里那条「已记入」——两条说的是同一件事，留刚弹出的那条 */
+  onQuickTodo() { this._stopSaveTimer(); this.setData({ saveUndo: null }); this.recompute(); },
 
   /* 下拉刷新：统一走页面级下拉（列表 refresher 已关闭） */
   onRefresh() {
@@ -950,8 +1028,9 @@ Page({
       this._refreshing = false;
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
       this.st.startMode = false; this.st.completing = false; this.st.abandoning = false; this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false; this.st.ending = false;
-      // 刷新后仍在「可做」时，补回默认分类（避免默认「想做」被清空）
+      // 刷新后仍在「可做」/「待办」时，补回默认分类 / 类别（避免被清空）
       if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+      if (this.st.tag === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
       this.rotateGreet();
       this.recompute();
     }).catch(() => { wx.stopPullDownRefresh(); this._refreshing = false; });

@@ -197,16 +197,21 @@ Page({
     const lines = String(txt || '').split(/\r?\n/);
     const out = []; let bad = 0;
     const N2K = {}; store.MODULES.forEach(m => N2K[m.n] = m.k);
+    // 备忘 / 购物 已并入「待办」：老导出文件里的维度名映射成 todo，并把类别补进细节最前
+    // （合并后的新导出维度写「待办」，类别本就在细节里，不需要这一步）
+    const LEGACY_TASK = { '备忘': '备忘', '购物': '购物' };
     lines.forEach(ln => {
       ln = ln.trim();
       if (!ln || ln.charAt(0) === '#') return;
       const p = (ln.indexOf('|') >= 0 ? ln.split(/\s*\|\s*/) : ln.split(/\s*·\s*/));
       if (p.length < 3 || !p[2].trim()) { bad++; return; }
       const head = p[0].trim(), mk = p[1].trim(), main = p[2].trim();
-      const ext = p.length > 3 ? p.slice(3).join(' | ').split(/[、,，]/).map(x => x.trim()).filter(x => x) : [];
-      const k = N2K[mk] || mk;
+      let ext = p.length > 3 ? p.slice(3).join(' | ').split(/[、,，]/).map(x => x.trim()).filter(x => x) : [];
+      const aliasCat = LEGACY_TASK[mk];
+      const k = aliasCat ? 'todo' : (N2K[mk] || mk);
       const known = store.FIELDS[k] || (app.globalData.dims || []).some(d => d.k === k);
       if (!known) { bad++; return; }
+      if (aliasCat) ext = [aliasCat].concat(ext);   // 类别与 srcList('todo') 的首位对齐
       const { ts, t } = this.parseHeadLine(head);
       // 细节按标签匹配回真实来源（怎么开始/沉浸/精力/心情…），匹配不到才用 fallback
       const extSrc = store.mapExtSrc(k, ext);

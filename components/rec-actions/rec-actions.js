@@ -26,7 +26,8 @@ Component({
       const status = rec.status || '';
       const isWant = rawm === 'want';
       const isObsNope = rawm === 'obs' || rawm === 'nope';
-      const isTask = rawm === 'memo' || rawm === 'buy';
+      // 待办：备忘 / 购物 合并后都是 todo（memo / buy 兼容迁移前的老数据）
+      const isTask = rawm === 'todo' || rawm === 'memo' || rawm === 'buy';
       const flow = [];
       // 可做：未做/在做 显示 开始(仅未在做)/完成/放弃；不做 显示 恢复
       if (isWant && status !== 'done' && status !== 'abandon') {

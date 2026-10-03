@@ -44,10 +44,17 @@
           <view wx:if="{{tagFade}}" class="tagrow-fade"></view>
         </view>
 
-        <!-- 备忘 / 购物：纯主输入框，不要标题、选项池与管理入口 -->
+        <!-- 待办 / 随记：纯主输入框（不要主项标题），细节只留必要的行。
+             待办在这里多一行「类别」（todoKind，可从 ✎ 管理 加新类别）；随记没有 items，就只有一个输入框 -->
         <block wx:if="{{composer.plain}}">
           <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
+            <block wx:if="{{it.type==='g'}}">
+              <view class="qrow"><view class="ql">{{it.label}}</view><view class="mg" data-g="{{it.group}}" bindtap="onManage">✎ 管理</view></view>
+              <view class="chips">
+                <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
+              </view>
+            </block>
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
             <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
           </view>
@@ -111,10 +118,21 @@
         </view>
 
         <!-- 操作行吸底：胶囊卡片再长（编辑态字段多）也能随时点到「记下 / 保存修改 / 取消」。
-             bottom 由页面按键盘高度/底部 tab 栏算好传进来 -->
+             bottom 由页面按键盘高度/底部 tab 栏算好传进来；
+             记下后的提示条是这个吸底块的最后一行（就在按钮下方），
+             所以它出现时记卡跟着撑开、消失后收回 -->
         <view class="savebar sticky" id="savebar" style="bottom:{{barBottom}}">
-          <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
-          <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
+          <view class="sbbtns">
+            <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
+            <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
+          </view>
+          <!-- 记下后的确认条：写清记进了哪个模块（觉察会带上喜恶）。
+               待办给「撤销」（随手一句，容易打错），其它维度给「改一下」（逐项填过的，回编辑态改） -->
+          <view wx:if="{{saveUndo}}" class="toastline sbline">
+            <view class="tx">已记入{{saveUndo.name}}「{{saveUndo.txt}}」</view>
+            <view wx:if="{{saveUndo.task}}" class="tb" bindtap="onUndoSaved">撤销</view>
+            <view wx:else class="tb" bindtap="onEditSaved">改一下</view>
+          </view>
         </view>
       </view>
       </block>

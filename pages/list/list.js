@@ -1,4 +1,4 @@
-// pages/list/list.js —— 清单：备忘 / 购物 快捷查看
+// pages/list/list.js —— 清单：备忘 / 购物（待办）+ 随记（平铺列表）快捷查看
 const store = require('../../utils/store.js');
 const app = getApp();
 
@@ -15,26 +15,40 @@ function dayStartTs(ts) {
   return d.getTime();
 }
 
+// 筛选行 / 快捷新增的目标 id：待办类别用 'k:<类别>'，随记用 'jot'，全部用 'all'。
+// 类别一律实时取选项池 todoKind —— 「✎ 管理」里加了新类别，清单页会自动多一项
+function todoSeg(v) { return 'k:' + v; }
+
+// 能在清单页就地改 / 删的记录：待办 + 随记（都是「一句话」，区别只是前者有完成与状态）
+function canList(m) { return store.isTask(m) || m === 'jot'; }
+
 Page({
   data: {
     theme: 'sand',
     statusH: 20,
-    seg: 'all',            // all | memo | buy
-    cmemo: store.mcolor('memo'),
-    cbuy: store.mcolor('buy'),
-    // 顶部快捷新增：输入 → 回车 → 立刻出现在列表顶部，可连着加（目标模块跟筛选走）
+    seg: 'all',            // 'all' | 'jot' | 'k:<类别>'（类别来自选项池，可增删）
+    segs: [],              // 筛选行：全部 + 各待办类别 + 随记（rebuild 里按选项池生成）
+    // 顶部快捷新增：输入 → 回车 → 立刻出现在列表顶部，可连着加（目标跟筛选走）
     qaTxt: '',
-    qaM: 'memo',           // seg='all' 时的目标模块：memo | buy
+    qaM: 'k:备忘',         // seg='all' 时的目标：'k:<类别>' | 'jot'（点「切换」轮换）
+    qaC: store.catColor('备忘'),
     qaName: '备忘',
     qaPh: '要记住什么',
     show: false,
-    tit: '待办 · 备忘与购物',
+    tit: '待办',
     sum: '',
     undone: [],
+    jots: [],
     doneGroups: [],
     doneN: 0,
     abandGroups: [],
     abandN: 0,
+    // 各段的「显示更多」：默认只渲染最近一段，避免已完成 / 随记攒长了又长又卡。
+    // 待完成 / 随记的窗口按「条」算，已完成 / 已放弃按「天」算（它们本来就按天分段）
+    limU: 20, limD: 7, limA: 7, limJ: 20,
+    undoneN: 0, jotN: 0,
+    undoneHide: 0, doneHide: 0, abandHide: 0, jotHide: 0,
+    doneDayAll: {}, abandDayAll: {},   // 某天被「展开全部」了（<天 key>: 1）
     // 收起态：只默认展开「待完成」——清单页一进来先看要干什么；
     // 已完成 / 已放弃都收起，条数在各自的标题上看得见，想看再点开
     openU: true,
@@ -69,7 +83,7 @@ Page({
 
   recVM(r) {
     return {
-      id: r.id, m: store.mname(r.m), c: store.mcolor(r.m),
+      id: r.id, m: store.recMname(r), c: store.isTask(r.m) ? store.taskColor(r) : store.mcolor(r.m),
       txt: r.txt,
       // 待办的时间：今天显示时刻，非今天显示简洁日期（避免只有 HH:MM 看不出是哪天）
       t: r.tt || r.t,
@@ -82,28 +96,76 @@ Page({
   },
 
   rebuild() {
-    const all = (app.globalData.records || []).filter(r => store.isTask(r.m));
+    const recs = app.globalData.records || [];
     const seg = this.data.seg;
-    const list = seg === 'all' ? all : all.filter(r => r.m === seg);
+    const isJot = seg === 'jot';
+    // 备忘 / 购物 合并成「待办」后，它们是同一个模块（todo）下的「类别」：按类别筛
+    const cat = seg.indexOf('k:') === 0 ? seg.slice(2) : '';
+    const tasks = recs.filter(r => store.isTask(r.m));
+    const list = isJot ? [] : (cat ? tasks.filter(r => store.taskCat(r) === cat) : tasks);
     // 注意：recVM 的产物里没有 ts / doneAt，必须在 map 之前对原始记录排序，
     // 否则 sort 比较的全是 undefined，等于没排（已完成要按完成时间倒序，就是这个坑）
-    const undone = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
+    const undoneAll = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
     const doneRecs = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = list.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
     // 已完成 / 已放弃各按「那天」分段（与看页同一套）：段头给日期，行内只写「完成 / 放弃 · HH:MM」
-    const doneGroups = this.groupByDay(doneRecs, r => r.doneAt || r.ts);
-    const abandGroups = this.groupByDay(abandRecs, r => r.abandonedAt || r.ts);
-    const u = undone.length, dn = doneRecs.length, an = abandRecs.length;
+    const doneDays = this.groupByDay(doneRecs, r => r.doneAt || r.ts);
+    const abandDays = this.groupByDay(abandRecs, r => r.abandonedAt || r.ts);
+    // 随记不是待办：没有 待完成 / 已完成 / 已放弃 那套，就是一个平铺列表（按记录时间倒序）
+    const jotsAll = isJot ? recs.filter(r => r.m === 'jot').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r)) : [];
+    // 每段只渲染「最近一段」，其余收在「显示更多」后面（已长了的段不会一上来全铺开）
+    const undone = undoneAll.slice(0, this.data.limU);
+    const jots = jotsAll.slice(0, this.data.limJ);
+    const doneGroups = store.winDays(doneDays, this.data.limD, this.data.doneDayAll);
+    const abandGroups = store.winDays(abandDays, this.data.limA, this.data.abandDayAll);
+
+    const u = undoneAll.length, dn = doneRecs.length, an = abandRecs.length;
     const sum = u
       ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
       : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
-    const tit = seg === 'memo' ? '备忘' : (seg === 'buy' ? '购物' : '待办 · 备忘与购物');
-    // 快捷新增的目标模块：筛选定了就跟筛选走（筛「全部」时用 qaM，可在输入框左边点「切换」改）
-    const qm = (seg === 'memo' || seg === 'buy') ? seg : this.data.qaM;
+    // 标题：就叫「待办」（不再罗列 备忘与购物——类别是可增删的）；按类别筛时显示类别名
+    const tit = isJot ? '随记' : (cat || '待办');
+    // 筛选行：全部 + 各待办类别 + 随记（类别实时取选项池，加新类别后自动出现）
+    const segs = [{ k: 'all', n: '全部', c: '' }]
+      .concat(store.getOPT('todoKind').map(v => ({ k: todoSeg(v), n: v, c: store.catColor(v) })))
+      .concat([{ k: 'jot', n: '随记', c: store.mcolor('jot') }]);
+    // 快捷新增的目标：筛了具体项就跟筛走（筛「全部」时用「切换」选的那个）
+    const qm = (isJot || cat) ? seg : this.data.qaM;
+    const T = this.qaDesc(qm);
     this.setData({
-      show: list.length > 0, tit, sum, undone, doneGroups, doneN: dn, abandGroups, abandN: an, empty: list.length === 0,
-      qaM: qm, qaName: qm === 'buy' ? '购物' : '备忘', qaPh: qm === 'buy' ? '要买什么' : '要记住什么'
+      show: isJot ? jotsAll.length > 0 : list.length > 0,
+      tit, sum: isJot ? (jotsAll.length ? jotsAll.length + ' 条' : '') : sum,
+      undone, doneGroups, abandGroups, jots, segs,
+      undoneN: u, doneN: dn, abandN: an, jotN: jotsAll.length,
+      undoneHide: Math.max(0, u - undone.length),
+      doneHide: Math.max(0, doneDays.length - doneGroups.length),
+      abandHide: Math.max(0, abandDays.length - abandGroups.length),
+      jotHide: Math.max(0, jotsAll.length - jots.length),
+      empty: isJot ? jotsAll.length === 0 : list.length === 0,
+      qaM: qm, qaName: T.n, qaPh: T.ph, qaC: T.c
     });
+  },
+
+  /* 各段的「显示更多」：u 待完成 / d 已完成（天）/ a 已放弃（天）/ j 随记 */
+  onMore(e) {
+    const k = e.currentTarget.dataset.k;
+    const patch = {};
+    if (k === 'u') patch.limU = this.data.limU + 20;
+    else if (k === 'j') patch.limJ = this.data.limJ + 20;
+    else if (k === 'd') patch.limD = this.data.limD + 7;
+    else if (k === 'a') patch.limA = this.data.limA + 7;
+    else return;
+    this.setData(patch, () => this.rebuild());
+  },
+  /* 某一天「展开全部 / 收起」（这天超过 20 条时才有入口） */
+  onDayMore(e) {
+    const k = String(e.currentTarget.dataset.k);   // 天的 key（0 点时间戳，字符串）
+    const w = e.currentTarget.dataset.w;   // d 已完成 | a 已放弃
+    const which = w === 'a' ? 'abandDayAll' : 'doneDayAll';
+    const map = Object.assign({}, this.data[which]);
+    if (map[k]) delete map[k]; else map[k] = 1;
+    const patch = {}; patch[which] = map;
+    this.setData(patch, () => this.rebuild());
   },
 
   // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签
@@ -111,7 +173,7 @@ Page({
     const map = {}, order = [];
     recs.forEach(r => {
       const k = dayStartTs(tsOf(r));
-      if (!map[k]) { map[k] = { day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
+      if (!map[k]) { map[k] = { key: k, day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
       map[k].recs.push(this.recVM(r));
     });
     return order.map(k => map[k]);
@@ -141,12 +203,19 @@ Page({
     this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
   },
 
-  /* 操作条统一入口（与记 / 看页共用 rec-actions 组件）：待办只用到 放弃 / 恢复 / 改 / 删 */
+  /* 操作条统一入口（与记 / 看页共用 rec-actions 组件）：待办用 放弃 / 恢复 / 改 / 删；
+     随记没有状态与完成，所以只有 改 / 删（那套流转按钮本来也不会渲染） */
   onRecAction(e) {
     const type = e.detail.type;
     const id = this.data.sel; if (id == null) return;
     const r = this.findRec(id);
-    if (!r || !store.isTask(r.m)) return;
+    if (!r) return;
+    if (r.m === 'jot') {
+      if (type === 'edit') { this.setData({ sel: null, selRec: null }); this._openEdit(id, r.txt || ''); return; }
+      if (type === 'del') { this.setData({ sel: null, selRec: null }); this._del(r); }
+      return;
+    }
+    if (!store.isTask(r.m)) return;
     if (type === 'abandon') {
       r.status = 'abandon'; r.abandonedAt = Date.now();
       store.updateRecord(r).catch(() => {});
@@ -165,16 +234,24 @@ Page({
     if (type === 'del') { this.setData({ sel: null, selRec: null }); this._del(r); }
   },
 
-  /* ---------------- 快捷新增待办 ---------------- */
-  // 目标模块：筛选到具体模块时就是它，否则用「切换」选的那个
+  /* ---------------- 快捷新增待办 / 随记 ---------------- */
+  // 目标 id → 描述（名字 / 占位符 / 模块 / 类别 / 色点）
+  qaDesc(k) {
+    if (k === 'jot') return { n: '随记', ph: '想记点什么', m: 'jot', cat: '', c: store.mcolor('jot') };
+    const cat = k.indexOf('k:') === 0 ? k.slice(2) : (store.getOPT('todoKind')[0] || '备忘');
+    return { n: cat, ph: '要记住什么', m: 'todo', cat, c: store.catColor(cat) };
+  },
+  // 快捷新增的目标：筛到具体项就是它，否则用「切换」选的那个
   qaTarget() {
     const s = this.data.seg;
-    return (s === 'memo' || s === 'buy') ? s : (this.data.qaM === 'buy' ? 'buy' : 'memo');
+    return (s === 'jot' || s.indexOf('k:') === 0) ? s : this.data.qaM;
   },
-  // 只有「全部」时目标才可切（筛了备忘 / 购物时目标就是筛选本身）
+  // 只有「全部」时目标才可切（筛了某类别 / 随记时，目标就是筛选本身）；顺序 = 各待办类别 → 随记
   onQaSwitch() {
     if (this.data.seg !== 'all') return;
-    this.data.qaM = this.data.qaM === 'buy' ? 'memo' : 'buy';
+    const order = store.getOPT('todoKind').map(todoSeg).concat(['jot']);
+    const i = order.indexOf(this.data.qaM);
+    this.data.qaM = order[(i + 1) % order.length] || order[0];
     this.rebuild();
   },
   onQaInput(e) { this.setData({ qaTxt: e.detail.value }); },
@@ -182,16 +259,17 @@ Page({
   onQaSave() {
     const txt = (this.data.qaTxt || '').trim();
     if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
-    const m = this.qaTarget();
+    const T = this.qaDesc(this.qaTarget());
     const ts = Date.now();
-    const rec = { m, txt, ts, t: hhmm(ts), ext: [], extSrc: [], done: false, doneAt: 0, status: '' };
+    // 待办：把类别写进 ext（src=todoKind）；随记没有类别
+    const rec = { m: T.m, txt, ts, t: hhmm(ts), ext: T.cat ? [T.cat] : [], extSrc: T.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       if (!app.globalData.records) app.globalData.records = [];
       app.globalData.records.unshift(store.decorate(rec));
       this.setData({ qaTxt: '' });
       this.rebuild();
-      wx.showToast({ title: '已记入' + (m === 'buy' ? '购物' : '备忘'), icon: 'none', duration: 900 });
+      wx.showToast({ title: '已记入' + T.n, icon: 'none', duration: 900 });
     }).catch(() => wx.showToast({ title: '没记上，再试一次', icon: 'none' }));
   },
 
@@ -207,6 +285,9 @@ Page({
   /* 页面级下拉刷新入口（原生下拉回弹，与记页一致） */
   onPullDownRefresh() { this.onRefresh(); },
 
+  /* 悬浮球「＋」快捷记下一条（待办 / 随记）后：立刻重排列表 */
+  onQuickTodo() { this.rebuild(); },
+
   onRefresh() {
     store.loadRecords().then(list => {
       app.globalData.records = list;
@@ -220,11 +301,11 @@ Page({
     return (app.globalData.records || []).find(x => x.id === id) || null;
   },
 
-  /* 长按某条待办：先量好位置再显示，避免编辑器先闪一下上一次的位置 */
+  /* 长按某条待办 / 随记：先量好位置再显示，避免编辑器先闪一下上一次的位置 */
   onLongPress(e) {
     const id = e.currentTarget.dataset.id;
     const r = this.findRec(id);
-    if (!r || !store.isTask(r.m)) return;
+    if (!r || !canList(r.m)) return;
     this._lpAt = Date.now();     // 长按之后紧跟的那次点击要忽略，否则会立刻弹出操作条
     this.setData({ sel: null, selRec: null });
     this._openEdit(id, r.txt || '');
@@ -274,7 +355,7 @@ Page({
     if (!id || !this.data.editing) return;
     const txt = ((e.detail && e.detail.value) || '').trim();
     const r = this.findRec(id);
-    if (!r || !store.isTask(r.m) || !txt || txt === r.txt) { this._closeEdit(); return; }
+    if (!r || !canList(r.m) || !txt || txt === r.txt) { this._closeEdit(); return; }
     r.txt = txt;
     store.updateRecord(r).catch(() => {});
     this._closeEdit();
@@ -299,11 +380,11 @@ Page({
     });
   },
 
-  /* 就地编辑里的「删除」 */
+  /* 就地编辑里的「删除」（待办 / 随记都有） */
   onEditDel() {
     const r = this.findRec(this.data.edId);
     this._closeEdit();
-    if (!r || !store.isTask(r.m)) return;
+    if (!r || !canList(r.m)) return;
     this._del(r);
   },
   /* 删除 + 一次撤销机会（就地编辑的「删除」与操作条的「删除」共用） */

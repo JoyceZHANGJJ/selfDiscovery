@@ -81,6 +81,7 @@ Page({
       ps.push(store.addOption(g, nv));
     }
     if (store.isDefault(g, nv)) ps.push(store.clearDelDef(g, nv)); // 新值恰好是默认项，清除删除标记
+    ps.push(store.markOptCustom(g, O[g]));   // 动过这组了：以后这组以你这份为准，默认词不再插手
     Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     this.refresh();
   },
@@ -91,6 +92,7 @@ Page({
     if (O[this.group]) store.setOptOrder(this.group, O[this.group]);
     const ps = [store.removeOption(this.group, v)];
     if (store.isDefault(this.group, v)) ps.push(store.addDelDef(this.group, v)); // 删的是默认项，记录删除标记
+    ps.push(store.markOptCustom(this.group, O[this.group]));
     Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     this.setData({ undo: { v } });
     this.refresh();
@@ -131,6 +133,7 @@ Page({
     if (O[this.group].indexOf(u.v) < 0) O[this.group].push(u.v);
     const ps = [store.addOption(this.group, u.v)];
     if (store.isDefault(this.group, u.v)) ps.push(store.clearDelDef(this.group, u.v)); // 还原被删的默认项
+    ps.push(store.markOptCustom(this.group, O[this.group]));
     Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     this.setData({ undo: null });
     this.refresh();
@@ -146,6 +149,7 @@ Page({
       store.setOptOrder(g, O[g]);
       const ps = [store.addOption(g, v)];
       if (store.isDefault(g, v)) ps.push(store.clearDelDef(g, v)); // 加回的是曾被删的默认项
+      ps.push(store.markOptCustom(g, O[g]));
       Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     }
     this.setData({ newVal: '' });

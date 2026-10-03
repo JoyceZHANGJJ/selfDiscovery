@@ -1,26 +1,26 @@
 <view class="tabroot theme-{{theme}}" wx:if="{{!hidden}}">
-  <!-- 快捷记待办：点「＋」球在原地弹条（不跳页）；
+  <!-- 快捷记（待办 / 随记）：点「＋」球在原地弹条（不跳页）；
        面板 / 撤销条以外的任何地方（页面空白、记录、操作条、球）都收起——但键盘不收起 -->
   <view wx:if="{{qa || qaUndo}}" class="qa-mask" bindtap="onMaskTap"></view>
   <view wx:if="{{qa}}" class="qa" style="bottom:{{qaBottom}}">
     <view class="qa-hd">
-      <!-- 目标模块：备忘 / 购物（同一会话内记住上次选的） -->
+      <!-- 目标模块：备忘 / 随记（点一下按顺序轮换；每次展开都回到「备忘」） -->
       <view class="qa-m" bindtap="onQaSwitch">
-        <view class="qa-dot" style="background:{{qaM==='buy'?cBuy:cMemo}}"></view>
-        <text>{{qaM==='buy' ? '购物' : '备忘'}}</text>
+        <view class="qa-dot" style="background:{{qaC}}"></view>
+        <text>{{qaName}}</text>
         <text class="qa-swap">切换</text>
       </view>
       <view class="qa-list" bindtap="goList">清单 ›</view>
     </view>
     <view class="qa-row">
-      <input class="qa-in" placeholder="{{qaM==='buy' ? '要买什么' : '要记住什么'}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
+      <input class="qa-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
       <view class="qa-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">记下</view>
     </view>
   </view>
 
   <!-- 记下后给一次撤销（与其它页同一套样式） -->
   <view wx:if="{{qaUndo}}" class="toastline undo-bar qa-undo" style="bottom:{{qaBottom}}">
-    <view class="tx">已记入{{qaUndo.m==='buy' ? '购物' : '备忘'}}「{{qaUndo.txt}}」</view>
+    <view class="tx">已记入{{qaUndo.name}}「{{qaUndo.txt}}」</view>
     <view class="tb" bindtap="onQaUndo">撤销</view>
   </view>
 

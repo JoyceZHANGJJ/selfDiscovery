@@ -9,49 +9,55 @@ const MODULES = [
   { k: 'obs', n: '觉察', c: '#7C9A86' },
   { k: 'now', n: '此刻', c: '#5E9A94' },
   { k: 'want', n: '可做', c: '#C0A05A' },
-  { k: 'memo', n: '备忘', c: '#9A8C7A' },
-  { k: 'buy', n: '购物', c: '#C08552' }
+  // 待办：备忘 / 购物 合并而来。一条待办的 m 都是 todo，
+  // 「是备忘还是购物」看 ext 里的「类别」（todoKind），颜色也按类别给（见 catColor / taskColor）
+  { k: 'todo', n: '待办', c: '#9A8C7A' },
+  { k: 'jot', n: '随记', c: '#948AA8' }
 ];
 
 const OPT = {
-  // 觉察：归类 / 分类 / 程度 / 感受 里带「无感 · 悦己」味道的词，是 2026-10 合并维度时
+  // 觉察：归类 / 喜恶 / 程度 / 感受 里带「无感 · 悦己」味道的词，是 2026-10 合并维度时
   // 并进来的（原本属于已删除的无感 / 悦己）。直接写在觉察自己这里，池子就不再依赖
-  // 那两个已经消失的组——否则同一批词会被「死组」和「活组」各算一份
-  obsWhat: ['写方案', '写周报', '整理资料', '陪家人',
-    '应酬', '刷手机', '加班', '回消息',
-    '掌控自己的时间', '没有任务压力', '做想做的事', '无人打扰'],
+  // 那两个已经消失的组——否则同一批词会被「死组」和「活组」各算一份。
+  // 默认池每个只留 4 个、尽量覆盖不同方向：够启动就行，更贴合自己的等用起来再加。
+  // 「归类」只放"身上发生过的事"：原先掺着的「掌控自己的时间 / 没有任务压力 /
+  // 做想做的事 / 无人打扰」是悦己留下来的愿望 / 状态词，会把统计搅浑，已移除
+  obsWhat: ['写方案', '陪家人', '加班', '刷手机'],
   obsStart: ['工作必须', '自己想做', '别人提议'],
   obsKind: ['喜欢', '有趣', '没兴趣', '不喜欢', '不想'],
-  obsDeg: ['微微', '有点', '很', '非常', '极度'],
-  obsMood: ['开心', '平静', '满足', '焦虑', '低落', '烦躁', '麻木', '抵触', '心累', '反感'],
-  genDoing: ['写代码', '开会', '散步', '带娃', '做饭'],
-  genFeel: ['专注', '走神', '平静', '焦虑'],
-  genWant: ['喝咖啡', '走一走', '看会儿书'],
-  wantItem: ['学吉他', '早睡', '去旅行', '练字'],
+  obsDeg: ['微微', '有点', '很', '非常', '极度'],   // 一条刻度，不是「方向」，所以留 5 个
+  obsMood: ['开心', '平静', '焦虑', '低落'],
+  genDoing: ['写代码', '做饭', '散步', '看剧'],
+  genFeel: ['专注', '走神', '疲惫', '无聊'],
+  genWant: ['喝咖啡', '走一走', '看会儿书', '找人聊聊'],
+  wantItem: ['学吉他', '早睡', '去旅行', '跑步'],
   wantKind: ['想做', '可试', '喜欢'],
-  memoItem: [], buyItem: [],
-  doneFeel: ['踏实', '轻松', '平静'],
-  doneGain: ['完成感', '心情变好', '学到了']
+  // 待办：类别（备忘 / 购物，可在「✎ 管理」里加新类别）；主项就是记事本身，不进选项池
+  todoKind: ['备忘', '购物'],
+  todoItem: [], jotItem: []
+  // 注：原先还有 doneFeel / doneGain 两组默认词，但可做里「做了的感受 / 收获」是自由文本框、
+  // 没有 chips 入口，那两组池子永远不会被用到（选项池界面里也看不到），已删掉
 };
 
 // 「归类」：觉察 / 无感已把「什么事」解耦成「归类（名词性、可归类）+ 具体的描述（自由、不可归类）」。
 // 叫「归类」而不是「什么事 / 触动的点」，是因为池子里装的不一定是事——也可能是一个概念（自由）
 // 或一个物件（猫），所以标签只描述它的作用：从池里点选的那个用来归类的词。
-// 可做 / 此刻 也已解耦，那边主项仍叫「什么事 / 此刻想记」（只填描述时它本身就是「事」）；悦己等还没迁
+// 可做 / 此刻 也已解耦，那边主项叫「什么事 / 想记的是」（只填描述时它本身就是「事」）；悦己等还没迁
 const GLABEL = {
-  obsWhat: '归类', obsKind: '分类', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '此刻想记', genFeel: '情绪',
-  genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '分类',
-  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', memoItem: '要记住什么', buyItem: '要买什么', likeItem: '什么事'
+  obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
+  genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶',
+  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', likeItem: '什么事', jotItem: '想记点什么'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
 // 否则这些「死组」会一直被合并回来、在选项池里重复计数
-const DEAD_OPT_GROUPS = ['nopeThing', 'nopeDeg', 'nopeMood', 'nopeKind', 'likeItem'];
+const DEAD_OPT_GROUPS = ['nopeThing', 'nopeDeg', 'nopeMood', 'nopeKind', 'likeItem', 'memoItem', 'buyItem'];
 
 const OPTGROUPS = [
   { m: 'obs', gs: ['obsWhat', 'obsKind', 'obsDeg', 'obsStart', 'obsMood'] },
   { m: 'now', gs: ['genDoing', 'genFeel', 'genWant'] },
-  { m: 'want', gs: ['wantItem', 'wantKind'] }
+  { m: 'want', gs: ['wantItem', 'wantKind'] },
+  { m: 'todo', gs: ['todoKind'] }
 ];
 
 // 固定选项组（写死，不给“管理”入口）
@@ -73,7 +79,7 @@ const DESC_SRC = 'free:' + DESC_KEY;
 // 注：g 组若没标 noInput，就带一个手填输入框——手填值只记这一条，不进选项池
 const FIELDS = {
   // 觉察（无感 / 悦己 已并入这里）。编辑器里的展示顺序由 index 的 buildComposer 排成
-  // 「分类 → 程度 → 感受（情绪 chips + 紧随的自由输入框）→ 怎么开始的 → 沉浸 → 精力」；
+  // 「喜恶 → 程度 → 感受（情绪 chips + 紧随的自由输入框）→ 怎么开始的 → 沉浸 → 精力」；
   // 这里的书写顺序是「存储顺序」——新分组追加在末尾，导出/导入的按顺序对齐因此不受影响
   obs: { main: 'obsWhat', items: [
     { g: 'obsStart', single: true, noInput: true },
@@ -82,7 +88,7 @@ const FIELDS = {
     { free: 'obsfeel', label: '', ph: '有什么想抒发的？', ta: true },
     // 具体的描述：不可归类，编辑时不带标题，就在「归类」下方
     { free: 'desc', label: '', ph: '发生了什么？', ta: true },
-    // 分类 / 程度：原本属于「无感」，并入后所有觉察记录都能用。
+    // 喜恶 / 程度：原本属于「无感」，并入后所有觉察记录都能用。
     // 程度是「感受」的修饰（微微 / 有点 / 很…），sub 表示它在编辑器里作为情绪的副行展示：
     // 不单独起标题、chip 小一号、没选情绪时不出现（见 index 的 buildComposer 与 index.wxml）
     { g: 'obsKind', single: true, noInput: true },
@@ -92,7 +98,7 @@ const FIELDS = {
     { g: 'genFeel', single: false, noInput: true },
     { free: 'nownote', label: '感受', ph: '这一刻心里的感觉，随便写', ta: true },
     { g: 'genWant', single: true },
-    // 「具体的描述」：与「此刻想记」解耦，逻辑与可做那套一致（只填它时它本身就是「事」）。
+    // 「具体的描述」：与「想记的是」解耦，逻辑与可做那套一致（只填它时它本身就是「事」）。
     // 固定放最后一位，导出/导入的按顺序对齐不受影响
     { free: 'desc', label: '', ph: '也可以直接写「事」；选了上面就是补充', ta: true, asMain: true }
   ] },
@@ -112,9 +118,16 @@ const FIELDS = {
     // 觉察 / 无感没有这个标记，因为那边的「归类」只从选项池点选
     { free: 'desc', label: '', ph: '也可以直接写「事」；选了上面就是补充', ta: true, asMain: true }
   ] },
-  /* 备忘 / 购物：只记一句话，没有细节；要复用同一句话，去「选项池」里加 */
-  memo: { main: 'memoItem', items: [ { free: 'memonote', label: '原因', ph: '为什么记这条？可不填', ta: true } ] },
-  buy:  { main: 'buyItem',  items: [ { free: 'buynote', label: '干什么用', ph: '买来做什么？可不填', ta: true } ] }
+  /* 待办（备忘 / 购物 合并后）：类别 + 一句话。
+     类别（todoKind）默认 备忘 / 购物，可在「✎ 管理」里加新类别；
+     「原因」合并了原先 备忘的「原因」与 购物的「干什么用」（迁移时统一成 free:tasknote） */
+  todo: { main: 'todoItem', items: [
+    { g: 'todoKind', single: true, noInput: true, required: true },
+    { free: 'tasknote', label: '原因', ph: '为什么记这条？可不填', ta: true }
+  ] },
+  /* 随记：随手记一句想法 / 灵感。不是待办（没有勾选、不进清单页），也不需要归类或细节——
+     所以只有一个主输入框，items 为空；「记页」把它和备忘 / 购物 一样当纯输入框渲染 */
+  jot:  { main: 'jotItem',  items: [] }
 };
 
 const THEMES = [
@@ -183,9 +196,9 @@ const DCOLORS = ['#7C9A86', '#5E9A94', '#C0A05A', '#948AA8', '#6E8CB0', '#B4544E
 
 // 细节回读标签：来源 -> 字段名
 const COLMAP = {
-  obsKind: '分类', obsDeg: '程度',
+  obsKind: '喜恶', obsDeg: '程度',
   obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
-  'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:memonote': '原因', 'free:buynote': '干什么用',
+  'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:tasknote': '原因', 'free:memonote': '原因', 'free:buynote': '干什么用',
   'free:desc': '描述',
   'free:trigger': '诱因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
@@ -218,6 +231,12 @@ function wantKindDefault() {
   const def = k.indexOf('想做') >= 0 ? '想做' : (k[0] || '想做');
   return [def];
 }
+// 待办默认类别：优先锁定值「备忘」（不随选项顺序变化），找不到再退第一个，最后兜底「备忘」
+function todoKindDefault() {
+  const k = getOPT('todoKind');
+  const def = k.indexOf('备忘') >= 0 ? '备忘' : (k[0] || '备忘');
+  return [def];
+}
 
 // 时间线（非待办）记录的日期前缀：今天＝空串；昨天 / 前天用相对说法；更早给日期（跨年才带年份）。
 // 与 taskTime 共用同一套「跨年才带年份」的判断，避免去年的记录只显示「10月3日」产生歧义
@@ -242,7 +261,7 @@ function extLabel(src, m) {
   return COLMAP[src] || FALLBACK[m] || '';
 }
 // 生成记录的细节展示列表 [{lbl, v}]
-// obs：按「分类 → 程度 → 感受 → 怎么开始 / 沉浸 / 精力」排序，情绪与自由感受合成「感受」一行
+// obs：按「喜恶 → 程度 → 感受 → 怎么开始 / 沉浸 / 精力」排序，情绪与自由感受合成「感受」一行
 // nope：仅作兜底——无感已并入觉察，这里保留是为了万一某次迁移没跑完，老记录仍能正常回读
 function buildExt(m, ext, extSrc) {
   const f = FIELDS[m];
@@ -253,7 +272,7 @@ function buildExt(m, ext, extSrc) {
   // 「具体的描述」不并进细节区：它要和「归类」同排展示（见页面 recVM 的 desc），
   // 这里排掉，避免同一句话在标题行和细节行各出现一次
   }).filter(d => hideSrc.indexOf(d.src) < 0 && d.src !== DESC_SRC);
-  // 觉察：详情按「分类 → 感受 → 怎么开始的 → 沉浸 → 精力」展示，与编辑器里的顺序一致。
+  // 觉察：详情按「喜恶 → 感受 → 怎么开始的 → 沉浸 → 精力」展示，与编辑器里的顺序一致。
   // 「感受」是一组：程度（obsDeg）与情绪（obsMood）连写成「有点焦虑」，再和自由感受（obsfeel）
   // 用 · 连成一行 —— 与编辑器里「档位 + 情绪 + 自由输入框」合成一块的口径一致；
   // 只影响回读展示，ext/extSrc 里三者仍是各自独立的字段
@@ -328,16 +347,27 @@ function normTime(t, ts) {
   if (ts) { const d = new Date(ts); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
   return s;
 }
-// 记录的模块显示名：want 按状态显示为 未做/在做（已完成归入 done 模块显示“做了”），再拼接分类
+// 记录的模块显示名：want 按状态显示为 未做/在做（已完成归入 done 模块显示“做了”），再拼接分类；
+// obs 同样把「喜恶」拼在模块名后面（觉察·喜欢），这样列表 / 操作条一眼能看出这条归在哪一类
 function recMname(r) {
+  // 从 ext / extSrc 里取某个细节值（两条拼接规则共用）
+  const extVal = (src) => {
+    const es = r.extSrc || [], ex = r.ext || [];
+    const i = es.indexOf(src);
+    return i >= 0 ? ex[i] : '';
+  };
   if (r.m === 'want') {
     const st = r.status || '';
     const stateName = st === 'doing' ? '在做' : (st === 'done' ? '做了' : (st === 'abandon' ? '不做' : '未做'));
-    const es = r.extSrc || [], ex = r.ext || [];
-    const i = es.indexOf('wantKind');
-    const k = i >= 0 ? ex[i] : '';
+    const k = extVal('wantKind');
     return k ? stateName + '·' + k : stateName;
   }
+  if (r.m === 'obs') {
+    const k = extVal('obsKind'), n = mname('obs');
+    return k ? n + '·' + k : n;
+  }
+  // 待办：显示类别（备忘 / 购物），而不是模块名「待办」——列表 / 操作条上一眼能分清
+  if (isTask(r.m)) return taskCat(r);
   return mname(r.m);
 }
 // 待办清单行的时间文案：今天只给时刻；非今天给简洁日期（跨年才带年份），
@@ -366,7 +396,9 @@ function decorate(r) {
   o.startedAt = r.startedAt || 0;
   o.abandonedAt = r.abandonedAt || 0;
   o.endTs = r.endTs || 0;
-  // 备忘「原因」/ 购物「什么用」：从细节里提取对应 free 字段
+  // 待办：类别（todoKind）+「原因」自由字段。
+  // 「原因」合并了原先 备忘的「原因」与 购物的「干什么用」（旧的 two 个来源也一并兼容，供迁移前数据回显）
+  o.cat = '';
   o.reason = '';
   o.usefor = '';
   // 「具体的描述」：与「归类」(txt) 配对，取出后供列表同排展示
@@ -374,14 +406,51 @@ function decorate(r) {
   const _es = o.extSrc || [], _ex = o.ext || [];
   for (let i = 0; i < _es.length; i++) {
     if (!_ex[i]) continue;
-    if (_es[i] === 'free:memonote') o.reason = _ex[i];
-    else if (_es[i] === 'free:buynote') o.usefor = _ex[i];
+    if (_es[i] === 'todoKind') o.cat = _ex[i];
+    else if (_es[i] === 'free:tasknote' || _es[i] === 'free:memonote' || _es[i] === 'free:buynote') o.reason = _ex[i];
     else if (_es[i] === DESC_SRC) o.desc = _ex[i];
   }
   return o;
 }
-// 备忘 / 购物 = 待办型记录
-function isTask(m) { return m === 'memo' || m === 'buy'; }
+// 待办型记录（备忘 / 购物 已合并为 todo；memo / buy 只用于兼容迁移前的老数据）
+function isTask(m) { return m === 'todo' || m === 'memo' || m === 'buy'; }
+
+// 待办的「类别」：新记录取 ext 里的 todoKind；迁移前的老记录按原模块兜底
+// 类别配色：备忘 / 购物 沿用原来的棕 / 橙（列表看起来不变）；其余类别按它在选项池里的位置
+// 依次取调色板（刻意避开棕 / 橙系，和这两个一眼分得开），所以新加的类别各有各的颜色，
+// 不再是统一的待办色
+const CAT_COLORS = { '备忘': '#9A8C7A', '购物': '#C08552' };
+const CAT_PALETTE = ['#7C9A86', '#5E9A94', '#6E8CB0', '#948AA8', '#B4544E', '#5C7A8A', '#8A9A5B', '#A8809E'];
+function catColor(cat) {
+  if (!cat) return mcolor('todo');
+  if (CAT_COLORS[cat]) return CAT_COLORS[cat];
+  const i = getOPT('todoKind').indexOf(cat);
+  return i >= 0 ? CAT_PALETTE[i % CAT_PALETTE.length] : mcolor('todo');
+}
+function taskCat(r) {
+  if (!r) return '待办';
+  // 以 ext 里的类别为准（decorate 虽然缓存了一份到 r.cat，但改选项名时只改了 ext，缓存会过期）
+  const es = r.extSrc || [], ex = r.ext || [];
+  const i = es.indexOf('todoKind');
+  if (i >= 0 && ex[i]) return ex[i];
+  if (r.cat) return r.cat;
+  if (r.m === 'memo') return '备忘';
+  if (r.m === 'buy') return '购物';
+  return '待办';
+}
+function taskColor(r) { return catColor(taskCat(r)); }
+
+// 按天分段（[{key, day, recs}]）的「只渲染最近 N 天」窗口：每天默认最多放 20 条，
+// 被「展开全部」过的天（dayAll 里有它的 key）则放全。清单页 / 看页共用。
+// key 统一转成字符串：它要经 data-* 传回 dataset，避免数字 / 字符串对不上
+function winDays(days, lim, dayAll) {
+  return (days || []).slice(0, lim).map(g => {
+    const key = String(g.key);
+    const all = !!(dayAll && dayAll[key]);
+    const recs = all ? g.recs : g.recs.slice(0, 20);
+    return { key, day: g.day, recs, n: g.recs.length, all };
+  });
+}
 // 完成时间文案：已完成 · X月X日 HH:MM
 function doneLabel(ts) {
   if (!ts) return '已完成';
@@ -437,7 +506,7 @@ function decorateDoc(d) {
 }
 // 组装查询条件：模块过滤 + 时间范围（startTs <= ts < before）+ 状态（仅 want 模块用）+ 细节值筛选
 // state: 'all'(未做+在做+做了+不做) / 'todo' / 'doing' / 'done' / 'abandon'
-// extTags: 细节值（如觉察的「分类」= 喜欢 / 有趣 / 没兴趣 / 不喜欢）——ext 是数组，
+// extTags: 细节值（如觉察的「喜恶」= 喜欢 / 有趣 / 没兴趣 / 不喜欢）——ext 是数组，
 //          单个值直接等值命中（数组包含即算中），多个值要求同时都包含
 // mNot: 要排除的模块（看页「全部」不看待办：备忘 / 购物不进时间线，取回来只是白占一页的位置）
 function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null } = {}) {
@@ -507,7 +576,7 @@ function loadAllRecords({ m = null, mNot = null, startTs = null } = {}) {
 // 走 count 接口，不受列表分页影响。
 function countRecords({ m = null, startTs = null, state = null, extTag = null, extTags = null } = {}) {
   return new Promise((resolve) => {
-    // extTag 是早期的单标签写法，extTags 支持「分类 + 沉浸」这类组合（都要命中）
+    // extTag 是早期的单标签写法，extTags 支持「喜恶 + 沉浸」这类组合（都要命中）
     const tags = (extTags && extTags.length) ? extTags : (extTag ? [extTag] : []);
     const w = recWhere({ m, startTs, state, extTags: tags });
     recCol().where(w).count()
@@ -655,6 +724,43 @@ function clearDelDef(g, v) {
   return saveDelDef(_delDef);
 }
 
+/* 用户自己编辑过的组：只要在「✎ 管理」里动过某组（增 / 删 / 改名），这一组就归他自己了——
+   把当时的完整列表存下来（本地 + 云端 usercfg），此后加载就以这份为准，
+   代码里的默认词不再往这组里塞（改默认池只影响他从没动过的组）。
+   只调过顺序不算数：顺序另有 optOrder 记着，词组该更新还是更新。 */
+const OPTCUSTOM_LS = 'self_optcustom_v1';
+let _optCustom = {};
+function loadOptCustomLocal() { try { return wx.getStorageSync(OPTCUSTOM_LS) || {}; } catch (e) { return {}; } }
+function persistOptCustomLocal(map) { try { wx.setStorageSync(OPTCUSTOM_LS, map); } catch (e) {} }
+function loadOptCustom() {
+  return new Promise(resolve => {
+    const local = loadOptCustomLocal();
+    cfgCol().where({ type: 'optCustom' }).get().then(res => {
+      const cloud = (res.data && res.data[0] && res.data[0].data) || {};
+      const merged = Object.assign({}, local, cloud);
+      persistOptCustomLocal(merged);
+      _optCustom = merged;
+      resolve(merged);
+    }).catch(() => { _optCustom = local; resolve(local); });
+  });
+}
+function saveOptCustom(map) {
+  _optCustom = map;
+  persistOptCustomLocal(map);
+  return cfgCol().where({ type: 'optCustom' }).get().then(res => {
+    const docs = res.data || [];
+    if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: map } }).then(() => true).catch(() => false);
+    return cfgCol().add({ data: { type: 'optCustom', data: map } }).then(() => true).catch(() => false);
+  }).catch(e => { console.warn('[云] 已自定义选项组未同步云端：', e); return false; });
+}
+// 用户动过某组后调用：把这一组的完整列表存下来，此后这一组以它为准
+function markOptCustom(g, arr) {
+  if (!g) return Promise.resolve(false);
+  const map = Object.assign({}, _optCustom);
+  map[g] = (arr || (G.OPT && G.OPT[g]) || []).slice();
+  return saveOptCustom(map);
+}
+
 // 选项顺序：每组一个有序数组，持久化到本地 + 云端 usercfg（type=optOrder）
 const ORDER_LS = 'self_optorder_v1';
 function loadOptOrderLocal() { try { return wx.getStorageSync(ORDER_LS) || {}; } catch (e) { return {}; } }
@@ -693,9 +799,15 @@ function loadOptions() {
     Promise.all([
       optCol().limit(1000).get().catch(() => ({ data: [] })),
       loadDelDef(),
-      loadOptOrder()
-    ]).then(([res, delDef, orderMap]) => {
+      loadOptOrder(),
+      loadOptCustom()
+    ]).then(([res, delDef, orderMap, custom]) => {
       const O = JSON.parse(JSON.stringify(OPT));
+      // 用户自己编辑过的组：以他存下来的那份为底，代码里的默认词不再插手
+      Object.keys(custom || {}).forEach(g => {
+        if (DEAD_OPT_GROUPS.indexOf(g) >= 0 || !custom[g]) return;
+        O[g] = custom[g].slice();
+      });
       const docs = res.data || [];
       docs.forEach(d => {
         const g = d.group, v = d.value;
@@ -703,7 +815,10 @@ function loadOptions() {
         if (!O[g]) O[g] = [];
         if (O[g].indexOf(v) < 0) O[g].push(v);
       });
-      mergeOpts(O, local);
+      // 本地快照里混着代码默认词：已自定义过的组不吃它，否则默认词又渗回去了
+      const localClean = {};
+      Object.keys(local || {}).forEach(g => { if (!(custom && custom[g])) localClean[g] = local[g]; });
+      mergeOpts(O, localClean);
       applyDelDef(O, delDef); // 剔除被删/改的默认项，避免常量回弹
       // 应用自定义排序：已记录顺序的优先按记录排，未记录的排后面
       Object.keys(orderMap || {}).forEach(g => {
@@ -717,7 +832,11 @@ function loadOptions() {
       resolve(O);
     }).catch(e => {
       console.error('[options] 云端读取失败，回退默认+本地：', e);
-      const O = JSON.parse(JSON.stringify(OPT)); mergeOpts(O, local); applyDelDef(O, _delDef);
+      const O = JSON.parse(JSON.stringify(OPT));
+      Object.keys(_optCustom || {}).forEach(g => { if (_optCustom[g]) O[g] = _optCustom[g].slice(); });
+      const localClean = {};
+      Object.keys(local || {}).forEach(g => { if (!(_optCustom && _optCustom[g])) localClean[g] = local[g]; });
+      mergeOpts(O, localClean); applyDelDef(O, _delDef);
       resolve(O);
     });
   });
@@ -791,7 +910,14 @@ function renameInRecords(g, ov, nv) {
 
 // 选项改名：记页已同步改过内存，这里把云端补齐（否则下拉刷新一次，旧名字就回来了）。
 // 默认项的删除标记（delDef）仍由选项管理页处理——同样只针对本组
+// 顺带记一次「改名映射」：当前会话里还挂着旧值的地方（如记页已选中的 chip）要跟着换新名，
+// 否则旧值会以「临时 chip」的身份与改名后的新值一起出现，看起来像同一个选项重复了
+// （记页从管理页返回时用 takeRenameMap 取走并同步，见 index 的 applyRenames）
+let _renames = {};
+function takeRenameMap() { const m = _renames; _renames = {}; return m; }
 function renameOption(g, ov, nv) {
+  _renames[g] = _renames[g] || {};
+  _renames[g][ov] = nv;
   persistLocalOpts();
   return new Promise((resolve) => {
     // ① 云端选项池：本组里等于旧名的项改名
@@ -1005,6 +1131,59 @@ function cleanDeadOptGroups() {
   });
 }
 
+/* ---------------- 一次性迁移：备忘 / 购物 合并为「待办」（2026-10） ----------------
+   模块层已合并成 todo（见 FIELDS.todo），这里把历史记录搬过来：
+   ① m 改成 todo；② 在 ext/extSrc 最前面补上「类别」= 备忘 / 购物；
+   ③ 原因字段统一成 free:tasknote（备忘的「原因」与 购物的「干什么用」本就是同一位）。
+   与其它迁移一样：改了 m 结果集会收缩，所以每轮取一批未迁移的、取空为止；没迁完不写标记，下次启动接着迁。
+   迁移后内存里的记录同步改掉，本会话无需刷新即可看到。 */
+const MIG_TODO_KEY = 'self_mig_todo_202610';
+function toTodoExt(oldM, extSrc, ext) {
+  const cat = oldM === 'buy' ? '购物' : '备忘';
+  const outExt = [cat], outSrc = ['todoKind'];
+  (extSrc || []).forEach((s, i) => {
+    const v = (ext || [])[i];
+    if (!v) return;
+    outExt.push(v);
+    outSrc.push((s === 'free:memonote' || s === 'free:buynote') ? 'free:tasknote' : s);
+  });
+  return { ext: outExt, extSrc: outSrc };
+}
+function migrateTasksToTodo() {
+  return new Promise((resolve) => {
+    if (wx.getStorageSync(MIG_TODO_KEY)) { resolve(true); return; }
+    const _ = db().command;
+    let rounds = 0;
+    function step() {
+      if (++rounds > 200) return Promise.resolve(false);   // 兜底：异常时不至于无限循环
+      return recCol().where({ m: _.in(['memo', 'buy']) }).limit(20).get().then(res => {
+        const docs = res.data || [];
+        if (!docs.length) return true;
+        const tasks = docs.map(d => {
+          const nf = toTodoExt(d.m, d.extSrc, d.ext);
+          return recCol().doc(d._id).update({ data: { m: 'todo', ext: nf.ext, extSrc: nf.extSrc } });
+        });
+        return Promise.all(tasks).then(() => step());
+      });
+    }
+    step().then(ok => {
+      if (!ok) { resolve(false); return; }   // 没迁完就不写标记，下次启动接着迁
+      (G.records || []).forEach((r, i) => {
+        if (r.m !== 'memo' && r.m !== 'buy') return;
+        const nf = toTodoExt(r.m, r.extSrc, r.ext);
+        G.records[i] = decorate({
+          id: r.id, _rid: r._rid, m: 'todo', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
+          done: r.done, doneAt: r.doneAt, status: r.status, ref: r.ref, refTxt: r.refTxt,
+          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt
+        });
+      });
+      wx.setStorageSync(MIG_TODO_KEY, 1);
+      console.log('[mig] 备忘 / 购物 已合并为待办');
+      resolve(true);
+    }).catch(e => { console.warn('[mig] 待办合并迁移失败（下次启动重试）：', e); resolve(false); });
+  });
+}
+
 // 自定义维度
 function loadDims() {
   return new Promise((resolve) => {
@@ -1088,7 +1267,8 @@ function ensureAll() {
     _loading = false;
     return migrateWantKind()
       .then(() => migrateNopeLikeIntoObs())
-      .then(() => cleanDeadOptGroups());
+      .then(() => cleanDeadOptGroups())
+      .then(() => migrateTasksToTodo());
   }).catch(() => { _loading = false; });
 }
 
@@ -1107,10 +1287,10 @@ function reload() {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, CAT_COLORS, catColor, taskCat, taskColor, winDays,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
-  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups,
-  isDefault, addDelDef, clearDelDef,
+  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, takeRenameMap,
+  isDefault, addDelDef, clearDelDef, markOptCustom,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, reload, regDim, unregDim,
   globalData: G
 };
