@@ -60,19 +60,20 @@
       <view class="srow"><view class="sl">导入记录</view><view class="sr" bindtap="onImportTap">粘贴</view></view>
       <view class="srow"><view class="sl">清空所有记录</view><view class="sr danger" bindtap="onClear">清空</view></view>
 
-      <!-- 自定义标签 -->
-      <view class="sect-t" style="margin-top:18px">自定义标签</view>
-      <view class="srow" bindtap="onAddDimTap"><view class="sl">新增维度</view><view class="sr">＋ 新增</view></view>
-      <view wx:if="{{dims.length===0}}" class="empty-mini">还没有自定义维度</view>
-      <view wx:for="{{dims}}" wx:key="k" class="srow">
-        <view class="sl"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{item.c}};margin-right:8px"></view>{{item.n}}</view>
-        <view class="sv">自定义 · {{item.opt}} 个选项</view>
-        <view class="mini-b del" data-k="{{item.k}}" bindtap="delDim">移除</view>
+      <!-- 自定义标签：设置页只列出已有的自定义维度（可移除），不再展示节标题与「新增维度」入口。
+           新增维度的浮层与逻辑（onAddDimTap / confirmDim）都还在，要恢复入口把那行 srow 加回来即可。
+           没有自定义维度时整块不渲染（原来那句「还没有自定义维度」是配合新增入口的，入口没了就没意义了） -->
+      <view wx:if="{{dims.length}}" style="margin-top:18px">
+        <view wx:for="{{dims}}" wx:key="k" class="srow">
+          <view class="sl"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{item.c}};margin-right:8px"></view>{{item.n}}</view>
+          <view class="sv">自定义 · {{item.opt}} 个选项</view>
+          <view class="mini-b del" data-k="{{item.k}}" bindtap="delDim">移除</view>
+        </view>
       </view>
 
       <!-- 关于 -->
       <view class="sect-t" style="margin-top:18px">关于</view>
-      <view class="srow"><view class="sl">选项池</view><view class="sv">{{optCount}} 组</view></view>
+      <view class="srow"><view class="sl">选项池</view><view class="sv">{{optGroups}} 组 · {{optCount}} 个</view></view>
       <view class="srow"><view class="sl">数据位置</view><view class="sv">云开发数据库</view></view>
       <view class="srow" bindtap="openLog"><view class="sl">更新日志</view><view class="sv">最近 {{logLatest}} ▸</view></view>
     </view>

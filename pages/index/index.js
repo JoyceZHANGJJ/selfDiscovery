@@ -61,6 +61,8 @@ Page({
     scrollTop: 0,
     composerTop: 0,
     scrollTo: '',
+    // 维度标签行的「可滚动」渐变提示：只有标签真的超出、右侧还有内容时才显示
+    tagFade: false,
     recSel: null,
     recSelRec: null,
     delUndo: null,
@@ -121,8 +123,6 @@ Page({
       this.st.tag = cur;
       // 进入「去做」时若还没选分类，补上默认分类（以往靠 onTag 触发，现在默认就是它，需在此兜底）
       if (cur === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-      // 进入「无感」时若还没选分类，补上默认分类「不想」
-      if (cur === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
       // 回到记页且没有待编辑记录时，清掉可能残留的编辑态，避免所有操作一直被拦
       // （从「管理选项」页返回时除外：编辑中的内容与状态要原样保留）
       if (!app.globalData.editRec && !this.st.fromManage) this.setData({ editing: false });
@@ -140,6 +140,11 @@ Page({
         if (t !== this.st.tag) this.onTag({ currentTarget: { dataset: { k: t } } });
       }
     });
+  },
+
+  onHide() {
+    // 离开页面（切 tab / 去清单 / 进后台）不保留操作条与撤销条，回来是一页干净的
+    this.clearFloats();
   },
 
   ensureTheme() {
@@ -197,36 +202,28 @@ Page({
     (r.ext || []).forEach((v, i) => {
       let src = (r.extSrc || [])[i] || '', val = v;
       if (src.indexOf('free:') === 0) { this.st.free[src.slice(5)] = val; return; }
-      // 老数据：不想的情绪可能存成「程度+情绪」合并值（如「微微懒」），拆回 程度 + 情绪
-      if (src === 'nopeMood') {
-        const degs = store.getOPT('nopeDeg');
-        const hitDeg = degs.find(d => val.indexOf(d) === 0);
-        const rest = hitDeg ? val.slice(hitDeg.length) : val;
-        // 若拆分后剩余正好是预设情绪，则各自还原；否则整条放回情绪
-        if (hitDeg && store.getOPT('nopeMood').indexOf(rest) >= 0) {
-          (this.st.pick['nopeDeg'] = this.st.pick['nopeDeg'] || []).push(hitDeg);
-          (this.st.pick['nopeMood'] = this.st.pick['nopeMood'] || []).push(rest);
-          return;
-        }
-        val = rest;
-      }
+      // 老数据的「程度+情绪」合并值（如「微微抵触」）已由 migrateNopeLikeIntoObs 一次性拆开，这里不再处理
       const O = store.getOPT(src);
-      if (O.indexOf(val) >= 0) (this.st.pick[src] = this.st.pick[src] || []).push(val);
-      else if (!store.isNoInput(src)) this.st.typed[src] = val; // 非预设选项的手填值（隐藏输入的组不留残值）
+      // 「沉浸 / 精力」是写死在代码里的固定选项组（fx:）：它们天然不在选项池里（ensureRecOpts 也特意跳过），
+      // 所以不能按「池里有这个值 → 选中」来判断，否则这两行编辑时永远空着（值会被塞进 typed，而 fx 行不渲染 typed）
+      const isFixed = src.indexOf('fx:') === 0;
+      // 不在选项池里的历史值：还能手填的组放进输入框；已经不给手填的组（noInput）
+      // 也放进选中态 —— 由 buildComposer 作为临时 chip 展示，否则会在保存时被悄悄丢掉
+      if (isFixed || O.indexOf(val) >= 0 || store.isNoInput(src)) (this.st.pick[src] = this.st.pick[src] || []).push(val);
+      else this.st.typed[src] = val;
     });
     // 记录本身没有分类（历史数据）时才补默认分类；有则只回显记录自己的值，避免默认+记录值同时选中
     if (r.m === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    if (r.m === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
     // 「开始」流转进入：稍后在「保存修改」时才记录开始时间（这里只标记 startMode）
     this.st.startMode = !!g.editStart; g.editStart = null;
     // 「完成」流转进入：稍后在「保存修改」时才置「做了」并记录完成时间（这里只标记 completing）
     this.st.completing = !!g.editComplete; g.editComplete = null;
     // 「放弃」流转进入：稍后在「保存修改」时才置「不做」并记录放弃时间（这里只标记 abandoning）
     this.st.abandoning = !!g.editAbandon; g.editAbandon = null;
-    // 「结束」流转进入（觉察/无感）：自动定位到「感受」输入框并弹出键盘，便于立刻记感受
+    // 「结束」流转进入（觉察）：自动定位到「感受」输入框并弹出键盘，便于立刻记感受
     // 结束时间不在这里落，稍后在「保存修改」时才记录并写云（这里只标记 ending）
     this.st.ending = !!g.editEnding; g.editEnding = null;
-    this.st.focusFree = g.editEndFocus ? (r.m === 'obs' ? 'obsfeel' : (r.m === 'nope' ? 'nopefeel' : '')) : '';
+    this.st.focusFree = g.editEndFocus ? 'obsfeel' : '';
     g.editEndFocus = null;
     // 展示哪些字段：点「完成」(action)→仅做了的感受/收获并聚焦；点「开始」(action)→仅进行中感受并聚焦；
     // 点「放弃」(action)→仅“为什么不做了”并聚焦；普通点开编辑：做中→进行中感受；已做（做了）→进行中感受 与 做了的感受/收获 都可改；
@@ -257,7 +254,7 @@ Page({
     let endTs = 0;
     if (isLegacyDone) endTs = r.ts;                              // legacy：完成=ts
     else if (isWantDone) endTs = r.doneAt || 0;                  // want-done：完成=doneAt
-    else if (r.m === 'obs' || r.m === 'nope') endTs = r.endTs || 0;   // 觉察/无感：结束=endTs；未结束(首次)不填，由「结束」按钮记录
+    else if (r.m === 'obs') endTs = r.endTs || 0;                // 觉察：结束=endTs；未结束(首次)不填，由「结束」按钮记录
     const abandonTs = isWantAbandon ? (r.abandonedAt || Date.now()) : 0;  // 不做：放弃时间=abandonedAt，无则默认现在
     const c = dtStr(createTs), s = dtStr(startTs), e = dtStr(endTs), ab = dtStr(abandonTs);
     this.setData({
@@ -266,12 +263,16 @@ Page({
       editDate: c.date, editTime: c.time,
       editHasStart: !!startTs,
       editStartDate: s.date, editStartTime: s.time,
-      // 觉察/无感：点「改」且已有结束时间才回显结束时间供修改；点「结束」进入时不回显（结束时间在保存时才记）
-      editHasEnd: isDoneView || ((r.m === 'obs' || r.m === 'nope') && !!r.endTs && !this.st.ending),
+      // 觉察：点「改」且已有结束时间才回显结束时间供修改；点「结束」进入时不回显（结束时间在保存时才记）
+      editHasEnd: isDoneView || (r.m === 'obs' && !!r.endTs && !this.st.ending),
       editEndDate: e.date, editEndTime: e.time,
       editHasAbandon: isWantAbandon,
       editAbandonDate: ab.date, editAbandonTime: ab.time
     });
+    // 进入编辑态后立刻把整页滚回顶部露出记卡：这里 cover 了所有入口
+    //（操作条「改」/ 长按记录 / 从看页点「改」或长按后切回本页 / 从管理页返回后继续编辑），
+    // 否则从下方「最近」或从看页回来时，页面还停在下方，记卡整个在屏幕外
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
 
   /* 编辑态：修改时间（创建 / 开始 / 结束） */
@@ -302,7 +303,7 @@ Page({
       const ds = fmtDur(durMs);
       if (ds) dur = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
     }
-    if ((r.m === 'obs' || r.m === 'nope') && r.endTs && r.ts && r.endTs > r.ts) {
+    if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
       const ds = fmtDur(r.endTs - r.ts);
       if (ds) dur = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
     }
@@ -311,7 +312,7 @@ Page({
       const ds = fmtDur(r.abandonedAt - r.ts);
       if (ds) dur = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
-    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur,
+    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur,
       // 清单标题超长：隐藏原因/用途，标题独占整行自动折行（右侧只留时间）
       longTxt: task && String(r.txt || '').length > 12 };
   },
@@ -325,22 +326,50 @@ Page({
     }
     const main = f.main;
     const mainOpts = store.getOPT(main).map(v => ({ v, on: this.st.mainPick === v }));
+    // 历史数据里手填的「点」可能不在选项池里：把它作为临时选项排在最前，
+    // 保证看得见、点一下能取消（带描述的模块没有主输入框，点只能从池里选）
+    const legacyMain = (!this.st.mainPick && (this.st.main || '').trim()) || '';
+    if (legacyMain && store.getOPT(main).indexOf(legacyMain) < 0) mainOpts.unshift({ v: legacyMain, on: true });
+    // 「具体的描述」= 与「归类」(主项) 配对的自由字段。它不是普通细节项：单独摆在主输入框下方
+    // （见 index.wxml），所以这里先从细节列表里摘出来；保存仍按 f.items 的原顺序写 ext/extSrc，
+    // 于是 export/import 的按顺序对齐完全不受影响
+    const descItem = (f.items || []).find(it => it.free === store.DESC_KEY);
     // 「可做」按流转状态过滤字段：进行中感受 仅做中/点开始/已做编辑时显示；做了的感受/收获 仅点完成/已做编辑时显示；
     // 为什么不做了 仅点放弃/编辑「不做」时显示
-    let fitems = f.items;
+    let fitems = f.items.filter(it => it.free !== store.DESC_KEY);
     if (tag === 'want') {
-      fitems = f.items.filter(it => {
+      fitems = fitems.filter(it => {
         if (it.free === 'doingNote') return !!this.st.showDoing;
         if (it.free === 'doneFeel' || it.free === 'doneGain') return !!this.st.showDone;
         if (it.free === 'abandonWhy') return !!this.st.showAbandon;
         return true;
       });
     }
+    // 档位（obsDeg）是情绪的修饰：没选情绪、也没有历史档位时整行不展示
+    const showDeg = tag === 'obs' &&
+      ((this.st.pick['obsMood'] || []).length > 0 || (this.st.pick['obsDeg'] || []).length > 0);
+    // 展示顺序与存储顺序解耦：觉察的细节在编辑器里排成
+    // 「分类 → 感受（情绪 chips + 档位副行 + 自由输入框）→ 怎么开始的 → 沉浸 → 精力」，
+    // 但保存仍按 f.items 的原顺序写 ext/extSrc，导出/导入的按顺序对齐因此不受影响
+    if (tag === 'obs') {
+      const key = (it) => it.g || (it.fx ? 'fx:' + it.fx : 'free:' + it.free);
+      // 档位紧跟情绪（点完情绪就在原处展开），自由感受再跟在后面
+      const want = ['obsKind', 'obsMood', 'obsDeg', 'free:obsfeel', 'obsStart', 'fx:forgot', 'fx:nrg'];
+      const rest = fitems.filter(it => want.indexOf(key(it)) < 0);   // 未列出的照旧附在后面，不会被吞掉
+      fitems = want.map(k => fitems.find(it => key(it) === k)).filter(Boolean).concat(rest);
+    }
     const items = fitems.map((it, idx) => {
       if (it.g) {
         const opts = store.getOPT(it.g).map(v => ({ v, on: (this.st.pick[it.g] || []).indexOf(v) >= 0 }));
+        // 历史手填值不在选项池里（这个组后来取消了手填）：作为临时 chip 排在最前，
+        // 保证看得见、点一下能取消，不会在保存时被悄悄丢掉
+        (this.st.pick[it.g] || []).forEach(v => {
+          if (store.getOPT(it.g).indexOf(v) < 0) opts.unshift({ v, on: true });
+        });
         const ph = it.freeze ? '手填：加 ~ 才存入选项池' : '也可以手填，和选项一起记下（不加入选项）';
-        return { type: 'g', first: idx === 0, group: it.g, label: store.GLABEL[it.g], single: !!it.single, freeze: !!it.freeze, noInput: !!it.noInput, ph, opts, typedVal: this.st.typed[it.g] || '' };
+        // sub：情绪下面的档位副行——不显示标题、不给管理入口，chip 小一号，未选情绪时隐藏
+        return { type: 'g', first: idx === 0, group: it.g, label: it.sub ? '' : store.GLABEL[it.g], single: !!it.single, freeze: !!it.freeze, noInput: !!it.noInput, ph, opts, typedVal: this.st.typed[it.g] || '',
+          sub: !!it.sub, hide: !!it.sub && !showDeg };
       }
       if (it.fx) {
         const fx = store.FIXED[it.fx];
@@ -349,14 +378,19 @@ Page({
       }
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
     });
-    // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 为什么不做了；结束(觉察/无感) → 感受
+    // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 为什么不做了；结束(觉察) → 感受
     const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
     const focusIdx = focusKey ? items.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
     const MAINPH = { memo: '要记住什么 · 回车就记下', buy: '要买什么 · 可写「牛奶 2」' };
     // 备忘 / 购物：只保留一个输入框，不显示标题、选项池与管理入口
     const plain = store.isTask(tag);
     // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
-    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 默认只记这次，加 ~ 存入选项池' };
+    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 默认只记这次，加 ~ 存入选项池',
+      // 「归类」不需要输入框：从选项池点选即可（要靠「✎ 管理」增删），
+      // 所以带描述的模块把主输入框整个去掉，输入框只留给「具体的描述」
+      mainInput: !descItem,
+      // 「具体的描述」：紧跟在「归类」下方单独一个输入框（不带标题），可选
+      hasDesc: !!descItem, descPh: descItem ? descItem.ph : '', descVal: (this.st.free && this.st.free[store.DESC_KEY]) || '' };
   },
 
   /* 最近记录条数：固定 10 条 */
@@ -383,6 +417,7 @@ Page({
       recent: recs
     };
     this.setData(patch, () => {
+      this.checkTagFade();   // 维度标签行是否需要「可滚动」的渐变提示（随维度数量变化）
       // 流转聚焦时先把页面滚回顶部（输入区在页面顶部；页面级滚动会同步原生输入层）
       if (willFocus) wx.pageScrollTo({ scrollTop: 0, duration: 0 });
       if (!willFocus) return;
@@ -403,7 +438,6 @@ Page({
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
     if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    if (this.st.tag === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
     this.setData({ tag: this.st.tag });
     this.recompute();
   },
@@ -420,6 +454,8 @@ Page({
     if (arr.indexOf(v) >= 0) arr = arr.filter(x => x !== v);
     else { if (store.isSingle(g)) arr = []; arr.push(v); }
     this.st.pick[g] = arr;
+    // 觉察：档位是情绪的修饰，情绪被取消时把档位一并清掉（否则会存下没头没尾的程度）
+    if (g === 'obsMood' && !arr.length) this.st.pick['obsDeg'] = [];
     this.recompute();
   },
   onGroupInput(e) {
@@ -433,6 +469,8 @@ Page({
     this.st.free[k] = e.detail.value;
     if (idx != null) this.setData({ ['composer.items[' + idx + '].val']: e.detail.value });
   },
+  /* 「具体的描述」：只存进 st.free，不渲染在细节列表里，所以不用回写 composer.items */
+  onDescInput(e) { this.st.free[store.DESC_KEY] = e.detail.value; },
 
   /* 输入框获得焦点：这里刻意什么都不做。
      1) 手动滚动会与 adjust-position 的原生键盘避让叠加（先被滚到顶部、又被原生推起一次）；
@@ -441,6 +479,37 @@ Page({
   /* 输入框聚焦：不做任何处理（提示语保持显示）。
      键盘避让交给 adjust-position 原生处理；手动滚动会与之叠加，导致输入框「飞」到页面顶端。 */
   onFieldFocus() {},
+
+  /* 维度标签行的「可滚动」渐变提示：只有内容真的超出、且右侧还有内容时才显示。
+     量一次缓存起来（滚动时不再重复查询），之后滚动只做比较。 */
+  checkTagFade() {
+    const q = wx.createSelectorQuery().in(this);
+    q.select('.tagrow-scroll').boundingClientRect();
+    q.select('.tagrow-scroll').scrollOffset();
+    q.selectAll('.tg').boundingClientRect();
+    q.exec(res => {
+      const box = res[0], off = res[1], items = res[2] || [];
+      if (!box) return;
+      let content = (off && off.scrollWidth) || 0;
+      // 兜底：个别基础库上 scrollWidth 拿不到，就用最后一个标签的右边界推算内容宽度
+      if (!content && items.length) {
+        const right = items.reduce((m, it) => Math.max(m, it.right), 0);
+        content = right - box.left;
+      }
+      this._tagW = { box: box.width, content };
+      this._applyTagFade((off && off.scrollLeft) || 0);
+    });
+  },
+
+  _applyTagFade(left) {
+    const w = this._tagW;
+    if (!w) return;
+    // 超出 + 右侧还有没露出来的内容 → 才提示；滚到底就收起来
+    const fade = w.content > w.box + 1 && left + w.box < w.content - 1;
+    if (fade !== this.data.tagFade) this.setData({ tagFade: fade });
+  },
+
+  onTagScroll(e) { this._applyTagFade((e.detail && e.detail.scrollLeft) || 0); },
 
   /* 页面滚动：记录滚动位置，顺手收起记录操作条。
      页面级滚动下微信会同步原生输入层位置，无需再销毁重建输入框。 */
@@ -463,8 +532,9 @@ Page({
   },
 
   /* -------- 编辑态（回显）锁定 -------- */
-  // composer 内的点击在这里截止，不冒泡到 body（编辑当前记卡内容是允许的）
-  noop() {},
+  // composer 内的点击在这里截止，不冒泡到 body（编辑当前记卡内容是允许的）；
+  // 但它同样「不是操作条 / 撤销条」，所以顺手把浮层收起来
+  noop() { this.clearFloats(); },
 
   // 编辑态下，除「编辑当前记卡内容」与「保存修改 / 取消」以外的操作都拦下，
   // 提示先把这一条处理完（保存按钮已常驻卡片底部，无需滚动定位）
@@ -484,10 +554,10 @@ Page({
   // 主题切换在编辑态被锁：提示先处理当前编辑（与页面内其它无效操作一致）
   onLocked() { this.guardEdit(); },
 
-  // 编辑区之外（最近列表、空白处等）的点击
+  // 编辑区之外（最近列表、空白处等）的点击：操作条与撤销条都收起
   onBodyTap() {
     if (this.guardEdit()) return;
-    this.closeRecSel();
+    this.clearFloats();
   },
 
   /* -------- 保存 -------- */
@@ -543,11 +613,11 @@ Page({
       const e = tsFromDate(this.data.editAbandonDate, this.data.editAbandonTime);
       if (e.ts) rec.abandonedAt = e.ts;
     }
-    // 觉察(obs)/无感(nope)：结束时间
+    // 觉察(obs)：结束时间
     // - 点「结束」进入（ending）：保存修改这一刻才落结束时间（默认现在），此前不写云；
     // - 点「改」进来且显示结束时间输入框：用户改过才覆盖；
     // - 未结束且非结束流转：保持原样，编辑内容不碰结束时间
-    if (er.m === 'obs' || er.m === 'nope') {
+    if (er.m === 'obs') {
       if (this.st.ending) {
         rec.endTs = Date.now();
       } else if (this.data.editHasEnd) {
@@ -561,15 +631,12 @@ Page({
     let mainRaw = this.st.mainPick || this.st.main || '';
     const mainOnce = store.isOnce(mainRaw);
     rec.txt = store.stripOnce(mainRaw);
-    if (!rec.txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
+    // 带「具体的描述」的模块（觉察）：主项只能从选项池点选，提示语换个说法
+    const descModule = !!(f && (f.items || []).some(it => it.free === store.DESC_KEY));
+    if (!rec.txt) { wx.showToast({ title: descModule ? '先选一个「归类」' : '先写点什么', icon: 'none' }); return; }
     // 想做模块：分类为必选（默认已选「想做」）
     if (this.st.tag === 'want' && (!this.st.pick['wantKind'] || !this.st.pick['wantKind'].length)) {
       wx.showToast({ title: '请选择分类（想要/可做/喜欢）', icon: 'none' });
-      return;
-    }
-    // 无感模块：分类为必选（默认已选「不想」）
-    if (this.st.tag === 'nope' && (!this.st.pick['nopeKind'] || !this.st.pick['nopeKind'].length)) {
-      wx.showToast({ title: '请选择分类（不想/没兴趣/不喜欢）', icon: 'none' });
       return;
     }
     if (!this.st.mainPick && mainOnce && store.FIELDS[this.st.tag]) {
@@ -615,18 +682,17 @@ Page({
       });
     }
   },
-  // 「可做 / 无感」的分类是必选项：清空表单后要把默认分类补回来，
+  // 「可做」的分类是必选项：清空表单后要把默认分类补回来，
   // 否则分类选中态丢失，下一条还会因「请选择分类」而记不进去
   ensureDefaultKind() {
     if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    if (this.st.tag === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
   },
 
   afterSave(rec) {
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
-    this.ensureDefaultKind();   // 记下后仍在 可做/无感 时，把默认分类选回来
+    this.ensureDefaultKind();   // 记下后仍在 可做 时，把默认分类选回来
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', froze: this.st.froze });
     this.recompute();
     wx.showToast({ title: '已记下', icon: 'success', duration: 700 });
@@ -651,7 +717,7 @@ Page({
   },
   onEditCancel() {
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
-    this.ensureDefaultKind();   // 取消编辑后仍在 可做/无感 时，把默认分类选回来
+    this.ensureDefaultKind();   // 取消编辑后仍在 可做 时，把默认分类选回来
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
     this.recompute();
   },
@@ -666,9 +732,8 @@ Page({
     this._lpAt = Date.now();   // 长按后紧跟着的那次点击要忽略掉
     if (store.isTask(r.m)) { this._openQ(id, r.txt || ''); return; }
     app.globalData.editRec = store.decorate(r);
-    this.checkEdit();
+    this.checkEdit();   // 进入编辑态后由 checkEdit 统一滚回顶部
     this.recompute();
-    wx.pageScrollTo({ scrollTop: 0, duration: 0 });   // 记卡在页面顶部
   },
 
   /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器（量好再显示，避免闪到上一次的位置） */
@@ -740,16 +805,12 @@ Page({
     });
   },
 
-  /* 「改更多」：把这条待办放进记卡做完整编辑（可改分类、原因、时间等） */
-  onQHome() {
+  /* 就地编辑里的「删除」：删掉这条待办，并给出撤销机会（复用底部撤销条） */
+  onQDel() {
     const r = (app.globalData.records || []).find(x => x.id === this.data.qeId);
     this._closeQ();
     if (!r || !store.isTask(r.m)) return;
-    app.globalData.editRec = store.decorate(r);
-    this.checkEdit();
-    this.recompute();
-    // 记卡在页面顶部，滚上去才能看到编辑区
-    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+    this._delRec(r);
   },
 
   /* 点「最近」记录：选中并弹出「改 / 删除」操作条 */
@@ -795,7 +856,7 @@ Page({
       return;
     }
     if (type === 'end') {
-      if (r.m !== 'obs' && r.m !== 'nope') return;
+      if (r.m !== 'obs') return;
       // 不在这里落结束时间：只标记待结束，等点「保存修改」时才记录结束时间并写云
       // 同时打开编辑态聚焦「感受」输入框、弹键盘，便于立刻记感受
       app.globalData.editRec = r;
@@ -808,10 +869,8 @@ Page({
     }
     if (type === 'edit') {
       app.globalData.editRec = store.decorate(r);
-      this.checkEdit(); this.recompute();
-      // 点「改」后把页面滚回顶部露出输入区
+      this.checkEdit(); this.recompute();   // 进入编辑态后由 checkEdit 统一滚回顶部
       this.setData({ recSel: null, recSelRec: null });
-      wx.pageScrollTo({ scrollTop: 0, duration: 0 });
       return;
     }
     if (type === 'del') { this.onRecDel(); return; }
@@ -820,6 +879,22 @@ Page({
   /* 点页面其它地方：收起记录操作条（失焦即关） */
   closeRecSel() {
     if (this.data.recSel != null) this.setData({ recSel: null, recSelRec: null });
+  },
+
+  /* 点到「任何一个不是浮层本身」的地方（含记卡内部、空白、切页）：操作条与撤销条都收起。
+     离开页面（onHide）也走这里——否则切 tab / 去清单再回来，操作条还挂在那儿 */
+  clearFloats() {
+    const patch = {};
+    if (this.data.recSel != null) { patch.recSel = null; patch.recSelRec = null; }
+    if (this.data.delUndo) { patch.delUndo = null; this._stopDelTimer(); }
+    if (Object.keys(patch).length) this.setData(patch);
+  },
+  _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
+  _startDelTimer() {
+    this._stopDelTimer();
+    this._delTimer = setTimeout(() => {
+      if (this.data.delUndo) this.setData({ delUndo: null });
+    }, 3000);
   },
 
   /* 备忘/购物：勾选切换完成态（划线 + 记录完成时间） */
@@ -834,28 +909,31 @@ Page({
     this.recompute();
   },
 
-  /* 点操作条「删除」：删除并给出撤销机会 */
-  onRecDel() {
-    if (this.guardEdit()) return;
-    const id = this.data.recSel; if (id == null) return;
-    const i = (app.globalData.records || []).findIndex(x => x.id === id);
+  /* 删除一条记录并给出撤销机会（操作条「删除」与就地编辑的「删除」共用） */
+  _delRec(r) {
+    const i = (app.globalData.records || []).indexOf(r);
     if (i < 0) return;
-    const r = app.globalData.records[i];
     store.deleteRecord(r).then(() => {
       app.globalData.records.splice(i, 1);
       this.setData({ recSel: null, recSelRec: null, delUndo: { m: store.recMname(r), txt: r.txt, dump: r } });
       this.recompute();
-      if (this._delTimer) clearTimeout(this._delTimer);
-      this._delTimer = setTimeout(() => {
-        if (this.data.delUndo) this.setData({ delUndo: null });
-      }, 3000);
+      this._startDelTimer();
     });
+  },
+
+  /* 点操作条「删除」：删除并给出撤销机会 */
+  onRecDel() {
+    if (this.guardEdit()) return;
+    const id = this.data.recSel; if (id == null) return;
+    const r = (app.globalData.records || []).find(x => x.id === id);
+    if (!r) return;
+    this._delRec(r);
   },
 
   onUndoDel() {
     if (this.guardEdit()) return;
     const u = this.data.delUndo; if (!u) return;
-    if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; }
+    this._stopDelTimer();
     const dump = u.dump;
     // 删除后撤销：忠实还原原记录，保留状态（未做/在做/做了/不做）、开始时间与放弃时间
     const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0, status: dump.status || '', startedAt: dump.startedAt || 0, abandonedAt: dump.abandonedAt || 0 };
@@ -882,9 +960,8 @@ Page({
       this._refreshing = false;
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
       this.st.startMode = false; this.st.completing = false; this.st.abandoning = false; this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false; this.st.ending = false;
-      // 刷新后仍在「来做」时，补回默认分类（避免默认「想做」被清空）
+      // 刷新后仍在「可做」时，补回默认分类（避免默认「想做」被清空）
       if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-      if (this.st.tag === 'nope' && !this.st.pick['nopeKind']) this.st.pick['nopeKind'] = store.nopeKindDefault();
       this.rotateGreet();
       this.recompute();
     }).catch(() => { wx.stopPullDownRefresh(); this._refreshing = false; });

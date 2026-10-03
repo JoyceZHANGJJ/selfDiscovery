@@ -136,8 +136,8 @@ Page({
       // 「片刻」本身成词，与标签连写（用了片刻）；数值时长保留空格（用了 1 天）
       if (ds) durLine = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
     }
-    // 觉察 / 无感：有结束时间则显示「历时」（从创建到结束）
-    if ((r.m === 'obs' || r.m === 'nope') && r.endTs && r.ts && r.endTs > r.ts) {
+    // 觉察：有结束时间则显示「历时」（从创建到结束）
+    if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
       const ds = fmtDur(r.endTs - r.ts);
       if (ds) durLine = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
     }
@@ -146,7 +146,7 @@ Page({
       const ds = fmtDur(r.abandonedAt - r.ts);
       if (ds) durLine = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
-    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur: durLine, from: fromLine };
+    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur: durLine, from: fromLine };
   },
 
   // 统计面板：默认用后端统计结果（count / 聚合，不受列表分页影响）；
@@ -184,7 +184,7 @@ Page({
     const total = stat.total || 0;
     const mxv = tops.length ? tops[0].n : 1;
     const bars = tops.slice(0, 4).map(t => ({ n: t.txt, c: store.mcolor(filter), n2: t.n, w: Math.round(t.n / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的事', now: '最常在做的事', want: '最常想做的事', nope: '最常不想的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西', like: '最常喜欢的事' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常在做的事', want: '最常想做的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西' };
     let extra = '';
     if (filter === 'obs' && total) {
       const e = stat.ext || {};
@@ -228,7 +228,7 @@ Page({
     const keys = Object.keys(acc).sort((a, b) => acc[b] - acc[a]).slice(0, 4);
     const mxv = keys.length ? acc[keys[0]] : 1;
     const bars = keys.map(k => ({ n: k, c: store.mcolor(filter), n2: acc[k], w: Math.round(acc[k] / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的事', now: '最常在做的事', want: '最常想做的事', nope: '最常不想的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西', like: '最常喜欢的事' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常在做的事', want: '最常想做的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西' };
     let extra = '';
     if (filter === 'obs' && list.length) {
       const fg = list.filter(r => (r.ext || []).indexOf('忘了时间') >= 0).length;
@@ -282,10 +282,10 @@ Page({
     if (!store.isTask(this.data.filter)) {
       return { show: false, tit: '', sum: '', undone: [], done: [], doneN: 0, openU: true, openD: false };
     }
-    const undone = ts.filter(r => !r.done).map(r => this.recVM(r));
-    const done = ts.filter(r => r.done).map(r => this.recVM(r));
-    undone.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    done.sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    // 注意：recVM 的产物里没有 ts / doneAt，必须在 map 之前对原始记录排序，
+    // 否则 sort 比较的全是 undefined，等于没排
+    const undone = ts.filter(r => !r.done).sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
+    const done = ts.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0)).map(r => this.recVM(r));
     const u = undone.length, dn = done.length;
     const sum = u ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '')) : (dn ? '全部完成 · ' + dn + ' 条' : '');
     const tit = this.data.filter === 'memo' ? '备忘' : (this.data.filter === 'buy' ? '购物' : '待办 · 备忘与购物');
@@ -445,6 +445,11 @@ Page({
   },
 
   /* 再点一次底部「看」：整页回到顶部 */
+  onHide() {
+    // 离开页面（切 tab / 进后台）不保留操作条与撤销条，回来是一页干净的
+    this.clearFloats();
+  },
+
   onTabReselect() {
     this.closeSel();
     wx.pageScrollTo({ scrollTop: 0, duration: 300 });
@@ -581,13 +586,12 @@ Page({
     });
   },
 
-  /* 还要改分类等更多字段：跳记页做完整编辑 */
-  onEditHome() {
+  /* 还要改分类等更多字段：点条目走操作条里的「改」；这里只做删除 */
+  onEditDel() {
     const r = this.findRec(this.data.edId);
-    if (!r || !store.isTask(r.m)) return;
-    app.globalData.editRec = store.decorate(r);
     this._closeEdit();
-    wx.switchTab({ url: '/pages/index/index' });
+    if (!r || !store.isTask(r.m)) return;
+    this._delRec(r);
   },
 
   onRecTap(e) {
@@ -636,7 +640,7 @@ Page({
       return;
     }
     if (type === 'end') {
-      if (r.m !== 'obs' && r.m !== 'nope') return;
+      if (r.m !== 'obs') return;
       // 不在这里落结束时间：只标记待结束，跳到记页编辑态并聚焦「感受」输入框、弹键盘，
       // 等点「保存修改」时才记录结束时间并写云
       app.globalData.editRec = r;
@@ -660,16 +664,40 @@ Page({
     if (this.data.sel != null) this.setData({ sel: null, selRec: null });
   },
 
-  onActDel() {
-    const id = this.data.sel; if (id == null) return;
+  /* 点到「任何一个不是浮层本身」的地方（含页面内部、空白、切页）：操作条与撤销条都收起。
+     离开页面（onHide）也走这里——否则切 tab 再回来，操作条还挂在那儿 */
+  clearFloats() {
+    const patch = {};
+    if (this.data.sel != null) { patch.sel = null; patch.selRec = null; }
+    if (this.data.delUndo) { patch.delUndo = null; this._stopDelTimer(); }
+    if (Object.keys(patch).length) this.setData(patch);
+  },
+  _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
+  _startDelTimer() {
+    this._stopDelTimer();
+    this._delTimer = setTimeout(() => {
+      if (this.data.delUndo) this.setData({ delUndo: null });
+    }, 3000);
+  },
+
+  /* 删除一条记录并给出撤销机会（操作条「删除」与就地编辑的「删除」共用） */
+  _delRec(r) {
+    const id = r.id;
     const i = (this.data.recs || []).findIndex(x => x.id === id);
-    if (i < 0) return;
-    const r = this.data.recs[i];
     store.deleteRecord(r).then(() => {
-      const recs = this.data.recs.slice(); recs.splice(i, 1);
+      const recs = this.data.recs.slice();
+      if (i >= 0) recs.splice(i, 1);
       this.syncGlobalDel(id);
       this.setData({ recs, sel: null, selRec: null, delUndo: { m: store.recMname(r), txt: r.txt, dump: r } }, () => this.rebuild());
+      this._startDelTimer();   // 之前这里缺自动收起，撤销条会一直挂在页面上
     });
+  },
+
+  onActDel() {
+    const id = this.data.sel; if (id == null) return;
+    const r = this.findRec(id);
+    if (!r) return;
+    this._delRec(r);
   },
 
   onUndoDel() {

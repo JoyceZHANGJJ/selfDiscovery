@@ -5,7 +5,8 @@
 // 2) 收起时【只把宽高收成 0，位置原地不动】—— 挪位置会把「带焦点的输入框」滚进可视区，
 //    表现为键盘重弹 + 页面跳回顶部；而原生层不认 visibility/opacity，只有没面积才不画；
 // 3) 位置不由组件自己算：宿主页面量好「整张卡片」的矩形（文档坐标）通过 rect 传进来；
-// 4) 只编辑「事项」这一件事（txt），分类 / 时间 / 原因等更多字段走「改更多」进完整编辑器。
+// 4) 只做两件事：改「事项」(txt) 与删除。分类 / 时间 / 原因等更多字段不在这个轻量编辑器里改
+//    （记 / 看页点条目出操作条、里面还有「改」；清单页就只做改与删）。
 Component({
   properties: {
     visible: { type: Boolean, value: false },
@@ -14,8 +15,8 @@ Component({
     focus: { type: Boolean, value: false },
     value: { type: String, value: '' },
     rect: { type: Object, value: {} },        // { top, left, width, height }，文档坐标
-    showHome: { type: Boolean, value: true }, // 是否显示「改更多」
-    moreLabel: { type: String, value: '改更多' }, // 「改更多」文案（改名只改这一处）
+    showDel: { type: Boolean, value: true },  // 是否显示「删除」
+    delLabel: { type: String, value: '删除' }, // 「删除」文案（改名只改这一处）
     maxlength: { type: Number, value: 200 }
   },
   data: {
@@ -31,6 +32,6 @@ Component({
     onInput(e) { this.setData({ txt: e.detail.value }); },
     // 失焦 / 键盘「完成」/ 点「保存」都派发 save，由页面决定是否落库与收起
     onSave() { this.triggerEvent('save', { value: (this.data.txt || '').trim() }); },
-    onHome() { this.triggerEvent('home'); }
+    onDel() { this.triggerEvent('del'); }
   }
 });

@@ -33,14 +33,15 @@
 
         <!-- 模块标签（横向滚动，维度多也不挤） -->
         <view class="tagrow-wrap">
-          <scroll-view class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}">
+          <scroll-view class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" bindscroll="onTagScroll">
             <view class="tagrow">
               <view wx:for="{{modules}}" wx:key="k" class="tg {{tag===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTag">
                 <view class="dot" style="background:{{item.c}}"></view>{{item.n}}
               </view>
             </view>
           </scroll-view>
-          <view class="tagrow-fade"></view>
+          <!-- 「可滚动」渐变提示：只在标签真的超出、且右侧还有内容时出现（见 checkTagFade） -->
+          <view wx:if="{{tagFade}}" class="tagrow-fade"></view>
         </view>
 
         <!-- 备忘 / 购物：纯主输入框，不要标题、选项池与管理入口 -->
@@ -56,11 +57,22 @@
         <view wx:if="{{composer.mainOpts.length}}" class="chips">
           <view wx:for="{{composer.mainOpts}}" wx:key="*this" class="chip {{item.on?'on':''}}" data-v="{{item.v}}" bindtap="onMainChip">{{item.v}}</view>
         </view>
-        <textarea class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" id="fldmain" bindfocus="onFieldFocus"></textarea>
+        <!-- 归类：不带输入框，只从上面的选项池点选（要靠「✎ 管理」增删），
+             这样它始终是可归类的名词，不会被写成一整句话 -->
+        <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" id="fldmain" bindfocus="onFieldFocus"></textarea>
+
+        <!-- 具体的描述：与「归类」配对（点可归类、描述不可归类），自由记录、可跳过，不带标题 -->
+        <view wx:if="{{composer.hasDesc}}" class="extra descrow">
+          <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
+        </view>
 
         <view class="extra-h">细节 · 都可跳过</view>
-        <view wx:for="{{composer.items}}" wx:key="index" class="extra {{item.first?'first':''}}">
-          <view class="qrow">
+        <block wx:for="{{composer.items}}" wx:key="index">
+        <!-- hide：如「感受」下面的档位——还没选情绪时整行不出现 -->
+        <view wx:if="{{!item.hide}}" class="extra {{item.first?'first':''}} {{item.label?'':'nlab'}} {{item.sub?'sub':''}}">
+          <!-- 没有标题的项（如档位副行、自由感受输入框）：不渲染标题行，内容紧跟上面的选项。
+               档位副行（item.sub）连管理入口也不给——它就是感受的一个强度档位 -->
+          <view wx:if="{{!item.sub && (item.label || item.type==='g')}}" class="qrow">
             <view class="ql">{{item.label}}</view>
             <view wx:if="{{item.type==='g'}}" class="mg" data-g="{{item.group}}" bindtap="onManage">✎ 管理</view>
           </view>
@@ -72,6 +84,7 @@
           </block>
           <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
         </view>
+        </block>
         </block>
 
         <!-- 编辑时：可修改时间（创建 / 开始 / 结束），默认回填原时间，改了才生效 -->
@@ -121,13 +134,13 @@
         <view class="sk-rec"></view>
       </view>
       <view wx:if="{{ready && recent.length===0}}" class="empty-mini">还没有记录</view>
-      <view wx:for="{{recent}}" wx:key="id" id="{{item.task ? 'erow-'+item.id : ''}}" class="rec tl {{item.task?'list':''}} {{item.longTxt?'long':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+      <view wx:for="{{recent}}" wx:key="id" id="{{item.task ? 'erow-'+item.id : ''}}" class="rec tl {{item.task?'list':''}} {{item.longTxt?'long':''}} {{item.desc?'has-desc':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
           <text class="mn" style="color:{{item.c}}">{{item.m}}</text>
           <text wx:if="{{item.doingDays}}" class="tag doing">第{{item.doingDays}}天</text>
-          <view class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
+          <view class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.desc}}" class="tdesc">{{item.desc}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
           <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           <text wx:else class="tw">{{item.d}}{{item.t}}</text>
         </view>
@@ -153,9 +166,8 @@
     <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
   </view>
 
-  <!-- 待办长按就地编辑：与清单 / 看页共用同一个组件；
-       「改更多」在记页＝把这条放进记卡做完整编辑（分类 / 时间 / 原因等） -->
-  <inline-editor visible="{{qeOn}}" focus="{{qeFocus}}" rect="{{qe}}" value="{{qeTxt}}" bind:save="onQSave" bind:home="onQHome" />
+  <!-- 待办长按就地编辑：与清单 / 看页共用同一个组件（改事项 + 删除） -->
+  <inline-editor visible="{{qeOn}}" focus="{{qeFocus}}" rect="{{qe}}" value="{{qeTxt}}" bind:save="onQSave" bind:del="onQDel" />
 
   <theme-switcher lock="{{editing}}" bind:locked="onLocked" />
 </view>

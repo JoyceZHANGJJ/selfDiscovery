@@ -2,7 +2,7 @@
   <view class="statusbar-mask"></view>
   <!-- 整页改为页面级滚动（与记页一致）：搜索框等原生输入层由微信同步位置，不再套在 scroll-view 里 -->
   <view class="screen">
-    <view class="body" bindtap="closeSel">
+    <view class="body" bindtap="clearFloats">
       <view class="sect-t">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
       <input id="searchBox" class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{true}}" cursor-spacing="20" always-embed="{{true}}" bindfocus="onSearchFocus" />
 
@@ -95,9 +95,9 @@
       <block wx:if="{{days.length}}">
         <view wx:for="{{days}}" wx:key="day" wx:for-item="grp">
           <view class="daylab">{{grp.day}}</view>
-          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress">
+          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{r.desc?'has-desc':''}} {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress">
             <view class="edge" style="background:{{r.c}}"></view>
-            <view class="hd"><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text wx:if="{{r.doingDays}}" class="tag doing">第{{r.doingDays}}天</text><view class="tvw"><text class="tv">{{r.txt}}</text><text wx:if="{{r.dur}}" class="tdur">{{r.dur}}</text></view><text class="tw">{{r.d}}{{r.t}}</text></view>
+            <view class="hd"><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text wx:if="{{r.doingDays}}" class="tag doing">第{{r.doingDays}}天</text><view class="tvw"><text class="tv">{{r.txt}}</text><text wx:if="{{r.desc}}" class="tdesc">{{r.desc}}</text><text wx:if="{{r.dur}}" class="tdur">{{r.dur}}</text></view><text class="tw">{{r.d}}{{r.t}}</text></view>
             <view wx:if="{{r.from}}" class="from">{{r.from}}</view>
             <view class="dt">
               <text wx:for="{{r.dt}}" wx:for-item="d" wx:key="index" class="it"><text class="k" wx:if="{{d.lbl}}">{{d.lbl}}</text>{{d.v}}</text>
@@ -115,7 +115,7 @@
   </view>
 
   <!-- 待办长按就地编辑：与清单页 / 记页共用同一个组件 -->
-  <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:home="onEditHome" />
+  <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:del="onEditDel" />
 
   <!-- 记录操作条：与记页共用同一组件，按钮集合/可见性只维护一处 -->
   <rec-actions rec="{{selRec}}" visible="{{sel!=null}}" bind:action="onRecAction" />

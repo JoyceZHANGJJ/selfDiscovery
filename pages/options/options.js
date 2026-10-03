@@ -62,21 +62,25 @@ Page({
     const ov = e.currentTarget.dataset.v;
     const nv = (this.data._renVal || '').trim();
     if (!nv || nv === ov) { this.refresh(); return; }
+    const g = this.group;
     const O = app.globalData.OPT;
-    // 全局替换（所有选项组 + 既有记录）
-    Object.keys(O).forEach(g => { const idx = O[g].indexOf(ov); if (idx >= 0) O[g][idx] = nv; });
+    // 只在本选项组内替换：不同组里的同名项互不影响
+    if (O[g]) { const i = O[g].indexOf(ov); if (i >= 0) O[g][i] = nv; }
+    // 记录同步：主项组改所属模块记录的 txt；细节组只改 ext 里 src 正好是该组的位置
+    const mainOf = store.mainModuleOf(g);
     app.globalData.records.forEach(r => {
-      if (r.txt === ov) r.txt = nv;
-      if (r.ext) r.ext = r.ext.map(x => x === ov ? nv : x);
+      if (mainOf) { if (r.m === mainOf && r.txt === ov) r.txt = nv; return; }
+      const es = r.extSrc || [], ex = r.ext || [];
+      for (let i = 0; i < es.length; i++) if (es[i] === g && ex[i] === ov) ex[i] = nv;
     });
-    const ps = [store.renameOption(this.group, ov, nv)];
-    if (store.isDefault(this.group, ov)) {
+    const ps = [store.renameOption(g, ov, nv)];
+    if (store.isDefault(g, ov)) {
       // 默认项改名：旧值标记删除，新值落库持久化
-      ps.push(store.addDelDef(this.group, ov));
-      if (O[this.group].indexOf(nv) < 0) O[this.group].push(nv);
-      ps.push(store.addOption(this.group, nv));
+      ps.push(store.addDelDef(g, ov));
+      if (O[g] && O[g].indexOf(nv) < 0) O[g].push(nv);
+      ps.push(store.addOption(g, nv));
     }
-    if (store.isDefault(this.group, nv)) ps.push(store.clearDelDef(this.group, nv)); // 新值恰好是默认项，清除删除标记
+    if (store.isDefault(g, nv)) ps.push(store.clearDelDef(g, nv)); // 新值恰好是默认项，清除删除标记
     Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     this.refresh();
   },
