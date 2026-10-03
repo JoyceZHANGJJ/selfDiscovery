@@ -35,13 +35,12 @@ Page({
     const extAcc = (ext) => { const a = {}; recs.forEach(r => { if (r.m === 'obs' && (r.ext || []).indexOf(ext) >= 0) a[r.txt] = (a[r.txt] || 0) + 1; }); return a; };
     const modAcc = (m) => { const a = {}; recs.forEach(r => { if (r.m === m) a[r.txt] = (a[r.txt] || 0) + 1; }); return a; };
     const leader = (a) => { const ks = Object.keys(a); if (!ks.length) return null; let mx = 0; ks.forEach(k => { if (a[k] > mx) mx = a[k]; }); return ks.filter(k => a[k] === mx).join('、'); };
-    const cObs = store.mcolor('obs'), cWant = store.mcolor('want'), cNope = store.mcolor('nope'), cDone = store.mcolor('done');
+    const cObs = store.mcolor('obs'), cWant = store.mcolor('want'), cDone = store.mcolor('done');
     return [
       { k: '沉浸最深', c: cObs, v: leader(extAcc('忘了时间')) },
       { k: '耗能最多', c: cObs, v: leader(extAcc('耗电')) },
       { k: '充电最多', c: cObs, v: leader(extAcc('充电')) },
       { k: '最想做', c: cWant, v: leader(modAcc('want')) },
-      { k: '最不想做', c: cNope, v: leader(modAcc('nope')) },
       { k: '做得最多', c: cDone, v: leader(modAcc('done')) }
     ];
   },
@@ -80,7 +79,8 @@ Page({
         const rows = rs.map(r => {
           const det = store.buildExt(r.m, r.ext, r.extSrc); // 结构化细节 [{lbl,v}]，与记录页同款渲染
           // 日期前缀走公共函数：今天空串、昨天 / 前天相对说法、更早给日期（跨年才带年份）
-          return { d: store.datePrefix(r.ts) + r.t, x: det };
+          // desc：与「归类」（分组标题 g.txt）同排展示的「具体的描述」
+          return { d: store.datePrefix(r.ts) + r.t, x: det, desc: r.desc || '' };
         });
         dims.push({ n: m.n, c: m.c, rows });
       });

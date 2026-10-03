@@ -27,6 +27,7 @@ Page({
     importText: '',
     recCount: 0,
     optCount: 0,
+    optGroups: 0,
     logOverlay: false,
     logs: CHANGELOG,
     logLatest: (CHANGELOG[0] || {}).d || ''
@@ -41,12 +42,15 @@ Page({
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));
       const O = app.globalData.OPT || {};
+      // optCount 是所有组里的「选项总数」，不是组数；optGroups 才是有内容的组数
+      const optGroups = Object.keys(O).filter(k => (O[k] || []).length).length;
       const optCount = Object.keys(O).reduce((s, k) => s + (O[k] ? O[k].length : 0), 0);
       this.setData({
         colors: store.DCOLORS,
         greets: this.g,
         dims: (app.globalData.dims || []).map(d => ({ k: d.k, n: d.n, c: d.c, opt: (d.opt || []).length })),
         recCount: (app.globalData.records || []).length,
+        optGroups,
         optCount
       });
     });

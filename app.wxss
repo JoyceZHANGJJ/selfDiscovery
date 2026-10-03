@@ -153,6 +153,11 @@
 .big-in::placeholder { font-size: 14px; color: var(--ink4); }
 .extra { margin-top: 14px; padding-top: 0; border-top: 0; }
 .extra.first { margin-top: 7px; }
+/* 没有标题的细节项（如「感受」组里跟在选项后面的自由输入框）：收紧间距，读起来和上一组是一体 */
+.extra.nlab { margin-top: 8px; }
+/* 「感受」组下面的档位副行（觉察）：不显示标题、没有管理入口、chip 小一号，
+   读起来是上面情绪的修饰而不是另一组（未选情绪时整行不渲染，见 index.wxml） */
+.extra.sub .chips .chip { font-size: 11.5px; }
 .extra-h { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink3); letter-spacing: .02em; }
 .ehead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2px; }
 .ehead .et { font-size: 11.5px; color: var(--ink3); letter-spacing: .04em; }
@@ -247,6 +252,10 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rec .tv { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); word-break: break-all; line-height: 1.5; }
 .rec .tw { font-size: 11.5px; color: var(--ink3); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .rec .dt { margin-top: 6px; line-height: 1.9; font-size: 12.5px; color: var(--ink); }
+/* 「归类 + 具体的描述」同排展示：归类为主（700），描述随后（次要色、过长省略）。
+   只有带描述的记录（.has-desc）才把标题也收成单行，其它记录保持原来的可折行行为 */
+.rec.tl.has-desc .tvw .tv { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rec .tvw .tdesc { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 400; color: var(--ink3); margin-left: 7px; }
 .dm { display: inline-flex; align-items: center; flex-shrink: 0; font-size: 11px; font-weight: 700; line-height: 1.5; border-radius: 99px; padding: 2px 8px; background: rgba(35,35,31,.06); }
 .dm-obs { background: var(--accent-soft); }
 .dm-now { background: rgba(47,143,138,.15); }
@@ -371,6 +380,7 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .ev-dim-h .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .ev-row { font-size: 12.5px; color: var(--ink); line-height: 1.9; padding: 3px 0; }
 .ev-row .ev-d { color: var(--ink3); font-variant-numeric: tabular-nums; margin-right: 10px; }
+.ev-row .ev-desc { color: var(--ink2); margin-right: 10px; }
 
 /* ================= 设置 ================= */
 .srow { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); }

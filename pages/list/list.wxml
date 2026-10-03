@@ -2,10 +2,10 @@
   <view class="statusbar-mask"></view>
   <!-- 整页页面级滚动（与记页一致）：输入框不套在 scroll-view 内，避免安卓上光标/文字飘出去 -->
   <view class="screen">
-    <view class="body">
+    <view class="body" bindtap="onBodyTap">
       <view class="sect-t">{{tit}}</view>
       <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
-      <view wx:if="{{show}}" class="ehint">长按任意一条即可就地修改</view>
+      <view wx:if="{{show}}" class="ehint">长按任意一条即可就地修改或删除</view>
 
       <!-- 区分：全部 / 备忘 / 购物 -->
       <view class="filters">
@@ -43,6 +43,12 @@
     </view>
 
     <!-- 待办就地编辑：与记页 / 看页共用同一个组件 -->
-    <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:home="onEditHome" />
+    <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:del="onEditDel" />
+  </view>
+
+  <!-- 删除撤销（与记 / 看页同一套） -->
+  <view wx:if="{{delUndo}}" class="toastline undo-bar">
+    <view class="tx">已删除「{{delUndo.txt}}」</view>
+    <view class="tb" bindtap="onUndoDel">撤销</view>
   </view>
 </view>

@@ -15,6 +15,8 @@ Page({
     undone: [],
     done: [],
     empty: false,
+    // 删除后的撤销条（与记 / 看页同一套）
+    delUndo: null,
     // 长按就地编辑：全局唯一一个编辑器，叠加到被长按的那一行
     editing: false,
     edFocus: false,       // 显示与聚焦分开：手指抬起后才聚焦（见 onRowTouchend）
@@ -51,10 +53,10 @@ Page({
     const all = (app.globalData.records || []).filter(r => store.isTask(r.m));
     const seg = this.data.seg;
     const list = seg === 'all' ? all : all.filter(r => r.m === seg);
-    const undone = list.filter(r => !r.done).map(r => this.recVM(r));
-    const done = list.filter(r => r.done).map(r => this.recVM(r));
-    undone.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    done.sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    // 注意：recVM 的产物里没有 ts / doneAt，必须在 map 之前对原始记录排序，
+    // 否则 sort 比较的全是 undefined，等于没排（已完成要按完成时间倒序，就是这个坑）
+    const undone = list.filter(r => !r.done).sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
+    const done = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0)).map(r => this.recVM(r));
     const u = undone.length, dn = done.length;
     const sum = u ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '')) : (dn ? '全部完成 · ' + dn + ' 条' : '');
     const tit = seg === 'memo' ? '备忘' : (seg === 'buy' ? '购物' : '待办 · 备忘与购物');
@@ -169,12 +171,48 @@ Page({
     });
   },
 
-  /* 还要改分类、时间等更多字段：跳记页做完整编辑 */
-  onEditHome() {
+  /* 就地编辑里的「删除」：删掉这条待办，并给出撤销机会（与记 / 看页一致） */
+  onEditDel() {
     const r = this.findRec(this.data.edId);
-    if (!r || !store.isTask(r.m)) return;
-    app.globalData.editRec = store.decorate(r);
     this._closeEdit();
-    wx.switchTab({ url: '/pages/index/index' });
+    if (!r || !store.isTask(r.m)) return;
+    const i = (app.globalData.records || []).indexOf(r);
+    store.deleteRecord(r).then(() => {
+      if (i >= 0) app.globalData.records.splice(i, 1);
+      this.setData({ delUndo: { m: store.recMname(r), txt: r.txt, dump: r } });
+      this.rebuild();
+      this._startDelTimer();
+    });
+  },
+
+  /* 点到页面其它地方：收起删除撤销条（与记 / 看页一致：不是浮层本身的点击都收起） */
+  onBodyTap() {
+    if (!this.data.delUndo) return;
+    this._stopDelTimer();
+    this.setData({ delUndo: null });
+  },
+  _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
+  _startDelTimer() {
+    this._stopDelTimer();
+    this._delTimer = setTimeout(() => {
+      if (this.data.delUndo) this.setData({ delUndo: null });
+    }, 3000);
+  },
+
+  /* 撤销删除：把记录原样加回来 */
+  onUndoDel() {
+    const u = this.data.delUndo; if (!u) return;
+    this._stopDelTimer();
+    const d = u.dump;
+    const rec = {
+      m: d.m, t: d.t, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts,
+      done: !!d.done, doneAt: d.doneAt || 0
+    };
+    store.addRecord(rec).then(rid => {
+      rec._rid = rid; rec.id = rid;
+      app.globalData.records.unshift(store.decorate(rec));
+      this.setData({ delUndo: null });
+      this.rebuild();
+    });
   }
 });

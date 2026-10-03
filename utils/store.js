@@ -3,47 +3,54 @@
 // 集合：records（记录）、options（用户新增选项）、usercfg（问候语/自定义维度）
 
 /* ---------------- 常量（与线上版同构） ---------------- */
+// 可选维度。无感 / 悦己已并入觉察（见 migrateNopeLikeIntoObs），不再是可选维度，
+// 只会在迁移完成前短暂地存在于历史数据里
 const MODULES = [
   { k: 'obs', n: '觉察', c: '#7C9A86' },
   { k: 'now', n: '此刻', c: '#5E9A94' },
   { k: 'want', n: '可做', c: '#C0A05A' },
-  { k: 'like', n: '悦己', c: '#C77DA0' },
-  { k: 'nope', n: '无感', c: '#948AA8' },
   { k: 'memo', n: '备忘', c: '#9A8C7A' },
   { k: 'buy', n: '购物', c: '#C08552' }
 ];
 
 const OPT = {
-  obsWhat: ['写方案', '写周报', '整理资料', '陪家人'],
+  // 觉察：归类 / 分类 / 程度 / 感受 里带「无感 · 悦己」味道的词，是 2026-10 合并维度时
+  // 并进来的（原本属于已删除的无感 / 悦己）。直接写在觉察自己这里，池子就不再依赖
+  // 那两个已经消失的组——否则同一批词会被「死组」和「活组」各算一份
+  obsWhat: ['写方案', '写周报', '整理资料', '陪家人',
+    '应酬', '刷手机', '加班', '回消息',
+    '掌控自己的时间', '没有任务压力', '做想做的事', '无人打扰'],
   obsStart: ['工作必须', '自己想做', '别人提议'],
+  obsKind: ['喜欢', '有趣', '没兴趣', '不喜欢', '不想'],
+  obsDeg: ['微微', '有点', '很', '非常', '极度'],
+  obsMood: ['开心', '平静', '满足', '焦虑', '低落', '烦躁', '麻木', '抵触', '心累', '反感'],
   genDoing: ['写代码', '开会', '散步', '带娃', '做饭'],
   genFeel: ['专注', '走神', '平静', '焦虑'],
   genWant: ['喝咖啡', '走一走', '看会儿书'],
   wantItem: ['学吉他', '早睡', '去旅行', '练字'],
   wantKind: ['想做', '可试', '喜欢'],
-  nopeThing: ['应酬', '刷手机', '加班', '回消息'],
-  nopeDeg: ['微微', '有点', '很', '非常', '极度'],
-  nopeMood: ['抵触', '心累', '反感'],
-  nopeKind: ['不想', '没兴趣', '不喜欢'],
   memoItem: [], buyItem: [],
-  likeItem: ['掌控自己的时间', '没有任务压力', '做想做的事', '无人打扰'],
   doneFeel: ['踏实', '轻松', '平静'],
-  doneGain: ['完成感', '心情变好', '学到了'],
-  obsMood: ['开心', '平静', '满足', '焦虑', '低落', '烦躁', '麻木']
+  doneGain: ['完成感', '心情变好', '学到了']
 };
 
+// 「归类」：觉察 / 无感已把「什么事」解耦成「归类（名词性、可归类）+ 具体的描述（自由、不可归类）」。
+// 叫「归类」而不是「什么事 / 触动的点」，是因为池子里装的不一定是事——也可能是一个概念（自由）
+// 或一个物件（猫），所以标签只描述它的作用：从池里点选的那个用来归类的词；可做 / 悦己等仍是「什么事」，等后续再迁
 const GLABEL = {
-  obsWhat: '什么事', obsStart: '怎么开始的', genDoing: '正在做的事', genFeel: '情绪',
-  genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '什么事', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '分类',
-  doneFeel: '做了的感受', doneGain: '收获', obsMood: '做完心情如何', memoItem: '要记住什么', buyItem: '要买什么', likeItem: '什么事'
+  obsWhat: '归类', obsKind: '分类', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '正在做的事', genFeel: '情绪',
+  genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '分类',
+  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', memoItem: '要记住什么', buyItem: '要买什么', likeItem: '什么事'
 };
+
+// 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
+// 否则这些「死组」会一直被合并回来、在选项池里重复计数
+const DEAD_OPT_GROUPS = ['nopeThing', 'nopeDeg', 'nopeMood', 'nopeKind', 'likeItem'];
 
 const OPTGROUPS = [
-  { m: 'obs', gs: ['obsWhat', 'obsStart', 'obsMood'] },
+  { m: 'obs', gs: ['obsWhat', 'obsKind', 'obsDeg', 'obsStart', 'obsMood'] },
   { m: 'now', gs: ['genDoing', 'genFeel', 'genWant'] },
-  { m: 'want', gs: ['wantItem', 'wantKind'] },
-  { m: 'nope', gs: ['nopeThing', 'nopeKind', 'nopeDeg', 'nopeMood'] },
-  { m: 'like', gs: ['likeItem'] }
+  { m: 'want', gs: ['wantItem', 'wantKind'] }
 ];
 
 // 固定选项组（写死，不给“管理”入口）
@@ -56,13 +63,29 @@ const FIXED = {
 function isOnce(s) { const c = (s || '').trim().charAt(0); return c === '~' || c === '～'; }
 function stripOnce(s) { const t = (s || '').trim(); return isOnce(t) ? t.slice(1).trim() : t; }
 
+// 「具体的描述」的自由字段 key：与主项（归类）配对——归类是名词性的、可复用；描述自由、不可归类。
+// 它固定放在 items 的最后一位，于是 ext/extSrc 的顺序、srcList（导出/导入按顺序对齐）都保持兼容：
+// 旧导出文件没有这一位，按顺序仍能正确回填到前几个字段
+const DESC_KEY = 'desc';
+const DESC_SRC = 'free:' + DESC_KEY;
+
 // 模块字段：g=选项组（freeze 决定手填是否固化）/ fx=固定选项组 / free=自由文本
 const FIELDS = {
+  // 觉察（无感 / 悦己 已并入这里）。编辑器里的展示顺序由 index 的 buildComposer 排成
+  // 「分类 → 程度 → 感受（情绪 chips + 紧随的自由输入框）→ 怎么开始的 → 沉浸 → 精力」；
+  // 这里的书写顺序是「存储顺序」——新分组追加在末尾，导出/导入的按顺序对齐因此不受影响
   obs: { main: 'obsWhat', items: [
-    { g: 'obsStart', freeze: true, single: true },
+    { g: 'obsStart', single: true, noInput: true },
     { fx: 'forgot' }, { fx: 'nrg' },
     { g: 'obsMood', freeze: false, single: true, noInput: true },
-    { free: 'obsfeel', label: '感受（自由记录 · 不进列表）', ph: '做完那一刻心里冒出来的话', ta: true }
+    { free: 'obsfeel', label: '', ph: '有什么想抒发的？', ta: true },
+    // 具体的描述：不可归类，编辑时不带标题，就在「归类」下方
+    { free: 'desc', label: '', ph: '发生了什么？', ta: true },
+    // 分类 / 程度：原本属于「无感」，并入后所有觉察记录都能用。
+    // 程度是「感受」的修饰（微微 / 有点 / 很…），sub 表示它在编辑器里作为情绪的副行展示：
+    // 不单独起标题、chip 小一号、没选情绪时不出现（见 index 的 buildComposer 与 index.wxml）
+    { g: 'obsKind', single: true, noInput: true },
+    { g: 'obsDeg', freeze: false, single: true, noInput: true, sub: true }
   ] },
   now: { main: 'genDoing', items: [
     { g: 'genFeel', freeze: false, single: false, noInput: true },
@@ -81,19 +104,9 @@ const FIELDS = {
     // 「为什么不做了」仅点「放弃」或编辑「不做」记录时显示（由 index 编辑态按状态过滤）
     { free: 'abandonWhy', label: '为什么不做了', ph: '为什么不想做了？随便写', ta: true }
   ] },
-  nope: { main: 'nopeThing', items: [
-    { g: 'nopeKind', single: true, noInput: true, hideDetail: true, required: true },
-    { g: 'nopeDeg', freeze: false, single: true, noInput: true },
-    { g: 'nopeMood', freeze: true, single: false, noInput: true },
-    { free: 'nopefeel', label: '感受（自由记录）', ph: '那一刻心里冒出来的话', ta: true },
-    { free: 'after', label: '硬着头皮做了之后', ph: '其实没那么糟' }
-  ] },
   /* 备忘 / 购物：只记一句话，没有细节；加 ~ 前缀可把这条存进选项池下次点选 */
   memo: { main: 'memoItem', items: [ { free: 'memonote', label: '原因', ph: '为什么记这条？可不填', ta: true } ] },
-  buy:  { main: 'buyItem',  items: [ { free: 'buynote', label: '干什么用', ph: '买来做什么？可不填', ta: true } ] },
-  like: { main: 'likeItem', items: [
-    { free: 'likeFeel', label: '当时感受', ph: '那一刻心里的感觉，随便写', ta: true }
-  ] }
+  buy:  { main: 'buyItem',  items: [ { free: 'buynote', label: '干什么用', ph: '买来做什么？可不填', ta: true } ] }
 };
 
 const THEMES = [
@@ -162,8 +175,10 @@ const DCOLORS = ['#7C9A86', '#5E9A94', '#C0A05A', '#948AA8', '#6E8CB0', '#B4544E
 
 // 细节回读标签：来源 -> 字段名
 const COLMAP = {
+  obsKind: '分类', obsDeg: '程度',
   obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
   'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:memonote': '原因', 'free:buynote': '干什么用',
+  'free:desc': '描述',
   'free:trigger': '诱因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受'
@@ -195,12 +210,6 @@ function wantKindDefault() {
   const def = k.indexOf('想做') >= 0 ? '想做' : (k[0] || '想做');
   return [def];
 }
-// 无感模块默认分类：锁定「不想」（不随选项顺序变化），找不到再退第一个，最后兜底「不想」
-function nopeKindDefault() {
-  const k = getOPT('nopeKind');
-  const def = k.indexOf('不想') >= 0 ? '不想' : (k[0] || '不想');
-  return [def];
-}
 
 // 时间线（非待办）记录的日期前缀：今天＝空串；昨天 / 前天用相对说法；更早给日期（跨年才带年份）。
 // 与 taskTime 共用同一套「跨年才带年份」的判断，避免去年的记录只显示「10月3日」产生歧义
@@ -224,15 +233,36 @@ function extLabel(src, m) {
   if (src && src.indexOf('fallback:') === 0) return FALLBACK[m] || '';
   return COLMAP[src] || FALLBACK[m] || '';
 }
-// 生成记录的细节展示列表 [{lbl, v}]；nope 模块把「程度」并入「情绪」一行
-// 例：程度=微微，情绪=抵触 → 显示「情绪 微微抵触」
+// 生成记录的细节展示列表 [{lbl, v}]
+// obs：按「分类 → 程度 → 感受 → 怎么开始 / 沉浸 / 精力」排序，情绪与自由感受合成「感受」一行
+// nope：仅作兜底——无感已并入觉察，这里保留是为了万一某次迁移没跑完，老记录仍能正常回读
 function buildExt(m, ext, extSrc) {
   const f = FIELDS[m];
   const hideSrc = f ? (f.items.filter(it => it.hideDetail && it.g).map(it => it.g)) : [];
   const list = (ext || []).map((v, i) => {
     const src = (extSrc || [])[i] || '';
     return { src, lbl: extLabel(src, m), v };
-  }).filter(d => hideSrc.indexOf(d.src) < 0);
+  // 「具体的描述」不并进细节区：它要和「归类」同排展示（见页面 recVM 的 desc），
+  // 这里排掉，避免同一句话在标题行和细节行各出现一次
+  }).filter(d => hideSrc.indexOf(d.src) < 0 && d.src !== DESC_SRC);
+  // 觉察：详情按「分类 → 感受 → 怎么开始的 → 沉浸 → 精力」展示，与编辑器里的顺序一致。
+  // 「感受」是一组：程度（obsDeg）与情绪（obsMood）连写成「有点焦虑」，再和自由感受（obsfeel）
+  // 用 · 连成一行 —— 与编辑器里「档位 + 情绪 + 自由输入框」合成一块的口径一致；
+  // 只影响回读展示，ext/extSrc 里三者仍是各自独立的字段
+  if (m === 'obs') {
+    const pick = (src) => (list.find(d => d.src === src) || {}).v || '';
+    const out = [];
+    const kind = pick('obsKind'); if (kind) out.push({ lbl: COLMAP.obsKind, v: kind });
+    const feel = [pick('obsDeg') + pick('obsMood'), pick('free:obsfeel')].filter(Boolean).join(' · ');
+    if (feel) out.push({ lbl: GLABEL.obsMood, v: feel });   // 组名跟随编辑器里的「感受」
+    ['obsStart', 'fx:forgot', 'fx:nrg'].forEach(s => {
+      const d = list.find(x => x.src === s); if (d) out.push(d);
+    });
+    // 兜底：没在上述来源里的（历史遗留脏数据）照原样附在后面，不丢信息
+    const shown = ['obsKind', 'obsDeg', 'obsMood', 'free:obsfeel', 'obsStart', 'fx:forgot', 'fx:nrg'];
+    list.forEach(d => { if (shown.indexOf(d.src) < 0) out.push(d); });
+    return out;
+  }
   if (m === 'nope') {
     const deg = list.find(d => d.src === 'nopeDeg');
     const degV = deg ? deg.v : '';
@@ -256,7 +286,8 @@ function srcList(m) {
     if (it.hideDetail) return; // 分类等隐藏字段是固定的，不参与细节的顺序对齐/导入匹配
     if (it.g) out.push({ src: it.g, lbl: GLABEL[it.g] || it.g });
     else if (it.fx) out.push({ src: 'fx:' + it.fx, lbl: (FIXED[it.fx] || {}).label || it.fx });
-    else if (it.free) out.push({ src: 'free:' + it.free, lbl: it.label || it.free });
+    // label 为空（编辑器里不显示标题）时回退到回读标签，保证导入时的标签匹配仍有意义
+    else if (it.free) out.push({ src: 'free:' + it.free, lbl: it.label || COLMAP['free:' + it.free] || it.free });
   });
   return out;
 }
@@ -299,15 +330,6 @@ function recMname(r) {
     const k = i >= 0 ? ex[i] : '';
     return k ? stateName + '·' + k : stateName;
   }
-  // 无感：拼接分类（不想/没兴趣/不喜欢）。nopeKind 在细节里是隐藏项，
-  // 只能挂在维度名上展示，否则这条记录看不出属于哪一类
-  if (r.m === 'nope') {
-    const base = mname(r.m);
-    const es = r.extSrc || [], ex = r.ext || [];
-    const i = es.indexOf('nopeKind');
-    const k = i >= 0 ? ex[i] : '';
-    return k ? base + '·' + k : base;
-  }
   return mname(r.m);
 }
 // 待办清单行的时间文案：今天只给时刻；非今天给简洁日期（跨年才带年份），
@@ -339,11 +361,14 @@ function decorate(r) {
   // 备忘「原因」/ 购物「什么用」：从细节里提取对应 free 字段
   o.reason = '';
   o.usefor = '';
+  // 「具体的描述」：与「归类」(txt) 配对，取出后供列表同排展示
+  o.desc = '';
   const _es = o.extSrc || [], _ex = o.ext || [];
   for (let i = 0; i < _es.length; i++) {
     if (!_ex[i]) continue;
     if (_es[i] === 'free:memonote') o.reason = _ex[i];
     else if (_es[i] === 'free:buynote') o.usefor = _ex[i];
+    else if (_es[i] === DESC_SRC) o.desc = _ex[i];
   }
   return o;
 }
@@ -473,7 +498,7 @@ function countRecords({ m = null, startTs = null, state = null, extTag = null } 
       .then(r => resolve((r && r.total) || 0)).catch(() => resolve(0));
   });
 }
-// 统计：各觉察维度（不含备忘/购物）的条数 → { obs: 12, nope: 3, ... }
+// 统计：各觉察维度（不含备忘/购物）的条数 → { obs: 12, now: 3, want: 5 }
 function countByModule({ startTs = null } = {}) {
   const mods = MODULES.filter(m => !isTask(m.k));
   return Promise.all(mods.map(m => countRecords({ m: m.k, startTs }))).then(arr => {
@@ -559,6 +584,7 @@ function persistLocalOpts() {
 }
 function mergeOpts(O, src) {
   Object.keys(src || {}).forEach(g => {
+    if (DEAD_OPT_GROUPS.indexOf(g) >= 0) return;   // 已废弃的组：本地残留不再合并回来
     if (!O[g]) O[g] = [];
     (src[g] || []).forEach(v => { if (O[g].indexOf(v) < 0) O[g].push(v); });
   });
@@ -654,6 +680,7 @@ function loadOptions() {
       const docs = res.data || [];
       docs.forEach(d => {
         const g = d.group, v = d.value;
+        if (DEAD_OPT_GROUPS.indexOf(g) >= 0) return;   // 无感 / 悦己 的旧文档：忽略（词已并入觉察）
         if (!O[g]) O[g] = [];
         if (O[g].indexOf(v) < 0) O[g].push(v);
       });
@@ -696,15 +723,67 @@ function removeOption(g, v) {
     }).catch(() => resolve(false));
   });
 }
+// 某个选项组是不是某模块的主项组（主项存 txt、不进 ext）；是则返回该模块 key
+function mainModuleOf(g) {
+  let hit = '';
+  Object.keys(FIELDS).forEach(m => { if (!hit && FIELDS[m].main === g) hit = m; });
+  return hit;
+}
+
+// 选项改名只作用于「当前这一组」——不同组里的同名项互不影响。
+//  · 主项组（觉察·归类 / 可做·什么事 …）：只改所属模块记录的 txt
+//  · 细节组：只改 ext 里 extSrc 正好等于该组的位置
+// 云端没法表达「数组某一项等于某值」，所以按 ext 命中粗筛、再在本地逐条核对；
+// 核对过的文档用 nin 排除——同名值若同时属于别的组，记录会持续命中粗筛，
+// 不排除的话就会反复取到同一批、原地打转
+function renameInRecords(g, ov, nv) {
+  const _ = db().command;
+  const mainOf = mainModuleOf(g);
+  const seen = [];
+  let rounds = 0;
+  function step() {
+    if (++rounds > 200 || seen.length > 1000) return Promise.resolve(false);   // 兜底
+    const base = mainOf ? { m: mainOf, txt: ov } : { ext: ov };
+    const where = Object.assign({}, base);
+    if (seen.length) where._id = _.nin(seen);
+    return recCol().where(where).limit(20).get().then(res => {
+      const docs = res.data || [];
+      if (!docs.length) return true;
+      docs.forEach(d => seen.push(d._id));
+      const tasks = [];
+      docs.forEach(d => {
+        if (mainOf) {
+          if (d.txt !== ov) return;
+          tasks.push(recCol().doc(d._id).update({ data: { txt: nv } }));
+          return;
+        }
+        const es = d.extSrc || [], ex = d.ext || [];
+        let hit = false;
+        for (let i = 0; i < es.length; i++) { if (es[i] === g && ex[i] === ov) { ex[i] = nv; hit = true; } }
+        if (!hit) return;                        // 同名值属于别的组：不动它
+        tasks.push(recCol().doc(d._id).update({ data: { ext: ex } }));
+      });
+      return Promise.all(tasks).then(() => step());
+    });
+  }
+  return step().then(() => true)
+    .catch(e => { console.warn('[rename] 历史记录里的旧选项名未同步云端：', e); return false; });
+}
+
+// 选项改名：记页已同步改过内存，这里把云端补齐（否则下拉刷新一次，旧名字就回来了）。
+// 默认项的删除标记（delDef）仍由选项管理页处理——同样只针对本组
 function renameOption(g, ov, nv) {
   persistLocalOpts();
   return new Promise((resolve) => {
+    // ① 云端选项池：本组里等于旧名的项改名
     optCol().where({ group: g, value: ov }).limit(1000).get().then(res => {
       const docs = res.data || [];
       let p = Promise.resolve();
       docs.forEach(d => { p = p.then(() => optCol().doc(d._id).update({ data: { value: nv } })); });
-      p.then(() => resolve(true)).catch(() => resolve(false));
-    }).catch(() => resolve(false));
+      // ② 历史记录里同一组下的同名值
+      return p.then(() => renameInRecords(g, ov, nv));
+    }).then(() => resolve(true))
+      .catch(e => { console.warn('[rename] 选项改名未完全同步云端：', e); resolve(false); });
   });
 }
 
@@ -757,6 +836,153 @@ function migrateWantKind() {
         resolve(true);
       });
     });
+  });
+}
+
+/* ---------------- 一次性迁移：无感 / 悦己 并入觉察（2026-10） ----------------
+   选项池的合并已经固化进 OPT 常量（那两个组本身已删除），这里只做记录迁移：
+   ① m 改成 obs，细节来源按映射改写，再按觉察的来源顺序重建 ext/extSrc
+      （保证导出/导入的按顺序对齐在迁移后依然成立）；
+   ② 记录里出现过、但池子里还没有的手填值补进对应选项组，保证编辑时能看到选中态；
+   ③ 「硬着头皮做了之后」(free:after) 在觉察里没有对应项，按约定丢弃。 */
+const MIG_NOPELIKE_KEY = 'self_mig_nopelike_202610';
+const NOPELIKE_SRC_MAP = {
+  nopeKind: 'obsKind',
+  nopeDeg: 'obsDeg',
+  nopeMood: 'obsMood',
+  'free:nopefeel': 'free:obsfeel',
+  'free:likeFeel': 'free:obsfeel',
+  'free:desc': 'free:desc',
+  'free:after': ''            // 丢弃
+};
+
+// 把值补进某选项组（内存 + 本地 + 云端）；已存在则跳过
+function ensureOpt(g, v) {
+  if (!g || !v) return false;
+  const O = G.OPT || (G.OPT = {});
+  if (!O[g]) O[g] = [];
+  if (O[g].indexOf(v) >= 0) return false;
+  O[g].push(v);
+  addOption(g, v);
+  return true;
+}
+
+// 老数据里「情绪」可能存成「程度+情绪」的合并值（如「微微抵触」）：迁移时拆回 程度 + 情绪
+function splitDegMood(val, degs, moods) {
+  const hit = degs.find(d => val.indexOf(d) === 0);
+  if (!hit) return null;
+  const rest = val.slice(hit.length);
+  return (rest && moods.indexOf(rest) >= 0) ? { deg: hit, mood: rest } : null;
+}
+
+// 把一条无感 / 悦己记录的细节重排成觉察的字段，返回 { ext, extSrc }
+function toObsExt(extSrc, ext) {
+  const degs = getOPT('obsDeg'), moods = getOPT('obsMood');
+  const bag = {};
+  const put = (src, v) => { if (!src || !v) return; (bag[src] = bag[src] || []).push(v); };
+  (extSrc || []).forEach((s, i) => {
+    const v = (ext || [])[i];
+    if (!v) return;
+    if (s === 'nopeMood') {                        // 旧的合并值：拆成 程度 + 情绪
+      const sp = splitDegMood(v, degs, moods);
+      if (sp) { put('obsDeg', sp.deg); put('obsMood', sp.mood); return; }
+    }
+    const to = (!s || s.indexOf('fallback:') === 0) ? 'free:obsfeel' : NOPELIKE_SRC_MAP[s];
+    put(to === undefined ? 'free:desc' : to, v);   // 未登记来源（脏数据）并入描述，不丢内容
+  });
+  const outSrc = [], outExt = [];
+  srcList('obs').forEach(it => {                   // 按觉察的来源顺序重建，保证 export/import 对齐
+    const vs = bag[it.src];
+    if (vs && vs.length) { outSrc.push(it.src); outExt.push(vs.join('；')); }
+  });
+  return { ext: outExt, extSrc: outSrc };
+}
+
+// 记录里出现过、但还没进池的值补进对应选项组，保证编辑时能看到选中态
+function ensureRecOpts(extSrc, ext) {
+  (extSrc || []).forEach((s, i) => {
+    if (s.indexOf('free:') === 0 || s.indexOf('fx:') === 0) return;
+    ensureOpt(s, ext[i]);
+  });
+}
+
+function migrateNopeLikeIntoObs() {
+  return new Promise((resolve) => {
+    if (wx.getStorageSync(MIG_NOPELIKE_KEY)) { resolve(true); return; }
+    // ① 记录迁移。查询条件里带 m，而迁移会把 m 改掉，所以不能按 skip 翻页
+    //    （结果集会随处理而收缩，skip 会漏数据）——每轮取一批未迁移的，处理完再查，直到取空；
+    //    小程序端单次取数有 20 条上限，分多轮正好绕开这个限制
+    const _ = db().command;
+    let rounds = 0;
+    function step() {
+      if (++rounds > 200) return Promise.resolve(false);   // 兜底：异常时不至于无限循环
+      return recCol().where({ m: _.in(['nope', 'like']) }).limit(100).get().then(res => {
+        const docs = res.data || [];
+        if (!docs.length) return true;
+        const tasks = docs.map(d => {
+          const r = decorateDoc(d);
+          const nf = toObsExt(r.extSrc, r.ext);
+          ensureRecOpts(nf.extSrc, nf.ext);
+          if (r.txt) ensureOpt('obsWhat', r.txt);
+          return recCol().doc(d._id).update({ data: { m: 'obs', ext: nf.ext, extSrc: nf.extSrc } });
+        });
+        return Promise.all(tasks).then(() => step());
+      });
+    }
+    step().then(ok => {
+      if (!ok) { resolve(false); return; }   // 没迁完就不写标记，下次启动接着迁
+      // ② 内存里的记录同步改掉：本会话无需刷新即可看到
+      (G.records || []).forEach((r, i) => {
+        if (r.m !== 'nope' && r.m !== 'like') return;
+        const nf = toObsExt(r.extSrc, r.ext);
+        G.records[i] = decorate({
+          id: r.id, _rid: r._rid, m: 'obs', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
+          done: r.done, doneAt: r.doneAt, status: r.status, ref: r.ref, refTxt: r.refTxt,
+          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt
+        });
+      });
+      wx.setStorageSync(MIG_NOPELIKE_KEY, 1);
+      console.log('[mig] 无感 / 悦己 已并入觉察');
+      resolve(true);
+    }).catch(e => { console.warn('[mig] 无感/悦己 迁入觉察失败（下次启动重试）：', e); resolve(false); });
+  });
+}
+
+/* ---------------- 一次性清理：抹掉无感 / 悦己 遗留的「死组」数据（2026-10） ----------------
+   选项池加载时已经不再认这些组（见 DEAD_OPT_GROUPS），这里把云端与本地残留一起清掉：
+   ① 云端 options 集合里 group 属于死组的文档；
+   ② 本地 + 云端的「默认项删除标记」(delDef) 与「选项顺序」(optOrder) 里这些组的条目；
+   ③ 本地选项池快照（persistLocalOpts 按当前内存重建，死组自然消失）。 */
+const MIG_DEADOPT_KEY = 'self_mig_deadopt_202610';
+function cleanDeadOptGroups() {
+  return new Promise((resolve) => {
+    if (wx.getStorageSync(MIG_DEADOPT_KEY)) { resolve(true); return; }
+    const _ = db().command;
+    let rounds = 0;
+    // ① 云端死组文档：删掉后就不再命中查询，直接翻页删到空即可，不需要 skip
+    function step() {
+      if (++rounds > 200) return Promise.resolve(false);   // 兜底：删除异常时不死循环
+      return optCol().where({ group: _.in(DEAD_OPT_GROUPS) }).limit(20).get().then(res => {
+        const docs = res.data || [];
+        if (!docs.length) return true;
+        return Promise.all(docs.map(d => optCol().doc(d._id).remove())).then(() => step());
+      });
+    }
+    step().then(ok => {
+      if (!ok) { resolve(false); return; }   // 没删完就不写标记，下次启动接着清
+      // ② 删除标记 / 选项顺序里的死组条目
+      const alive = _delDef.filter(k => DEAD_OPT_GROUPS.indexOf(String(k).split('|')[0]) < 0);
+      if (alive.length !== _delDef.length) saveDelDef(alive);
+      const order = loadOptOrderLocal();
+      let changed = false;
+      DEAD_OPT_GROUPS.forEach(g => { if (order[g]) { delete order[g]; changed = true; } });
+      if (changed) { persistOptOrderLocal(order); saveOptOrderToCloud(order); }
+      // ③ 本地选项池快照
+      persistLocalOpts();
+      wx.setStorageSync(MIG_DEADOPT_KEY, 1);
+      console.log('[mig] 无感 / 悦己 遗留的选项组数据已清理');
+      resolve(true);
+    }).catch(e => { console.warn('[mig] 死组数据清理失败（下次启动重试）：', e); resolve(false); });
   });
 }
 
@@ -841,7 +1067,9 @@ function ensureAll() {
     (dims || []).forEach(d => regDim(d));
     G.loaded = true;
     _loading = false;
-    return migrateWantKind();
+    return migrateWantKind()
+      .then(() => migrateNopeLikeIntoObs())
+      .then(() => cleanDeadOptGroups());
   }).catch(() => { _loading = false; });
 }
 
@@ -859,10 +1087,10 @@ function reload() {
 }
 
 module.exports = {
-  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, nopeKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
+  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
-  loadOptions, addOption, removeOption, renameOption, setOptOrder, migrateWantKind,
+  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups,
   isDefault, addDelDef, clearDelDef,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, reload, regDim, unregDim,
   globalData: G
