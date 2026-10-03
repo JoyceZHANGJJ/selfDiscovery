@@ -1,0 +1,24 @@
+/* 组件内样式是隔离的：拿不到 app.wxss 的 .mini-in 等公共类，所以这里每个类都写全样式 */
+
+/* 组件节点本身不占布局空间：坐标由宿主页面量好、用 rect 传进来 */
+:host { position: absolute; left: 0; top: 0; }
+
+/* 与 .rec.list 同款外观（同内边距 / 圆角 / 边框），整张卡片盖上被编辑的那一行。
+   收起时【位置原地不动】，只把尺寸收成 0（宿主把 rect 的宽高设 0）：
+   原生输入层不认 visibility/opacity，只有没面积才不画；而位置一挪，
+   微信会把「带焦点的元素」滚进可视区，表现为键盘重弹 + 页面跳回顶部 */
+.edpop { position: absolute; display: flex; align-items: center; gap: 6px; box-sizing: border-box; padding: 10px 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; z-index: 55; overflow: hidden; opacity: 0; visibility: hidden; pointer-events: none; }
+.edpop.on { opacity: 1; visibility: visible; pointer-events: auto; }
+/* 收起时把输入框自身也收成 0 高：双保险，确保原生层一点不画 */
+.edpop:not(.on) .ein { height: 0; padding: 0; border: 0; }
+.edpop:not(.on) .ebt { height: 0; padding: 0; }
+
+/* 输入框：自带边框 + 圆角，一眼是个能打字的地方 */
+.edpop .ein { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 36px; line-height: 36px; padding: 0 11px; font-size: 13.5px; font-family: inherit; color: var(--ink); caret-color: var(--accent); background: var(--surface); border: 1px solid var(--accent); border-radius: 11px; outline: none; }
+.edpop .ein:focus { box-shadow: var(--ring); }
+.edpop .ein-ph { color: var(--ink4); }
+
+/* 行内按钮：保存 / 改更多 */
+.edpop .ebt { flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: #fff; background: var(--accent); padding: 0 11px; height: 36px; line-height: 36px; border-radius: 10px; }
+.edpop .ebt.gh { background: var(--soft); color: var(--ink2); margin-left: 6px; }
+.edpop .ebt:active { opacity: .72; }

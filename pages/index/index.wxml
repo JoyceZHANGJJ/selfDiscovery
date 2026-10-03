@@ -96,7 +96,9 @@
           <picker class="ev" mode="time" value="{{editAbandonTime}}" bindchange="onEditAbandonTime"><view class="evv">{{editAbandonTime}}</view></picker>
         </view>
 
-        <view class="savebar" id="savebar">
+        <!-- 操作行吸底：胶囊卡片再长（编辑态字段多）也能随时点到「记下 / 保存修改 / 取消」。
+             bottom 由页面按键盘高度/底部 tab 栏算好传进来 -->
+        <view class="savebar sticky" id="savebar" style="bottom:{{barBottom}}">
           <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
           <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
         </view>
@@ -119,7 +121,7 @@
         <view class="sk-rec"></view>
       </view>
       <view wx:if="{{ready && recent.length===0}}" class="empty-mini">还没有记录</view>
-      <view wx:for="{{recent}}" wx:key="id" class="rec {{item.task?'list':''}} {{item.longTxt?'long':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}}" data-id="{{item.id}}" catchtap="onRecentTap">
+      <view wx:for="{{recent}}" wx:key="id" id="{{item.task ? 'erow-'+item.id : ''}}" class="rec {{item.task?'list':''}} {{item.longTxt?'long':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
@@ -150,6 +152,10 @@
   <view wx:if="{{brandH}}" class="brand {{brandPlay?'play':''}}" style="position:fixed;top:{{brandTop}}px;left:{{brandLeft}}px;width:{{brandW}}px;height:{{brandH}}px;">
     <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
   </view>
+
+  <!-- 待办长按就地编辑：与清单 / 看页共用同一个组件；
+       「改更多」在记页＝把这条放进记卡做完整编辑（分类 / 时间 / 原因等） -->
+  <inline-editor visible="{{qeOn}}" focus="{{qeFocus}}" rect="{{qe}}" value="{{qeTxt}}" bind:save="onQSave" bind:home="onQHome" />
 
   <theme-switcher lock="{{editing}}" bind:locked="onLocked" />
 </view>

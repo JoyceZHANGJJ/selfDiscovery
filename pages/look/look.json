@@ -1,7 +1,9 @@
 {
   "usingComponents": {
     "theme-switcher": "/components/theme-switcher/index",
-    "rec-actions": "/components/rec-actions/rec-actions"
+    "rec-actions": "/components/rec-actions/rec-actions",
+    "inline-editor": "/components/inline-editor/inline-editor"
   },
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "enablePullDownRefresh": true
 }

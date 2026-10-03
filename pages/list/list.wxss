@@ -1,20 +1,9 @@
 /* pages/list/list.wxss —— 复用 app.wxss 全局类（.app/.screen/.body/.rec.list/.filters/.btn/.mini-in 等），
-   这里只补「长按就地编辑」相关的样式 */
+   这里只补本页自己的样式；待办就地编辑的浮层在 components/inline-editor 里 */
 
-/* 整页改为页面级滚动：与记页一致，.app 还原为普通文档流，
+/* 整页页面级滚动：与记页一致，.app 还原为普通文档流，
    否则 .app 只有固定一屏高，滚出一屏后页面底色露白、背景分层 */
 .app { position: static; min-height: 100vh; display: block; }
-.screen { height: auto; }
+.screen { height: auto; position: relative; }
 
 .ehint { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
-
-/* 编辑态：整行换个底色，提示这行正在改 */
-.rec.list.eding { background: var(--accent-soft); }
-.rec.list.eding .edge { opacity: .5; }
-
-/* 行内输入框：占满整行剩余宽度 */
-.rec.list.eding .ein { flex: 1 1 auto; min-width: 0; height: 36px; line-height: 36px; background: var(--surface); border-color: var(--accent); }
-/* 行内按钮：保存 / 首页改 */
-.rec.list.eding .ebt { flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: #fff; background: var(--accent); padding: 0 11px; height: 36px; line-height: 36px; border-radius: 10px; }
-.rec.list.eding .ebt.gh { background: var(--soft); color: var(--ink2); margin-left: 6px; }
-.rec.list.eding .ebt:active { opacity: .72; }

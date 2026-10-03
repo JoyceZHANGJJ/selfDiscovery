@@ -1,0 +1,6 @@
+<!-- 编辑器节点常驻：不在编辑状态时挪到视口外（不销毁，避免原生输入层残影） -->
+<view class="edpop {{visible?'on':''}}" style="top:{{rect.top || 0}}px;left:{{rect.left || 0}}px;width:{{rect.width || 0}}px;height:{{rect.height || 0}}px;">
+  <input class="ein" value="{{txt}}" focus="{{focus}}" maxlength="{{maxlength}}" placeholder="写点什么？" placeholder-class="ein-ph" confirm-type="done" adjust-position="{{true}}" always-embed="{{true}}" cursor-spacing="24" bindinput="onInput" bindconfirm="onSave" bindblur="onSave" />
+  <view class="ebt" catchtap="onSave">保存</view>
+  <view wx:if="{{showHome}}" class="ebt gh" catchtap="onHome">{{moreLabel}}</view>
+</view>

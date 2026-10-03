@@ -64,6 +64,14 @@ Page({
     recSel: null,
     recSelRec: null,
     delUndo: null,
+    // 吸底操作行（记下 / 保存修改 / 取消）的 bottom：默认抬到底部 tab 栏之上，键盘弹出时再抬到键盘之上
+    barBottom: 'calc(58px + env(safe-area-inset-bottom, 0px))',
+    // 待办长按就地编辑（与清单 / 看页共用的 inline-editor 组件）
+    qeOn: false,
+    qeFocus: false,       // 显示与聚焦分开：手指抬起后才聚焦（见 onRowTouchend）
+    qeId: '',
+    qeTxt: '',
+    qe: { top: 0, left: 0, width: 0, height: 0 },
     editDate: '',
     editTime: '',
     editCreateLabel: '创建时间',
@@ -83,6 +91,21 @@ Page({
     edit: null, ren: null, optUndo: null,
     startMode: false, completing: false, doing: false, showDoing: false, showDone: false,
     abandoning: false, showAbandon: false, ending: false, focusFree: ''
+  },
+
+  onLoad() {
+    // 吸底操作行要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
+    // 所以直接把键盘高度当 bottom，操作行始终落在键盘上方
+    this._kbHandler = (res) => {
+      const h = (res && res.height) || 0;
+      this.setData({ barBottom: h > 0 ? h + 'px' : 'calc(58px + env(safe-area-inset-bottom, 0px))' });
+    };
+    if (wx.onKeyboardHeightChange) wx.onKeyboardHeightChange(this._kbHandler);
+  },
+
+  onUnload() {
+    if (wx.offKeyboardHeightChange && this._kbHandler) wx.offKeyboardHeightChange(this._kbHandler);
+    this._kbHandler = null;
   },
 
   onShow() {
@@ -633,8 +656,105 @@ Page({
     this.recompute();
   },
 
+  /* ---------------- 长按记录（与清单 / 看页共用 inline-editor） ----------------
+     待办：就地快捷改（只改事项）；其它维度：与点「改」等价，直接进记卡完整编辑 */
+  onRecentLongPress(e) {
+    if (this.guardEdit()) return;   // 正在编辑其它记录：先处理编辑态
+    const id = e.currentTarget.dataset.id;
+    const r = (app.globalData.records || []).find(x => x.id === id);
+    if (!r) return;
+    this._lpAt = Date.now();   // 长按后紧跟着的那次点击要忽略掉
+    if (store.isTask(r.m)) { this._openQ(id, r.txt || ''); return; }
+    app.globalData.editRec = store.decorate(r);
+    this.checkEdit();
+    this.recompute();
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });   // 记卡在页面顶部
+  },
+
+  /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器（量好再显示，避免闪到上一次的位置） */
+  _openQ(id, txt) {
+    const q = wx.createSelectorQuery().in(this);
+    q.selectViewport().scrollOffset();
+    q.select('#erow-' + id).boundingClientRect();
+    q.exec(res => {
+      const scrollTop = (res[0] && res[0].scrollTop) || 0;
+      const rect = res[1];
+      if (!rect) return;
+      this.setData({
+        qe: {
+          top: Math.round(rect.top + scrollTop),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height)
+        },
+        recSel: null, recSelRec: null,
+        qeId: id, qeTxt: txt, qeOn: true, qeFocus: false
+      });
+      // 兜底：万一 touchend 没触发（手势被系统吞掉），500ms 后自己聚焦
+      if (this._focusTimer) clearTimeout(this._focusTimer);
+      this._focusTimer = setTimeout(() => {
+        if (this.data.qeOn && !this.data.qeFocus) this.onRowTouchend();
+      }, 500);
+    });
+  },
+
+  /* 手指抬起后再聚焦：长按过程中就聚焦的话，抬手瞬间微信的「点到外面」会把输入框 blur 掉，
+     表现为「一松手输入框就关了」 */
+  onRowTouchend() {
+    if (!this.data.qeOn || this.data.qeFocus) return;
+    this._focusAt = Date.now();
+    this.setData({ qeFocus: true });
+  },
+
+  /* 组件派发 save：失焦 / 键盘「完成」/ 点「保存」都走这里；改空或没改动则不落云 */
+  onQSave(e) {
+    if (this._qeClosing) return;
+    // 刚聚焦就被系统「点到外面」blur 掉（长按抬手那一下）：忽略，不要当成用户改完了
+    if (this._focusAt && Date.now() - this._focusAt < 400) return;
+    const id = this.data.qeId;
+    if (!id || !this.data.qeOn) return;
+    const txt = ((e.detail && e.detail.value) || '').trim();
+    const r = (app.globalData.records || []).find(x => x.id === id);
+    if (!r || !store.isTask(r.m) || !txt || txt === r.txt) { this._closeQ(); return; }
+    r.txt = txt;
+    store.updateRecord(r).catch(() => {});
+    this._closeQ();
+    this.recompute();
+    wx.showToast({ title: '已更新', icon: 'none' });
+  },
+
+  /* 收起：位置原地不动，只把宽高收成 0。
+     一挪位置，微信会把「带焦点的输入框」滚进可视区（键盘重弹 + 页面跳回顶部）；
+     挪走之前保留 qeId，让那一行继续隐身，避免与原生层残留互相重影 */
+  _closeQ() {
+    this._qeClosing = true;
+    setTimeout(() => { this._qeClosing = false; }, 150);
+    this._focusAt = 0;
+    const qe = this.data.qe || {};
+    this.setData({
+      qeOn: false,
+      qeFocus: false,
+      qeId: '',
+      qeTxt: '',
+      qe: { top: qe.top || 0, left: qe.left || 0, width: 0, height: 0 }
+    });
+  },
+
+  /* 「改更多」：把这条待办放进记卡做完整编辑（可改分类、原因、时间等） */
+  onQHome() {
+    const r = (app.globalData.records || []).find(x => x.id === this.data.qeId);
+    this._closeQ();
+    if (!r || !store.isTask(r.m)) return;
+    app.globalData.editRec = store.decorate(r);
+    this.checkEdit();
+    this.recompute();
+    // 记卡在页面顶部，滚上去才能看到编辑区
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+  },
+
   /* 点「最近」记录：选中并弹出「改 / 删除」操作条 */
   onRecentTap(e) {
+    if (this._lpAt && Date.now() - this._lpAt < 400) return;   // 长按刚触发过，忽略随之而来的点击
     if (this.guardEdit()) return;   // 编辑态：不允许选中其它记录
     const id = e.currentTarget.dataset.id;
     if (this.data.recSel === id) { this.setData({ recSel: null, recSelRec: null }); return; }

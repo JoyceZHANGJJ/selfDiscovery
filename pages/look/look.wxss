@@ -1,5 +1,10 @@
 /* pages/look/look.wxss —— 看页补充样式（其余沿用 app.wxss） */
 
+/* 整页页面级滚动：与记页一致，.app 还原为普通文档流，
+   否则 .app 只有固定一屏高，滚出一屏后页面底色露白、背景分层 */
+.app { position: static; min-height: 100vh; display: block; }
+.screen { height: auto; }
+
 /* 快捷时间筛选 */
 .ranges { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .rg { font-size: 13px; color: var(--ink3); padding: 5px 12px; border-radius: 999px; background: var(--soft); line-height: 1; }
