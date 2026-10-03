@@ -1,5 +1,6 @@
 // pages/look/look.js —— 看
 const store = require('../../utils/store.js');
+const ui = require('../../utils/ui.js');
 const app = getApp();
 
 function dmClass(m) {
@@ -111,16 +112,16 @@ Page({
   },
 
   /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
-     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来（与记页同一套） */
+     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来（与记页同一套）。
+     矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
+     会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
   layoutBrand() {
-    try {
-      const mb = wx.getMenuButtonBoundingClientRect && wx.getMenuButtonBoundingClientRect();
-      if (!mb || !mb.height) return;
-      this.setData({
-        brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
-        brandChars: String(this.data.appName || '').split('')
-      });
-    } catch (e) { /* 取不到就不显示 */ }
+    const mb = ui.capsuleRect();
+    if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
+    this.setData({
+      brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
+      brandChars: String(this.data.appName || '').split('')
+    });
   },
 
   /* 名字露出来的这会儿，播一次逐字浮现 */
@@ -595,6 +596,7 @@ Page({
   /* 页面级下拉刷新入口（原生下拉回弹，与记页一致）；
      下拉时程序名正好从胶囊后露出来，顺手播一次逐字浮现 */
   onPullDownRefresh() {
+    this.layoutBrand();   // 露出来之前再确认一次位置（万一首次没取到胶囊矩形）
     this.playBrand();
     this.onRefresh();
   },
