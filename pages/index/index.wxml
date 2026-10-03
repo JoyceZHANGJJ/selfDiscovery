@@ -57,8 +57,9 @@
         <view wx:if="{{composer.mainOpts.length}}" class="chips">
           <view wx:for="{{composer.mainOpts}}" wx:key="*this" class="chip {{item.on?'on':''}}" data-v="{{item.v}}" bindtap="onMainChip">{{item.v}}</view>
         </view>
-        <!-- 归类：不带输入框，只从上面的选项池点选（要靠「✎ 管理」增删），
-             这样它始终是可归类的名词，不会被写成一整句话 -->
+        <!-- 归类 / 什么事：都不给主输入框，只从上面的选项池点选（要靠「✎ 管理」增删），
+             这样它始终是可归类的名词，不会被写成一整句话。
+             可做的文字输入走下面「具体的描述」那个框——只填它时，它就是「事」（见 doSave） -->
         <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" id="fldmain" bindfocus="onFieldFocus"></textarea>
 
         <!-- 具体的描述：与「归类」配对（点可归类、描述不可归类），自由记录、可跳过，不带标题 -->
@@ -114,11 +115,6 @@
         <view class="savebar sticky" id="savebar" style="bottom:{{barBottom}}">
           <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
           <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
-        </view>
-
-        <view wx:if="{{froze}}" class="freezeline">
-          <view class="tx">已固化：{{froze.txt}}</view>
-          <view class="tb" bindtap="onFrozeUndo">撤销固化</view>
         </view>
       </view>
       </block>

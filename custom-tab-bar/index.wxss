@@ -41,3 +41,35 @@
 }
 .tbb.hint .ic { animation: tabHint .55s ease-in-out 3; }
 .tbb.hint::before { animation: barHint .55s ease-in-out 3; }
+
+/* ===== 快捷记待办：点「＋」球在原地弹出的输入条 =====
+   位置固定在球的正上方（球 bottom 116 + 球高 52 + 10 间隙），不占页面空间、不推挤列表 */
+/* 遮罩：盖住「除 tab 栏以外」的所有地方（与记录操作条同一套心智——点浮层以外的任何地方都收起）。
+   底部留出 tab 栏的高度，所以点 tab 仍是一次到位；z-index 取在操作条(50) / 标题条(45) 之上、
+   面板与撤销条之下，这样点操作条、点球、点页面空白都会先把面板收掉。 */
+.qa-mask { position: fixed; left: 0; right: 0; top: 0; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); z-index: 61; }
+.qa {
+  position: fixed; left: 16px; right: 16px; bottom: calc(178px + env(safe-area-inset-bottom, 0px));
+  max-width: 608px; margin: 0 auto; z-index: 62;
+  background: var(--bg, #FAF8F4); border: 1px solid var(--line2, #E2DCD1); border-radius: 16px;
+  padding: 11px 12px 12px; box-sizing: border-box;
+  box-shadow: 0 14px 30px rgba(35,35,31,.20), 0 4px 10px rgba(35,35,31,.12);
+}
+.qa-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.qa-m { display: flex; align-items: center; font-size: 12.5px; color: var(--ink2, #55524A); }
+.qa-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+.qa-swap { font-size: 11px; color: var(--ink3, #8B8779); text-decoration: underline; margin-left: 6px; }
+.qa-list { font-size: 12.5px; color: var(--accent, #7C9A86); text-decoration: underline; padding: 2px 0 2px 8px; }
+.qa-row { display: flex; align-items: center; }
+.qa-in {
+  flex: 1; min-width: 0; height: 38px; line-height: 38px; border: 1px solid var(--line2, #E2DCD1);
+  border-radius: 10px; padding: 0 12px; font-size: 14px; font-family: inherit; background: #fff;
+  box-sizing: border-box; caret-color: var(--accent, #7C9A86);
+}
+.qa-in:focus { border-color: var(--accent, #7C9A86); }
+.qa-go { flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--ink3, #8B8779); padding: 8px 2px 8px 12px; }
+.qa-go.on { color: var(--accent, #7C9A86); }
+/* 撤销条：.undo-bar 是整屏宽，这里左右内缩、与面板同宽对齐，并抬到遮罩之上（否则点它会先被遮罩吃掉） */
+.undo-bar.qa-undo { left: 16px; right: 16px; z-index: 62; }
+/* 球展开时（显示 ×）压深一档，和「收起」区分开 */
+.fab.on { background: var(--ink2, #55524A); }

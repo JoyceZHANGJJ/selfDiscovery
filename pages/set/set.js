@@ -56,6 +56,9 @@ Page({
     });
   },
 
+  /* 悬浮球「＋」快捷记下一条待办后：只有「记录条数」会变 */
+  onQuickTodo() { this.setData({ recCount: (app.globalData.records || []).length }); },
+
   /* 问候语 */
   toggleGreet() { this.setData({ greetOpen: !this.data.greetOpen }); },
   addGreetTap(e) { this.setData({ geNew: e.currentTarget.dataset.pool, geNewVal: '' }); },

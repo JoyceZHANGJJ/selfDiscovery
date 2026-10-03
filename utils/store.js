@@ -36,9 +36,10 @@ const OPT = {
 
 // 「归类」：觉察 / 无感已把「什么事」解耦成「归类（名词性、可归类）+ 具体的描述（自由、不可归类）」。
 // 叫「归类」而不是「什么事 / 触动的点」，是因为池子里装的不一定是事——也可能是一个概念（自由）
-// 或一个物件（猫），所以标签只描述它的作用：从池里点选的那个用来归类的词；可做 / 悦己等仍是「什么事」，等后续再迁
+// 或一个物件（猫），所以标签只描述它的作用：从池里点选的那个用来归类的词。
+// 可做 / 此刻 也已解耦，那边主项仍叫「什么事 / 此刻想记」（只填描述时它本身就是「事」）；悦己等还没迁
 const GLABEL = {
-  obsWhat: '归类', obsKind: '分类', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '正在做的事', genFeel: '情绪',
+  obsWhat: '归类', obsKind: '分类', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '此刻想记', genFeel: '情绪',
   genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '分类',
   doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', memoItem: '要记住什么', buyItem: '要买什么', likeItem: '什么事'
 };
@@ -59,9 +60,8 @@ const FIXED = {
   nrg: { label: '做完精力如何（可不选）', opts: ['耗电', '充电', '没变化'] }
 };
 
-// 一次性前缀：半角 ~ 与全角 ～ 都认（中文输入法打出的通常是全角）
-function isOnce(s) { const c = (s || '').trim().charAt(0); return c === '~' || c === '～'; }
-function stripOnce(s) { const t = (s || '').trim(); return isOnce(t) ? t.slice(1).trim() : t; }
+// 注：早先有个「~ 前缀 = 把这条手填值固化进选项池」的写法，已整体移除。
+// 现在手填就是只记这一次，选项池只从「✎ 管理」里维护
 
 // 「具体的描述」的自由字段 key：与主项（归类）配对——归类是名词性的、可复用；描述自由、不可归类。
 // 它固定放在 items 的最后一位，于是 ext/extSrc 的顺序、srcList（导出/导入按顺序对齐）都保持兼容：
@@ -69,7 +69,8 @@ function stripOnce(s) { const t = (s || '').trim(); return isOnce(t) ? t.slice(1
 const DESC_KEY = 'desc';
 const DESC_SRC = 'free:' + DESC_KEY;
 
-// 模块字段：g=选项组（freeze 决定手填是否固化）/ fx=固定选项组 / free=自由文本
+// 模块字段：g=选项组（noInput=不给手填输入框）/ fx=固定选项组 / free=自由文本
+// 注：g 组若没标 noInput，就带一个手填输入框——手填值只记这一条，不进选项池
 const FIELDS = {
   // 觉察（无感 / 悦己 已并入这里）。编辑器里的展示顺序由 index 的 buildComposer 排成
   // 「分类 → 程度 → 感受（情绪 chips + 紧随的自由输入框）→ 怎么开始的 → 沉浸 → 精力」；
@@ -77,7 +78,7 @@ const FIELDS = {
   obs: { main: 'obsWhat', items: [
     { g: 'obsStart', single: true, noInput: true },
     { fx: 'forgot' }, { fx: 'nrg' },
-    { g: 'obsMood', freeze: false, single: true, noInput: true },
+    { g: 'obsMood', single: true, noInput: true },
     { free: 'obsfeel', label: '', ph: '有什么想抒发的？', ta: true },
     // 具体的描述：不可归类，编辑时不带标题，就在「归类」下方
     { free: 'desc', label: '', ph: '发生了什么？', ta: true },
@@ -85,12 +86,15 @@ const FIELDS = {
     // 程度是「感受」的修饰（微微 / 有点 / 很…），sub 表示它在编辑器里作为情绪的副行展示：
     // 不单独起标题、chip 小一号、没选情绪时不出现（见 index 的 buildComposer 与 index.wxml）
     { g: 'obsKind', single: true, noInput: true },
-    { g: 'obsDeg', freeze: false, single: true, noInput: true, sub: true }
+    { g: 'obsDeg', single: true, noInput: true, sub: true }
   ] },
   now: { main: 'genDoing', items: [
-    { g: 'genFeel', freeze: false, single: false, noInput: true },
+    { g: 'genFeel', single: false, noInput: true },
     { free: 'nownote', label: '感受', ph: '这一刻心里的感觉，随便写', ta: true },
-    { g: 'genWant', freeze: true, single: true }
+    { g: 'genWant', single: true },
+    // 「具体的描述」：与「此刻想记」解耦，逻辑与可做那套一致（只填它时它本身就是「事」）。
+    // 固定放最后一位，导出/导入的按顺序对齐不受影响
+    { free: 'desc', label: '', ph: '也可以直接写「事」；选了上面就是补充', ta: true, asMain: true }
   ] },
   want: { main: 'wantItem', items: [
     { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },
@@ -102,9 +106,13 @@ const FIELDS = {
     { free: 'doneFeel', label: '做了的感受', ph: '做完那一刻心里冒出来的话', ta: true },
     { free: 'doneGain', label: '收获', ph: '这次有什么收获，随便写', ta: true },
     // 「为什么不做了」仅点「放弃」或编辑「不做」记录时显示（由 index 编辑态按状态过滤）
-    { free: 'abandonWhy', label: '为什么不做了', ph: '为什么不想做了？随便写', ta: true }
+    { free: 'abandonWhy', label: '为什么不做了', ph: '为什么不想做了？随便写', ta: true },
+    // 「具体的描述」：与「什么事」解耦（事可归类、描述不可归类）。固定放最后一位，导出/导入顺序不变。
+    // asMain：可做允许「只填这一个框」——那时这段文字本身就是「事」（见 index 的 doSave）；
+    // 觉察 / 无感没有这个标记，因为那边的「归类」只从选项池点选
+    { free: 'desc', label: '', ph: '也可以直接写「事」；选了上面就是补充', ta: true, asMain: true }
   ] },
-  /* 备忘 / 购物：只记一句话，没有细节；加 ~ 前缀可把这条存进选项池下次点选 */
+  /* 备忘 / 购物：只记一句话，没有细节；要复用同一句话，去「选项池」里加 */
   memo: { main: 'memoItem', items: [ { free: 'memonote', label: '原因', ph: '为什么记这条？可不填', ta: true } ] },
   buy:  { main: 'buyItem',  items: [ { free: 'buynote', label: '干什么用', ph: '买来做什么？可不填', ta: true } ] }
 };
@@ -427,12 +435,16 @@ function decorateDoc(d) {
     status: d.status || '', ref: d.ref || '', refTxt: d.refTxt || '', startedAt: d.startedAt || 0, refTs: d.refTs || 0, endTs: d.endTs || 0, abandonedAt: d.abandonedAt || 0
   });
 }
-// 组装查询条件：模块过滤 + 时间范围（startTs <= ts < before）+ 状态（仅 want 模块用）
+// 组装查询条件：模块过滤 + 时间范围（startTs <= ts < before）+ 状态（仅 want 模块用）+ 细节值筛选
 // state: 'all'(未做+在做+做了+不做) / 'todo' / 'doing' / 'done' / 'abandon'
-function recWhere({ m = null, startTs = null, before = null, state = null } = {}) {
+// extTags: 细节值（如觉察的「分类」= 喜欢 / 有趣 / 没兴趣 / 不喜欢）——ext 是数组，
+//          单个值直接等值命中（数组包含即算中），多个值要求同时都包含
+// mNot: 要排除的模块（看页「全部」不看待办：备忘 / 购物不进时间线，取回来只是白占一页的位置）
+function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null } = {}) {
   const _ = db().command;
   const w = {};
   if (m && m !== 'all') w.m = m;
+  else if (mNot && mNot.length) w.m = _.nin(mNot);
   if (m === 'want' && state) {
     if (state === 'todo') w.status = _.nin(['doing', 'done', 'abandon']);
     else if (state === 'doing') w.status = 'doing';
@@ -440,6 +452,9 @@ function recWhere({ m = null, startTs = null, before = null, state = null } = {}
     else if (state === 'abandon') w.status = 'abandon';
     // state === 'all'：不限制 status（未做 + 在做 + 做了 + 不做 都显示）
   }
+  const tags = (extTags || []).filter(Boolean);
+  if (tags.length === 1) w.ext = tags[0];
+  else if (tags.length > 1) w.ext = _.all(tags);
   const ts = [];
   if (startTs != null) ts.push(_.gte(startTs));
   // 用 lte 而不是 lt：同毫秒可能有多条记录（批量导入常见），lt 会把它们整批跳过；
@@ -453,10 +468,10 @@ function recWhere({ m = null, startTs = null, before = null, state = null } = {}
 // 重要：小程序端 limit 默认与上限都是 20（官方限制），请求超过 20 会被静默截断，
 // 所以这里最多取 20 条，并用「是否满页」判断可能还有更旧的记录（下一页返回空即结束）。
 // excludeIds 用于去掉已加载的文档（配合 lte 游标，避免同毫秒记录重复或遗漏）。
-function loadRecordsPage({ before = null, limit = 20, m = null, startTs = null, state = null, excludeIds = null } = {}) {
+function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, startTs = null, state = null, extTags = null, excludeIds = null } = {}) {
   const take = Math.min(limit || 20, 20);
   return new Promise((resolve) => {
-    recCol().where(recWhere({ m, startTs, before, state })).orderBy('ts', 'desc').limit(take).get().then(res => {
+    recCol().where(recWhere({ m, mNot, startTs, before, state, extTags })).orderBy('ts', 'desc').limit(take).get().then(res => {
       const raw = res.data || [];
       let data = raw;
       if (excludeIds && excludeIds.length) {
@@ -472,13 +487,13 @@ function loadRecordsPage({ before = null, limit = 20, m = null, startTs = null, 
   });
 }
 // 全量拉取（导出 / 搜索 / 记页数据源）：按小程序端上限 20 自动翻页直到取完
-function loadAllRecords({ m = null, startTs = null } = {}) {
+function loadAllRecords({ m = null, mNot = null, startTs = null } = {}) {
   const PAGE = 20;
   let cursor = null;
   const out = [];
   const seen = {};
   function step() {
-    return loadRecordsPage({ before: cursor, limit: PAGE, m, startTs, excludeIds: Object.keys(seen) }).then(({ list, hasMore, nextCursor }) => {
+    return loadRecordsPage({ before: cursor, limit: PAGE, m, mNot, startTs, excludeIds: Object.keys(seen) }).then(({ list, hasMore, nextCursor }) => {
       list.forEach(r => { if (!seen[r._rid]) { seen[r._rid] = 1; out.push(r); } });
       // 本页没有新增（全是已加载的同毫秒记录或已取完）→ 结束，防止死循环
       if (!list.length) return out;
@@ -490,10 +505,11 @@ function loadAllRecords({ m = null, startTs = null } = {}) {
 }
 // 记录总数（按 模块 / 时间范围 / 流转状态 / 细节标签 过滤），用于「共 X 条」准确统计。
 // 走 count 接口，不受列表分页影响。
-function countRecords({ m = null, startTs = null, state = null, extTag = null } = {}) {
+function countRecords({ m = null, startTs = null, state = null, extTag = null, extTags = null } = {}) {
   return new Promise((resolve) => {
-    const w = recWhere({ m, startTs, state });
-    if (extTag) w.ext = extTag;   // 数组字段：包含该标签即命中
+    // extTag 是早期的单标签写法，extTags 支持「分类 + 沉浸」这类组合（都要命中）
+    const tags = (extTags && extTags.length) ? extTags : (extTag ? [extTag] : []);
+    const w = recWhere({ m, startTs, state, extTags: tags });
     recCol().where(w).count()
       .then(r => resolve((r && r.total) || 0)).catch(() => resolve(0));
   });
@@ -517,12 +533,15 @@ function countByStatus({ startTs = null } = {}) {
   });
 }
 // 统计：某模块下「事项」出现次数前几名（聚合分组，不受分页影响）→ [{ txt, n }]
-function countByTxt({ m = null, startTs = null, top = 8 } = {}) {
+function countByTxt({ m = null, startTs = null, top = 8, extTags = null } = {}) {
   const dbc = db().command;
   const $ = dbc.aggregate;
   const match = {};
   if (m) match.m = m;
   if (startTs != null) match.ts = dbc.gte(startTs);
+  const tags = (extTags || []).filter(Boolean);
+  if (tags.length === 1) match.ext = tags[0];
+  else if (tags.length > 1) match.ext = dbc.all(tags);
   return db().collection('records').aggregate()
     .match(match)
     .group({ _id: '$txt', n: $.sum(1) })
@@ -1031,7 +1050,7 @@ function regDim(d) {
   MODULES.push({ k: d.k, n: d.n, c: d.c, custom: true });
   OPT[gk] = (d.opt || []).slice();
   GLABEL[gk] = d.n;
-  FIELDS[d.k] = { main: gk, items: [{ g: gk, freeze: true, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
+  FIELDS[d.k] = { main: gk, items: [{ g: gk, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
   return true;
 }
 function unregDim(k) {
@@ -1088,7 +1107,7 @@ function reload() {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups,
   isDefault, addDelDef, clearDelDef,

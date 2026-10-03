@@ -26,6 +26,7 @@ Component({
       const status = rec.status || '';
       const isWant = rawm === 'want';
       const isObsNope = rawm === 'obs' || rawm === 'nope';
+      const isTask = rawm === 'memo' || rawm === 'buy';
       const flow = [];
       // 可做：未做/在做 显示 开始(仅未在做)/完成/放弃；不做 显示 恢复
       if (isWant && status !== 'done' && status !== 'abandon') {
@@ -41,11 +42,15 @@ Component({
       if (isObsNope && !rec.ended) {
         flow.push({ type: 'end', label: '结束', cls: 'end' });
       }
+      // 待办（备忘 / 购物）：完成永远走条目上的勾选框，操作条只给次级操作 —— 放弃 / 恢复。
+      // 放弃只是小概率事件，放这儿不会影响「点一下勾掉」这条主路径
+      if (isTask && !rec.done && status !== 'abandon') flow.push({ type: 'abandon', label: '放弃', cls: 'abandon' });
+      if (isTask && status === 'abandon') flow.push({ type: 'restore', label: '恢复', cls: 'restore' });
       this.setData({
         flow,
         showEditDel: !!rawm,
         showEndSep: isObsNope && !rec.ended,
-        showWantSep: isWant && status !== 'done',
+        showWantSep: (isWant && status !== 'done') || (isTask && flow.length > 0),
         title: rec.m ? (rec.m + ' · ' + rec.txt) : ''
       });
     },

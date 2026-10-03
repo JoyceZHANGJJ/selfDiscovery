@@ -3,6 +3,20 @@
   <!-- 整页改为页面级滚动（与记页一致）：搜索框等原生输入层由微信同步位置，不再套在 scroll-view 里 -->
   <view class="screen">
     <view class="body" bindtap="clearFloats">
+      <!-- 骨架屏：首屏数据未就绪时占位（与记页同一套 .sk 样式），避免空白页闪一下 -->
+      <view wx:if="{{!ready}}" class="sk skpage">
+        <view class="sk-line sk-w30 sk-sm"></view>
+        <view class="sk-box sk-search"></view>
+        <view class="sk-row"><view class="sk-line sk-w30"></view><view class="sk-line sk-w30"></view><view class="sk-line sk-w30"></view></view>
+        <view class="sk-hr"></view>
+        <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+        <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w40"></view></view>
+        <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+        <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w40"></view></view>
+        <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+      </view>
+
+      <block wx:else>
       <view class="sect-t">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
       <input id="searchBox" class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{true}}" cursor-spacing="20" always-embed="{{true}}" bindfocus="onSearchFocus" />
 
@@ -60,27 +74,61 @@
           </block>
         </view>
 
-        <!-- 已完成 -->
-        <view wx:if="{{tasks.done.length}}">
+        <!-- 已完成：按完成那天分段（与时间线同款日标签），段内按完成时间倒序 -->
+        <view wx:if="{{tasks.doneN}}">
           <view class="tfhd" bindtap="onTaskFold" data-k="done">
-            <view class="tt">已完成 · {{tasks.done.length}}</view>
+            <view class="tt">已完成 · {{tasks.doneN}}</view>
             <view class="tl"></view>
             <view class="tc {{tasks.openD?'open':''}}">▸</view>
           </view>
           <block wx:if="{{tasks.openD}}">
-            <view wx:for="{{tasks.done}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
-              <view class="edge" style="background:{{item.c}}"></view>
-              <view class="hd">
-                <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
-                <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
-                <text class="tv">{{item.txt}}</text>
-                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
+            <view wx:for="{{tasks.doneGroups}}" wx:key="day" wx:for-item="g">
+              <view class="daylab">{{g.day}}</view>
+              <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+                <view class="edge" style="background:{{item.c}}"></view>
+                <view class="hd">
+                  <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
+                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+                  <text class="tv">{{item.txt}}</text>
+                  <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
+                </view>
+                <view class="done-at">{{item.doneAtText}}</view>
               </view>
-              <view class="done-at">{{item.doneLabel}}</view>
+            </view>
+          </block>
+        </view>
+
+        <!-- 已放弃：与已完成同构（按放弃那天分段），点条目出操作条可「恢复」 -->
+        <view wx:if="{{tasks.abandN}}">
+          <view class="tfhd" bindtap="onTaskFold" data-k="aband">
+            <view class="tt">已放弃 · {{tasks.abandN}}</view>
+            <view class="tl"></view>
+            <view class="tc {{tasks.openA?'open':''}}">▸</view>
+          </view>
+          <block wx:if="{{tasks.openA}}">
+            <view wx:for="{{tasks.abandGroups}}" wx:key="day" wx:for-item="g">
+              <view class="daylab">{{g.day}}</view>
+              <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+                <view class="edge" style="background:{{item.c}}"></view>
+                <view class="hd">
+                  <!-- 已放弃的圈里画个 ×，且不可点：完成走「恢复」而不是直接勾掉 -->
+                  <view class="ck"></view>
+                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
+                  <text class="tv">{{item.txt}}</text>
+                  <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
+                </view>
+                <view class="done-at">{{item.abandAtText}}</view>
+              </view>
             </view>
           </block>
         </view>
       </block>
+
+      <!-- 觉察 · 分类：与「可做」的流转状态筛选同一个位置（分类是存在 ext 里的细节值，选项取池子） -->
+      <view wx:if="{{filter==='obs' && kinds.length}}" class="filters states">
+        <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
+        <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
+      </view>
 
       <!-- 可以 维度：状态切换 未做 / 在做 / 做了 -->
       <view wx:if="{{filter==='want'}}" class="filters states">
@@ -111,6 +159,7 @@
         <text wx:else>— 已经到底了 —</text>
       </view>
       <view wx:elif="{{empty}}" class="empty-mini">没有匹配的记录</view>
+      </block>
     </view>
   </view>
 
