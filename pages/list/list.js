@@ -39,7 +39,9 @@ Page({
   recVM(r) {
     return {
       id: r.id, m: store.mname(r.m), c: store.mcolor(r.m),
-      txt: r.txt, t: r.t,
+      txt: r.txt,
+      // 待办的时间：今天显示时刻，非今天显示简洁日期（避免只有 HH:MM 看不出是哪天）
+      t: r.tt || r.t,
       done: !!r.done, doneLabel: store.doneLabel(r.doneAt),
       reason: r.reason || '', usefor: r.usefor || ''
     };

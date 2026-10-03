@@ -79,9 +79,8 @@ Page({
         const rs = g.mods[m.k]; if (!rs || !rs.length) return;
         const rows = rs.map(r => {
           const det = store.buildExt(r.m, r.ext, r.extSrc); // 结构化细节 [{lbl,v}]，与记录页同款渲染
-          const ago = store.agoOf(r.ts);
-          const d = ago <= 0 ? '' : (ago === 1 ? '昨天' : (ago === 2 ? '前天' : store.dayLabel(ago))) + ' ';
-          return { d: d + r.t, x: det };
+          // 日期前缀走公共函数：今天空串、昨天 / 前天相对说法、更早给日期（跨年才带年份）
+          return { d: store.datePrefix(r.ts) + r.t, x: det };
         });
         dims.push({ n: m.n, c: m.c, rows });
       });

@@ -286,8 +286,8 @@ Page({
 
   recVM(r) {
     const dt = store.buildExt(r.m, r.ext, r.extSrc);
-    const ago = store.agoOf(r.ts);
-    const d = ago <= 0 ? '' : (ago === 1 ? '昨天' : (ago === 2 ? '前天' : store.dayLabel(ago))) + ' ';
+    // 日期前缀：今天空串，昨天 / 前天相对说法，更早给日期（跨年才带年份）
+    const d = store.datePrefix(r.ts);
     const task = store.isTask(r.m);
     const doingDays = (r.m === 'want' && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
     // 用时/历时（与看页一致）：做了=用了/惦记了；觉察=历时
@@ -311,7 +311,7 @@ Page({
       const ds = fmtDur(r.abandonedAt - r.ts);
       if (ds) dur = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
-    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, t: r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur,
+    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), txt: r.txt, t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur,
       // 清单标题超长：隐藏原因/用途，标题独占整行自动折行（右侧只留时间）
       longTxt: task && String(r.txt || '').length > 12 };
   },
