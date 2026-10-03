@@ -4,7 +4,9 @@ const store = require('../../utils/store.js');
 Component({
   properties: {
     // 编辑态锁定时不切主题，改为通知页面（页面会把「保存修改」滚到中间）
-    lock: { type: Boolean, value: false }
+    lock: { type: Boolean, value: false },
+    // 圆点左侧显示的名称（如小程序名），不传则不显示
+    title: { type: String, value: '' }
   },
   data: {
     ac: '#2F8F7B',

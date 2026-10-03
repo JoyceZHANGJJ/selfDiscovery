@@ -1,4 +1,5 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <view class="statusbar-mask"></view>
   <view class="screen">
     <view class="body-opt">
       <view class="op-h">

@@ -25,9 +25,18 @@
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [
-      { "type": "folder", "value": "resource" },
-      { "type": "suffix", "value": ".mp4" },
-      { "type": "suffix", "value": ".mov" }
+      {
+        "value": "resource",
+        "type": "folder"
+      },
+      {
+        "value": ".mp4",
+        "type": "suffix"
+      },
+      {
+        "value": ".mov",
+        "type": "suffix"
+      }
     ],
     "include": []
   },

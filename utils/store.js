@@ -395,44 +395,95 @@ function recWhere({ m = null, startTs = null, before = null, state = null } = {}
   }
   const ts = [];
   if (startTs != null) ts.push(_.gte(startTs));
-  if (before != null) ts.push(_.lt(before));
+  // 用 lte 而不是 lt：同毫秒可能有多条记录（批量导入常见），lt 会把它们整批跳过；
+  // 重复的部分由调用方用 excludeIds 去重，保证不漏数据
+  if (before != null) ts.push(_.lte(before));
   if (ts.length === 1) w.ts = ts[0];
   else if (ts.length === 2) w.ts = _.and(ts);
   return w;
 }
-// 单页：请求 limit+1 条，多出的 1 条仅用于探测 hasMore；before 为上一页最后一条的 ts（取更旧）
-// 注：同一毫秒多条记录理论上可能漏一条，手记场景极少，可忽略
-function loadRecordsPage({ before = null, limit = 20, m = null, startTs = null, state = null } = {}) {
+// 单页：before 为上一页最后一条的 ts（取更旧）。
+// 重要：小程序端 limit 默认与上限都是 20（官方限制），请求超过 20 会被静默截断，
+// 所以这里最多取 20 条，并用「是否满页」判断可能还有更旧的记录（下一页返回空即结束）。
+// excludeIds 用于去掉已加载的文档（配合 lte 游标，避免同毫秒记录重复或遗漏）。
+function loadRecordsPage({ before = null, limit = 20, m = null, startTs = null, state = null, excludeIds = null } = {}) {
+  const take = Math.min(limit || 20, 20);
   return new Promise((resolve) => {
-    recCol().where(recWhere({ m, startTs, before, state })).orderBy('ts', 'desc').limit(limit + 1).get().then(res => {
-      const data = res.data || [];
-      const hasMore = data.length > limit;
-      const list = (hasMore ? data.slice(0, limit) : data).map(decorateDoc);
+    recCol().where(recWhere({ m, startTs, before, state })).orderBy('ts', 'desc').limit(take).get().then(res => {
+      const raw = res.data || [];
+      let data = raw;
+      if (excludeIds && excludeIds.length) {
+        const set = {};
+        excludeIds.forEach(id => { set[id] = 1; });
+        data = raw.filter(d => !set[d._id]);
+      }
+      const list = data.map(decorateDoc);
+      const hasMore = raw.length >= take;   // 满页 → 可能还有更旧的
       const nextCursor = list.length ? list[list.length - 1].ts : null;
       resolve({ list, hasMore, nextCursor });
     }).catch(() => resolve({ list: [], hasMore: false, nextCursor: null }));
   });
 }
-// 全量拉取（导出 / 搜索用）：自动翻页直到取完
+// 全量拉取（导出 / 搜索 / 记页数据源）：按小程序端上限 20 自动翻页直到取完
 function loadAllRecords({ m = null, startTs = null } = {}) {
-  const PAGE = 100;
+  const PAGE = 20;
   let cursor = null;
   const out = [];
+  const seen = {};
   function step() {
-    return loadRecordsPage({ before: cursor, limit: PAGE, m, startTs }).then(({ list, hasMore, nextCursor }) => {
-      out.push.apply(out, list);
+    return loadRecordsPage({ before: cursor, limit: PAGE, m, startTs, excludeIds: Object.keys(seen) }).then(({ list, hasMore, nextCursor }) => {
+      list.forEach(r => { if (!seen[r._rid]) { seen[r._rid] = 1; out.push(r); } });
+      // 本页没有新增（全是已加载的同毫秒记录或已取完）→ 结束，防止死循环
+      if (!list.length) return out;
       if (hasMore && nextCursor != null) { cursor = nextCursor; return step(); }
       return out;
     });
   }
   return step();
 }
-// 记录总数（按 模块 / 时间范围 过滤），用于「共 X 条」准确统计
-function countRecords({ m = null, startTs = null } = {}) {
+// 记录总数（按 模块 / 时间范围 / 流转状态 / 细节标签 过滤），用于「共 X 条」准确统计。
+// 走 count 接口，不受列表分页影响。
+function countRecords({ m = null, startTs = null, state = null, extTag = null } = {}) {
   return new Promise((resolve) => {
-    recCol().where(recWhere({ m, startTs })).count()
+    const w = recWhere({ m, startTs, state });
+    if (extTag) w.ext = extTag;   // 数组字段：包含该标签即命中
+    recCol().where(w).count()
       .then(r => resolve((r && r.total) || 0)).catch(() => resolve(0));
   });
+}
+// 统计：各觉察维度（不含备忘/购物）的条数 → { obs: 12, nope: 3, ... }
+function countByModule({ startTs = null } = {}) {
+  const mods = MODULES.filter(m => !isTask(m.k));
+  return Promise.all(mods.map(m => countRecords({ m: m.k, startTs }))).then(arr => {
+    const out = {};
+    mods.forEach((m, i) => { out[m.k] = arr[i] || 0; });
+    return out;
+  });
+}
+// 统计：可做维度下各流转状态的条数 → { todo, doing, done, abandon }
+function countByStatus({ startTs = null } = {}) {
+  const states = ['todo', 'doing', 'done', 'abandon'];
+  return Promise.all(states.map(s => countRecords({ m: 'want', startTs, state: s }))).then(arr => {
+    const out = { todo: 0, doing: 0, done: 0, abandon: 0 };
+    states.forEach((s, i) => { out[s] = arr[i] || 0; });
+    return out;
+  });
+}
+// 统计：某模块下「事项」出现次数前几名（聚合分组，不受分页影响）→ [{ txt, n }]
+function countByTxt({ m = null, startTs = null, top = 8 } = {}) {
+  const dbc = db().command;
+  const $ = dbc.aggregate;
+  const match = {};
+  if (m) match.m = m;
+  if (startTs != null) match.ts = dbc.gte(startTs);
+  return db().collection('records').aggregate()
+    .match(match)
+    .group({ _id: '$txt', n: $.sum(1) })
+    .sort({ n: -1 })
+    .limit(top)
+    .end()
+    .then(res => (res.list || []).map(x => ({ txt: x._id || '（未填）', n: x.n || 0 })))
+    .catch(() => []);
 }
 // 兼容旧调用：全量加载（去掉 300 上限，避免早期记录被静默丢弃）
 function loadRecords() { return loadAllRecords({}).then(list => list); }
@@ -521,7 +572,7 @@ function saveDelDef(arr) {
     const docs = res.data || [];
     if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: arr } }).then(() => true).catch(() => false);
     return cfgCol().add({ data: { type: 'delDef', data: arr } }).then(() => true).catch(() => false);
-  }).catch(() => false);
+  }).catch(e => { console.warn('[云] 删除默认选项未同步云端（usercfg 集合已创建？）：', e); return false; });
 }
 function addDelDef(g, v) {
   if (!isDefault(g, v)) return Promise.resolve(false);
@@ -557,7 +608,7 @@ function saveOptOrderToCloud(map) {
     const docs = res.data || [];
     if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: map } }).then(() => true).catch(() => false);
     return cfgCol().add({ data: { type: 'optOrder', data: map } }).then(() => true).catch(() => false);
-  }).catch(() => false);
+  }).catch(e => { console.warn('[云] 选项顺序未同步云端（usercfg 集合已创建？）：', e); return false; });
 }
 // 更新某组顺序并持久化（同步 G.OPT 内存、本地、云端）
 function setOptOrder(g, arr) {
@@ -702,7 +753,7 @@ function saveDims(arr) {
       const docs = res.data || [];
       if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: arr } }).then(resolve).catch(resolve);
       cfgCol().add({ data: { type: 'dims', data: arr } }).then(resolve).catch(resolve);
-    }).catch(() => resolve());
+    }).catch(e => { console.warn('[云] 自定义维度未同步云端（usercfg 集合已创建？）：', e); resolve(); });
   });
 }
 
@@ -721,7 +772,7 @@ function saveGreets(obj) {
       const docs = res.data || [];
       if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: obj } }).then(resolve).catch(resolve);
       cfgCol().add({ data: { type: 'greets', data: obj } }).then(resolve).catch(resolve);
-    }).catch(() => resolve());
+    }).catch(e => { console.warn('[云] 问候语未同步云端（usercfg 集合已创建？）：', e); resolve(); });
   });
 }
 
@@ -788,7 +839,7 @@ function reload() {
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
   dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, nopeKindDefault, agoOf, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
-  loadRecords, loadRecordsPage, loadAllRecords, countRecords, addRecord, updateRecord, deleteRecord, clearAllRecords,
+  loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, migrateWantKind,
   isDefault, addDelDef, clearDelDef,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, reload, regDim, unregDim,

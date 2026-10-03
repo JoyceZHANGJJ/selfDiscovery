@@ -3,5 +3,6 @@
     "theme-switcher": "/components/theme-switcher/index",
     "rec-actions": "/components/rec-actions/rec-actions"
   },
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "enablePullDownRefresh": true
 }

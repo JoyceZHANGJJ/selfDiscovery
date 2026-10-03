@@ -120,6 +120,9 @@
 
 /* ================= 基础布局 ================= */
 .app { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif; line-height: 1.6; --r-card: 16px; --r-btn: 12px; --r-in: 14px; }
+/* 状态栏遮罩：自定义导航下，页面内容滚动时会穿过状态栏（时间/电量）。
+   用与背景同色的渐变把它柔和盖住——不挡交互、不占空间，主题切换自动跟随背景色 */
+.statusbar-mask { position: fixed; top: 0; left: 0; right: 0; height: calc(var(--status-h, 20px) + 8px); background: linear-gradient(to bottom, var(--bg) 55%, rgba(0, 0, 0, 0)); z-index: 45; pointer-events: none; }
 .screen { display: block; width: 100%; max-width: 640px; height: 100%; margin: 0 auto; box-sizing: border-box; }
 .body { padding: calc(var(--status-h, 20px) + 12px) 14px calc(64px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
 .body-top { padding: calc(var(--status-h, 20px) + 46px) 14px calc(64px + env(safe-area-inset-bottom, 0px)); }
@@ -266,14 +269,17 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 备忘 / 购物清单：不走时间流，平铺成列表 */
 .rec.list { padding: 10px 13px; margin: 0 0 7px; border-radius: 12px; box-shadow: none; }
 .rec.list .hd { gap: 9px; }
-/* 清单行：事项标题完整显示不省略；原因/用途可省略；时间必显 */
+/* 清单行：事项标题完整显示（超长自动折行，不省略不溢出）；原因/用途可省略；时间必显 */
 .rec.list .mn { flex-shrink: 0; white-space: nowrap; }
-.rec.list .tv { flex: 0 0 auto; white-space: nowrap; }
+.rec.list .tv { flex: 1 1 auto; min-width: 0; white-space: normal; word-break: break-all; }
 .rec.list .twr { display: flex; align-items: baseline; gap: 5px; flex: 1 1 auto; justify-content: flex-end; min-width: 0; font-size: 11.5px; color: var(--ink3); }
 .rec.list .twx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .rec.list .twd { flex-shrink: 0; }
 .rec.list .twt { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rec.list .tw { flex-shrink: 0; white-space: nowrap; margin-left: auto; }
+/* 清单标题超长：隐藏原因/用途，标题占满整行自动折行，右侧只留时间 */
+.rec.list.long .twx, .rec.list.long .twd { display: none; }
+.rec.list.long .twr { flex: 0 0 auto; }
 .tsum { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
 .dnlab { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink3); margin: 14px 0 3px; letter-spacing: .06em; }
 .dnlab::after { content: ''; flex: 1; height: 1px; background: var(--line); }

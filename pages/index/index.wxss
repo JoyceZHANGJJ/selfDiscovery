@@ -1,4 +1,42 @@
 /* 记页面样式全部沿用 app.wxss 的共享类，这里仅做微调 */
+
+/* 整页改为页面级滚动：.app 从「固定视口 + 内部 scroll-view」还原为普通文档流，
+   页面滚动时微信会同步原生输入层位置，安卓上光标/文字飘出输入框的问题从根上消失 */
+.app { position: static; min-height: 100vh; display: block; }
+.screen { height: auto; }
+/* 记卡区：顶部留白与改结构前一致（status-h + 46px），底部不留额外间距，
+   记卡与「最近」的间距交回给卡片自身的 margin-bottom(22px) + 小节标题 margin-top(16px) */
+.body-page { padding: calc(var(--status-h, 20px) + 46px) 14px 0; }
+/* 程序名：藏在胶囊背后，平时被原生胶囊盖住，下拉时随页面下移露出 */
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 46;   /* 高于状态栏遮罩(45)，下拉露出时不被渐变冲淡 */
+}
+/* 常亮：跟随主题的强调色 + 主题色柔光 */
+.brand .bc {
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-shadow: 0 0 10px var(--accent-soft), 0 0 2px var(--accent-soft);
+}
+/* 下拉刷新时：逐字浮现（每个字依次延迟） */
+.brand.play .bc { animation: brandIn .5s cubic-bezier(.2, .8, .2, 1) both; }
+.brand.play .bc:nth-child(1) { animation-delay: 0s; }
+.brand.play .bc:nth-child(2) { animation-delay: .07s; }
+.brand.play .bc:nth-child(3) { animation-delay: .14s; }
+.brand.play .bc:nth-child(4) { animation-delay: .21s; }
+@keyframes brandIn {
+  from { opacity: 0; transform: translateY(8px) scale(.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 列表跟随页面滚动，不再单独限高（限高会在内容不足时留下大片空白） */
+.listpane { height: auto; }
+.body-list { padding: 0 14px calc(64px + env(safe-area-inset-bottom, 0px)); }
 .composer .big-in { margin-top: 10px; }
 .composer .extra:first-child { margin-top: 14px; }
 .mini-b { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; }

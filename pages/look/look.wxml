@@ -1,8 +1,9 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
-  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onRefresh" refresher-triggered="{{refreshing}}" bindscroll="closeSel" bindscrolltolower="onLoadMore" scroll-into-view="{{scrollTo}}">
+  <view class="statusbar-mask"></view>
+  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onRefresh" refresher-triggered="{{refreshing}}" bindscroll="closeSel" bindscrolltolower="onLoadMore" scroll-into-view="{{scrollTo}}" scroll-top="{{scrollTop}}">
     <view class="body" bindtap="closeSel">
       <view class="sect-t">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
-      <input id="searchBox" class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{true}}" cursor-spacing="20" bindfocus="onSearchFocus" bindblur="onSearchBlur" />
+      <input id="searchBox" class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{true}}" cursor-spacing="20" always-embed="{{true}}" bindfocus="onSearchFocus" bindblur="onSearchBlur" />
 
       <view class="filters">
         <view class="ft {{filter==='all'?'on':''}}" data-f="all" bindtap="onFilter">全部</view>

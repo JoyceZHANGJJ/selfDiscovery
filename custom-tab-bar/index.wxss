@@ -20,3 +20,24 @@
   width: 16px; height: 2.5px; border-radius: 99px; background: var(--accent, #7C9A86);
 }
 .tbb .ic { display: block; font-size: 15px; line-height: 1.3; }
+/* 再点当前 tab 回顶时：图标轻弹一下（在手指落点给反馈，不占页面空间） */
+@keyframes tabPulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+.tbb.pulse .ic { animation: tabPulse .42s cubic-bezier(.3, .8, .3, 1); }
+.tbb.pulse::before { animation: tabPulse .42s cubic-bezier(.3, .8, .3, 1); }
+
+/* 滑到底部：图标连续轻跳 + 顶部指示条闪烁，暗示「点这里能回到顶部」 */
+@keyframes tabHint {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-3px); }
+  60% { transform: translateY(0); }
+}
+@keyframes barHint {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .2; }
+}
+.tbb.hint .ic { animation: tabHint .55s ease-in-out 3; }
+.tbb.hint::before { animation: barHint .55s ease-in-out 3; }

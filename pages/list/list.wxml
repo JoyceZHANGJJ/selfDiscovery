@@ -1,4 +1,5 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+  <view class="statusbar-mask"></view>
   <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" bindrefresherrefresh="onRefresh" refresher-triggered="{{refreshing}}">
     <view class="body">
       <view class="sect-t">{{tit}}</view>
