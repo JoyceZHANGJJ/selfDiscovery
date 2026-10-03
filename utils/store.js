@@ -202,6 +202,17 @@ function nopeKindDefault() {
   return [def];
 }
 
+// 时间线（非待办）记录的日期前缀：今天＝空串；昨天 / 前天用相对说法；更早给日期（跨年才带年份）。
+// 与 taskTime 共用同一套「跨年才带年份」的判断，避免去年的记录只显示「10月3日」产生歧义
+function datePrefix(ts) {
+  const ago = agoOf(ts);
+  if (ago <= 0) return '';
+  if (ago === 1) return '昨天 ';
+  if (ago === 2) return '前天 ';
+  const d = new Date(ts), now = new Date();
+  const md = (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  return (d.getFullYear() === now.getFullYear() ? md : (d.getFullYear() + '年' + md)) + ' ';
+}
 function agoOf(ts) {
   if (!ts) return 0;
   const d = new Date(ts); d.setHours(0, 0, 0, 0);
@@ -299,12 +310,23 @@ function recMname(r) {
   }
   return mname(r.m);
 }
+// 待办清单行的时间文案：今天只给时刻；非今天给简洁日期（跨年才带年份），
+// 否则一个「15:30」看不出是哪天的待办
+function taskTime(ts, t) {
+  const hm = normTime(t, ts);
+  const d = new Date(ts || Date.now()), now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  if (sameDay) return hm;
+  const md = (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  return d.getFullYear() === now.getFullYear() ? md : (d.getFullYear() + '年' + md);
+}
 // 给一条记录补上 ago / day
 function decorate(r) {
   const o = Object.assign({}, r);
   o.ago = agoOf(o.ts);
   o.day = dayLabel(o.ago);
   o.t = normTime(o.t, o.ts);
+  o.tt = taskTime(o.ts, o.t);   // 待办行专用：今天＝时刻，非今天＝简洁日期
   o.extSrc = fixExtSrc(o.m, o.ext, o.extSrc);
   o.done = !!o.done;
   o.doneAt = o.doneAt || 0;
@@ -838,7 +860,7 @@ function reload() {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, nopeKindDefault, agoOf, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, nopeKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isOnce, stripOnce, isTask, doneLabel, recMname,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, migrateWantKind,
   isDefault, addDelDef, clearDelDef,

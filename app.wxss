@@ -211,6 +211,34 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rec:active { background: #FCFBF8; }
 .rec .edge { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
 .rec.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+/* ===== 时间线：不用卡片（看页时间流 / 记页「最近」共用）=====
+   去掉边框、圆角、投影，改成左侧一条轴线 + 每个记录一个圆点（颜色跟随维度） */
+.rec.tl { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 8px 0 8px 24px; margin: 0; }
+.rec.tl:active { background: transparent; }
+.rec.tl .edge { display: none; }   /* 左侧色条的角色交给轴线上的圆点 */
+/* 轴线 */
+.rec.tl::before { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+/* 圆点：内容盒 + 2px 主题底描边，正好压住轴线（--dot 由页面按维度色传入） */
+.rec.tl::after { content: ''; position: absolute; left: 2px; top: 12px; width: 7px; height: 7px; box-sizing: content-box; border: 2px solid var(--bg); border-radius: 50%; background: var(--dot, var(--accent)); }
+/* 每组第一行：轴线从圆点开始；每组最后一行：到圆点为止；只有一条时不画线
+   （组头有几种：日期 .daylab、待办块标题 .tfhd、小节标题 .sect-t、已完成分隔 .dnlab、筛选行 .filters） */
+.daylab + .rec.tl::before,
+.tfhd + .rec.tl::before,
+.sect-t + .rec.tl::before,
+.dnlab + .rec.tl::before,
+.filters + .rec.tl::before { top: 17px; }
+.rec.tl:last-child::before { bottom: auto; height: 17px; }
+.daylab + .rec.tl:last-child::before,
+.tfhd + .rec.tl:last-child::before,
+.sect-t + .rec.tl:last-child::before,
+.dnlab + .rec.tl:last-child::before,
+.filters + .rec.tl:last-child::before { height: 0; }
+/* 选中：不用浅色块（时间线下像糊了一层遮罩），改用时间线自己的语言——
+   标题换成强调色、圆点加一圈柔光、该段轴线加粗成强调色 */
+.rec.tl.sel { background: transparent; border-radius: 0; box-shadow: none; }
+.rec.tl.sel .tv { color: var(--accent); }
+.rec.tl.sel::before { left: 4.5px; width: 2px; background: var(--accent); }
+.rec.tl.sel::after { box-shadow: 0 0 0 4px var(--accent-soft); }
 .rec .hd { display: flex; align-items: baseline; gap: 8px; }
 /* 维度名（觉察/无感…）：11px 下 700 在手机上不够明显，提到 800（与问候/小节标题同级强调） */
 .rec .mn { font-size: 11px; font-weight: 800; }
@@ -286,11 +314,14 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 清单标题超长：隐藏原因/用途，标题占满整行自动折行，右侧只留时间 */
 .rec.list.long .twx, .rec.list.long .twd { display: none; }
 .rec.list.long .twr { flex: 0 0 auto; }
-/* 正在被就地编辑的那一行（清单 / 看 共用）：原内容隐身，
-   卡片本身会被同尺寸的 inline-editor 整个盖住，这里只是保险 */
-.rec.list.blank .hd,
-.rec.list.blank .done-at,
-.rec.list.blank .edge { opacity: 0; }
+/* 正在被就地编辑的那一行：原内容隐身（编辑器就摆在它上面），
+   只留时间线的轴线与圆点，编辑时线条不断 */
+.rec.blank .hd,
+.rec.blank .done-at,
+.rec.blank .edge { opacity: 0; }
+/* 清单行也走时间线（记页「最近」的备忘 / 购物、看页待办清单）：
+   放在 .rec.list 之后覆盖一次，避免它自己的 padding / margin / 圆角把扁平样式顶回去 */
+.rec.list.tl { background: transparent; border: 0; border-radius: 0; box-shadow: none; margin: 0; padding: 8px 0 8px 24px; }
 .tsum { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
 .dnlab { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink3); margin: 14px 0 3px; letter-spacing: .06em; }
 .dnlab::after { content: ''; flex: 1; height: 1px; background: var(--line); }

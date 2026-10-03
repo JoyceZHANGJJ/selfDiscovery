@@ -3,19 +3,19 @@
 /* 组件节点本身不占布局空间：坐标由宿主页面量好、用 rect 传进来 */
 :host { position: absolute; left: 0; top: 0; }
 
-/* 与 .rec.list 同款外观（同内边距 / 圆角 / 边框），整张卡片盖上被编辑的那一行。
-   收起时【位置原地不动】，只把尺寸收成 0（宿主把 rect 的宽高设 0）：
-   原生输入层不认 visibility/opacity，只有没面积才不画；而位置一挪，
-   微信会把「带焦点的元素」滚进可视区，表现为键盘重弹 + 页面跳回顶部 */
-.edpop { position: absolute; display: flex; align-items: center; gap: 6px; box-sizing: border-box; padding: 10px 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; z-index: 55; overflow: hidden; opacity: 0; visibility: hidden; pointer-events: none; }
+/* 外壳与时间线行（.rec.tl）完全对齐：不要卡片底色 / 边框 / 圆角，
+   只是把被编辑那一行的位置腾出来摆「输入框 + 保存 + 改更多」。
+   注意：这里【不能】写 overflow: hidden —— 行高只有 30 多 px，裁剪会把 36px 的输入框切掉；
+   收起时靠子元素自己收成 0（见下面 :not(.on) 那两条）来保证原生层不画东西。 */
+.edpop { position: absolute; display: flex; align-items: center; gap: 6px; box-sizing: border-box; padding: 8px 0 8px 24px; z-index: 55; opacity: 0; visibility: hidden; pointer-events: none; }
 .edpop.on { opacity: 1; visibility: visible; pointer-events: auto; }
-/* 收起时把输入框自身也收成 0 高：双保险，确保原生层一点不画 */
-.edpop:not(.on) .ein { height: 0; padding: 0; border: 0; }
-.edpop:not(.on) .ebt { height: 0; padding: 0; }
+/* 收起：位置原地不动（挪位置会把页面/键盘拽着跳），只把内部元素收成 0 —— 没面积原生层就不画 */
+.edpop:not(.on) .ein,
+.edpop:not(.on) .ebt { height: 0; line-height: 0; padding: 0; border: 0; font-size: 0; overflow: hidden; }
 
 /* 输入框：自带边框 + 圆角，一眼是个能打字的地方 */
-.edpop .ein { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 36px; line-height: 36px; padding: 0 11px; font-size: 13.5px; font-family: inherit; color: var(--ink); caret-color: var(--accent); background: var(--surface); border: 1px solid var(--accent); border-radius: 11px; outline: none; }
-.edpop .ein:focus { box-shadow: var(--ring); }
+.edpop .ein { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 36px; line-height: 36px; padding: 0 11px; font-size: 13.5px; font-family: inherit; color: var(--ink); caret-color: var(--accent); background: var(--soft); border: 1px solid var(--accent); border-radius: 11px; outline: none; }
+.edpop .ein:focus { background: var(--surface); box-shadow: var(--ring); }
 .edpop .ein-ph { color: var(--ink4); }
 
 /* 行内按钮：保存 / 改更多 */

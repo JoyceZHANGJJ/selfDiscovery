@@ -47,13 +47,13 @@
             <view class="tc {{tasks.openU?'open':''}}">▸</view>
           </view>
           <block wx:if="{{tasks.openU}}">
-            <view wx:for="{{tasks.undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list {{sel===item.id?'sel':''}} {{item.done?'done':''}} {{edId===item.id?'blank':''}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+            <view wx:for="{{tasks.undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{sel===item.id?'sel':''}} {{item.done?'done':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
               <view class="edge" style="background:{{item.c}}"></view>
               <view class="hd">
                 <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
                 <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
                 <text class="tv">{{item.txt}}</text>
-                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
               </view>
               <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
             </view>
@@ -68,13 +68,13 @@
             <view class="tc {{tasks.openD?'open':''}}">▸</view>
           </view>
           <block wx:if="{{tasks.openD}}">
-            <view wx:for="{{tasks.done}}" wx:key="id" id="erow-{{item.id}}" class="rec list done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+            <view wx:for="{{tasks.done}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
               <view class="edge" style="background:{{item.c}}"></view>
               <view class="hd">
                 <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
                 <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all'}}">{{item.m}}</text>
                 <text class="tv">{{item.txt}}</text>
-                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
               </view>
               <view class="done-at">{{item.doneLabel}}</view>
             </view>
@@ -95,7 +95,7 @@
       <block wx:if="{{days.length}}">
         <view wx:for="{{days}}" wx:key="day" wx:for-item="grp">
           <view class="daylab">{{grp.day}}</view>
-          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec {{sel===r.id?'sel':''}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress">
+          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress">
             <view class="edge" style="background:{{r.c}}"></view>
             <view class="hd"><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text wx:if="{{r.doingDays}}" class="tag doing">第{{r.doingDays}}天</text><view class="tvw"><text class="tv">{{r.txt}}</text><text wx:if="{{r.dur}}" class="tdur">{{r.dur}}</text></view><text class="tw">{{r.d}}{{r.t}}</text></view>
             <view wx:if="{{r.from}}" class="from">{{r.from}}</view>

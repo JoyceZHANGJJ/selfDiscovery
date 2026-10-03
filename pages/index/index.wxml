@@ -121,14 +121,14 @@
         <view class="sk-rec"></view>
       </view>
       <view wx:if="{{ready && recent.length===0}}" class="empty-mini">还没有记录</view>
-      <view wx:for="{{recent}}" wx:key="id" id="{{item.task ? 'erow-'+item.id : ''}}" class="rec {{item.task?'list':''}} {{item.longTxt?'long':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+      <view wx:for="{{recent}}" wx:key="id" id="{{item.task ? 'erow-'+item.id : ''}}" class="rec tl {{item.task?'list':''}} {{item.longTxt?'long':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
           <text class="mn" style="color:{{item.c}}">{{item.m}}</text>
           <text wx:if="{{item.doingDays}}" class="tag doing">第{{item.doingDays}}天</text>
           <view class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
-          <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           <text wx:else class="tw">{{item.d}}{{item.t}}</text>
         </view>
         <view wx:if="{{!item.task}}" class="dt">

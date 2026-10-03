@@ -16,7 +16,7 @@
 
       <block wx:if="{{show}}">
         <!-- 行只负责显示；编辑由页面唯一的 inline-editor 组件叠上来（见页尾） -->
-        <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list {{edId===item.id?'blank':''}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+        <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">
             <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
@@ -27,7 +27,7 @@
         </view>
 
         <view wx:if="{{done.length}}" class="dnlab">已完成 · {{done.length}}</view>
-        <view wx:for="{{done}}" wx:key="id" id="erow-{{item.id}}" class="rec list done {{edId===item.id?'blank':''}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+        <view wx:for="{{done}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">
             <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
