@@ -6,6 +6,19 @@ function dmClass(m) {
   return ['obs', 'now', 'want', 'nope', 'done', 'memo', 'buy', 'like'].indexOf(m) >= 0 ? 'dm-' + m : 'dm-custom';
 }
 
+// 某天 0 点的毫秒时间戳：用于按「天」分段（比拿日期字符串当 key 稳，跨年也不会撞在一起）
+function dayStartTs(ts) {
+  const d = new Date(ts || Date.now());
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// 只取 HH:MM：已完成按日期分段后，行内不再重复写「X月X日」（日期由组头给）
+function hm(ts) {
+  const d = new Date(ts);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+
 // 用时格式化：不足 1 天用小时（不足 1 小时用分钟，再短“片刻”）；
 // 满 1 天及以上用「天」并保留一位小数，如 1.5 天
 function fmtDur(ms) {
@@ -39,14 +52,17 @@ Page({
     filterName: '全部',
     stateFilter: 'all',
     q: '',
+    // 觉察专用：分类筛选（喜欢 / 有趣 / 没兴趣 / 不喜欢，取选项池），与「可做」的流转状态筛选同一个位置
+    kindFilter: 'all',
+    kinds: [],
     recs: [],          // 已加载（装饰后）的记录，按 ts 倒序
     days: [],
     stats: {},
     sel: null,
     selRec: null,
     delUndo: null,
-    tasks: { show: false, tit: '', sum: '', undone: [], done: [], doneN: 0 },
-    taskOpen: { undone: true, done: false }, // 待完成 / 已完成 折叠态（true=展开）
+    tasks: { show: false, tit: '', sum: '', undone: [], doneGroups: [], doneN: 0, abandGroups: [], abandN: 0 },
+    taskOpen: { undone: true, done: false, aband: false }, // 待完成 / 已完成 / 已放弃 折叠态（true=展开）
     empty: false,
     // 待办长按就地编辑（与清单 / 记页共用的 inline-editor 组件）
     editing: false,
@@ -61,6 +77,7 @@ Page({
     rangeStart: null,
     hasMore: true,
     loading: false,
+    ready: false,     // 首屏数据未就绪时先渲染骨架屏（与记页同一套 .sk 样式）
     stat: {}          // 后端统计结果：{ byMod } / { bySt } / { total, tops, ext }
   },
 
@@ -68,6 +85,7 @@ Page({
     this._cursor = null;
     this._loading = false;
     this._searchTimer = null;
+    this._everLoaded = false;   // 骨架屏只在「还没成功加载过一次」时出场（见 resetLoad）
   },
 
   onShow() {
@@ -77,7 +95,11 @@ Page({
     this.setData({ sel: null, selRec: null, delUndo: null });
     // 兜底：若此前停留在已下架的「做了」维度，回到「全部」
     if (this.data.filter === 'done') this.setData({ filter: 'all', stateFilter: 'all' });
-    store.ensureAll().then(() => { this.resetLoad(); });
+    store.ensureAll().then(() => {
+      // 首屏交给骨架屏挡着：ready 由 resetLoad → loadMore 的首屏回调置 true
+      // （之前在这里就置 true，骨架屏在真正取到第一页数据前就撤了，等于看不见）
+      this.resetLoad();
+    });
   },
 
   ensureTheme() {
@@ -146,7 +168,10 @@ Page({
       const ds = fmtDur(r.abandonedAt - r.ts);
       if (ds) durLine = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
-    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur: durLine, from: fromLine };
+    return { id: r.id, m: store.recMname(r), c: store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt),
+      doneAtText: r.doneAt ? ('完成 · ' + hm(r.doneAt)) : '已完成',
+      abandAtText: r.abandonedAt ? ('放弃 · ' + hm(r.abandonedAt)) : '已放弃',
+      reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur: durLine, from: fromLine };
   },
 
   // 统计面板：默认用后端统计结果（count / 聚合，不受列表分页影响）；
@@ -184,7 +209,7 @@ Page({
     const total = stat.total || 0;
     const mxv = tops.length ? tops[0].n : 1;
     const bars = tops.slice(0, 4).map(t => ({ n: t.txt, c: store.mcolor(filter), n2: t.n, w: Math.round(t.n / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常在做的事', want: '最常想做的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西' };
     let extra = '';
     if (filter === 'obs' && total) {
       const e = stat.ext || {};
@@ -228,7 +253,7 @@ Page({
     const keys = Object.keys(acc).sort((a, b) => acc[b] - acc[a]).slice(0, 4);
     const mxv = keys.length ? acc[keys[0]] : 1;
     const bars = keys.map(k => ({ n: k, c: store.mcolor(filter), n2: acc[k], w: Math.round(acc[k] / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常在做的事', want: '最常想做的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', memo: '记得最多的事', buy: '最常买的东西' };
     let extra = '';
     if (filter === 'obs' && list.length) {
       const fg = list.filter(r => (r.ext || []).indexOf('忘了时间') >= 0).length;
@@ -255,6 +280,9 @@ Page({
         else if (this.data.stateFilter === 'done') f1b = (st === 'done');
         else if (this.data.stateFilter === 'abandon') f1b = (st === 'abandon');
         else f1b = true; // all：未做 + 在做 + 做了 + 不做
+      } else if (this.data.filter === 'obs' && this.data.kindFilter !== 'all') {
+        // 觉察：分类（存在 ext 里的细节值）——搜索态是客户端过滤，非搜索态云端已按它筛过，这里不重复
+        f1b = (r.ext || []).indexOf(this.data.kindFilter) >= 0;
       }
       const f2 = !q || (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q) >= 0;
       return f1 && f1b && f2;
@@ -266,9 +294,12 @@ Page({
     aware.forEach(r => { if (!map[r.day]) { map[r.day] = []; days.push(r.day); } map[r.day].push(this.recVM(r)); });
     const groups = days.map(d => ({ day: d, recs: map[d] }));
     const stats = this.buildStats(effM, list, !!q);
+    // 觉察正在看某个「分类」时，标题也带上它——避免列表筛过了、标题却说整个模块
+    const kn = (effM === 'obs' && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
     this.setData({
       modules: this.modulesVM(),
-      filterName: effM === 'all' ? '全部' : store.mname(effM),
+      kinds: store.getOPT('obsKind'),   // 分类取选项池，用户在选项管理里增删后这里自动跟上
+      filterName: effM === 'all' ? '全部' : (store.mname(effM) + kn),
       days: groups,
       tasks: this.buildTasks(tasks),
       empty: groups.length === 0 && tasks.length === 0,
@@ -276,21 +307,41 @@ Page({
     });
   },
 
-  /* 待办清单：未完成在上（按时间倒序），已完成沉底（按完成时间倒序）；待完成/已完成各自可折叠。
-     「全部」里不再平铺待办——待办只在自己那个维度（备忘 / 购物）下看 */
+  /* 待办清单：待完成在上（按时间倒序）；已完成、已放弃各成一段（按各自时间倒序 + 按天分段）；
+     三段都可收起。「全部」里不再平铺待办——待办只在自己那个维度（备忘 / 购物）下看 */
   buildTasks(ts) {
     if (!store.isTask(this.data.filter)) {
-      return { show: false, tit: '', sum: '', undone: [], done: [], doneN: 0, openU: true, openD: false };
+      return { show: false, tit: '', sum: '', undone: [], doneGroups: [], doneN: 0, abandGroups: [], abandN: 0, openU: true, openD: false, openA: false };
     }
-    // 注意：recVM 的产物里没有 ts / doneAt，必须在 map 之前对原始记录排序，
+    // 注意：recVM 的产物里没有 ts / doneAt / abandonedAt，必须在 map 之前对原始记录排序，
     // 否则 sort 比较的全是 undefined，等于没排
-    const undone = ts.filter(r => !r.done).sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
-    const done = ts.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0)).map(r => this.recVM(r));
-    const u = undone.length, dn = done.length;
-    const sum = u ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '')) : (dn ? '全部完成 · ' + dn + ' 条' : '');
+    const undone = ts.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
+    const doneRecs = ts.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const abandRecs = ts.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
+    const doneGroups = this.groupByDay(doneRecs, r => r.doneAt || r.ts);
+    const abandGroups = this.groupByDay(abandRecs, r => r.abandonedAt || r.ts);
+    const u = undone.length, dn = doneRecs.length, an = abandRecs.length;
+    const sum = u
+      ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
+      : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
     const tit = this.data.filter === 'memo' ? '备忘' : (this.data.filter === 'buy' ? '购物' : '待办 · 备忘与购物');
-    const open = this.data.taskOpen || { undone: true, done: false };
-    return { show: ts.length > 0, tit, sum, undone, done, doneN: dn, openU: open.undone !== false, openD: open.done === true };
+    const open = this.data.taskOpen || { undone: true, done: false, aband: false };
+    return {
+      show: ts.length > 0, tit, sum, undone,
+      doneGroups, doneN: dn, abandGroups, abandN: an,
+      openU: open.undone !== false, openD: open.done === true, openA: open.aband === true
+    };
+  },
+
+  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签，段内保持传入顺序
+  groupByDay(recs, tsOf) {
+    const map = {}, order = [];
+    recs.forEach(r => {
+      const k = dayStartTs(tsOf(r));
+      if (!map[k]) { map[k] = { day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
+      map[k].recs.push(this.recVM(r));
+    });
+    return order.map(k => map[k]);
   },
 
   /* ---------------- 游标分页 ---------------- */
@@ -304,12 +355,20 @@ Page({
             : (this.data.stateFilter === 'done' ? 'done'
             : (this.data.stateFilter === 'abandon' ? 'abandon' : 'all')));
     }
-    return { m, state };
+    // 觉察的分类筛选交给云端（否则分页会混进不匹配的记录，页数与「已经到底了」都会不准）
+    const extTags = (this.data.filter === 'obs' && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
+    // 「全部」的时间线不看待办（备忘 / 购物），所以查询里就把它们排掉：
+    // 否则一页 20 条被待办占满，时间线只显示几条、页面短到滚不动，上拉加载更多点了没反应
+    const mNot = (this.data.filter === 'all') ? ['memo', 'buy'] : null;
+    return { m, state, extTags, mNot };
   },
   // 重置并加载第一页 + 统计总数
   resetLoad() {
     this._cursor = null;
-    this.setData({ recs: [], hasMore: true, loading: false, empty: false });
+    // 只有「还没成功加载过一次」时才让骨架屏接管：切筛选 / 换时间也会走这里，
+    // 每次都闪一下骨架比短暂的空列表还晃眼
+    const skeleton = !this._everLoaded;
+    this.setData({ recs: [], hasMore: true, loading: false, empty: false, ready: !skeleton });
     this.loadMore(true);
     this.loadStats();
   },
@@ -327,6 +386,8 @@ Page({
       m: q.m,
       startTs: this.data.rangeStart,
       state: q.state,
+      extTags: q.extTags,
+      mNot: q.mNot,
       // 已加载的文档 id：配合 lte 游标去重，避免同毫秒记录被跳过或重复
       excludeIds: first ? null : (this.data.recs || []).map(r => r._rid)
     };
@@ -334,7 +395,8 @@ Page({
       this._cursor = nextCursor;
       const recs = first ? list : this.data.recs.concat(list);
       this._loading = false;
-      this.setData({ recs, hasMore, loading: false }, () => {
+      this._everLoaded = true;
+      this.setData({ recs, hasMore, loading: false, ready: true }, () => {
         this.rebuild();
         if (first) wx.stopPullDownRefresh();   // 首屏/刷新加载完，收起原生下拉
         // 没有更多了 + 内容够长 → 这时才提示可以点底部当前 tab 回顶
@@ -342,7 +404,8 @@ Page({
       });
     }).catch(() => {
       this._loading = false;
-      this.setData({ loading: false, hasMore: false });
+      // 失败也要撤掉骨架屏，否则会一直卡在占位上（空列表 + 下拉刷新重试）
+      this.setData({ loading: false, hasMore: false, ready: true });
       wx.stopPullDownRefresh();
     });
   },
@@ -367,11 +430,14 @@ Page({
       store.countByStatus({ startTs }).then(bySt => this.setData({ stat: { bySt } }, () => this.rebuild()));
       return;
     }
-    const jobs = [store.countRecords({ m: f, startTs }), store.countByTxt({ m: f, startTs })];
+    // 觉察筛了分类时，统计也跟着落在同一个分类里（不然列表是筛过的、数字是全模块的）
+    const tags = (f === 'obs' && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
+    const jobs = [store.countRecords({ m: f, startTs, extTags: tags }), store.countByTxt({ m: f, startTs, extTags: tags })];
     if (f === 'obs') {
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTag: '忘了时间' }));
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTag: '充电' }));
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTag: '耗电' }));
+      const withTag = (t) => (tags ? tags.concat([t]) : [t]);
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('忘了时间') }));
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('充电') }));
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('耗电') }));
     }
     Promise.all(jobs).then(([total, tops, fg, chg, tire]) => {
       const stat = { total: total || 0, tops: tops || [] };
@@ -384,7 +450,7 @@ Page({
     this._loading = true;
     this.setData({ loading: true, hasMore: false });
     const q = this.effQuery();
-    const params = { m: q.m, startTs: this.data.rangeStart };
+    const params = { m: q.m, mNot: q.mNot, startTs: this.data.rangeStart };
     store.loadAllRecords(params).then(all => {
       const q2 = this.data.q.trim().toLowerCase();
       const list = all.filter(r => (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q2) >= 0);
@@ -418,7 +484,15 @@ Page({
   onFilter(e) {
     this.data.filter = e.currentTarget.dataset.f;
     this.data.stateFilter = 'all';
-    this.setData({ filter: this.data.filter, stateFilter: 'all', sel: null, selRec: null });
+    // 子筛选（可做的流转状态 / 觉察的分类）只属于各自的模块，切模块时归零
+    this.data.kindFilter = 'all';
+    this.setData({ filter: this.data.filter, stateFilter: 'all', kindFilter: 'all', sel: null, selRec: null });
+    this.resetLoad();
+  },
+  // 觉察 · 分类筛选（与「可做」的流转状态筛选同一套：切了就重拉第一页）
+  onKindFilter(e) {
+    this.data.kindFilter = e.currentTarget.dataset.k || 'all';
+    this.setData({ kindFilter: this.data.kindFilter, sel: null, selRec: null });
     this.resetLoad();
   },
   // 可以 维度下的状态切换：未做 / 在做 / 做了
@@ -467,6 +541,9 @@ Page({
     this.playBrand();
     this.onRefresh();
   },
+
+  /* 悬浮球「＋」快捷记下一条待办后：重拉第一页，让它出现在时间流里 */
+  onQuickTodo() { this.resetLoad(); },
 
   /* 下拉刷新：重置首屏（首屏加载完会收起原生下拉） */
   onRefresh() {
@@ -599,7 +676,7 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
-    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs } : null });
+    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
   },
 
   /* 记录操作条统一入口（与记页共用 rec-actions 组件；看页行为：流转/改/结束 跳到记页（结束时间待「保存修改」时才记），恢复/删 本地直接处理）
@@ -609,6 +686,19 @@ Page({
     const id = this.data.sel; if (id == null) return;
     const r = this.findRec(id);
     if (!r) return;
+    // 待办（备忘 / 购物）：放弃 / 恢复只动状态与时间，不跳页（完成仍由条目上的勾选框负责）
+    if (r.m === 'memo' || r.m === 'buy') {
+      if (type !== 'abandon' && type !== 'restore') return;
+      const apply = (o) => {
+        if (type === 'abandon') { o.status = 'abandon'; o.abandonedAt = Date.now(); }
+        else { o.status = ''; o.abandonedAt = 0; }
+      };
+      apply(r);
+      this.syncGlobal(id, apply);
+      store.updateRecord(r).catch(() => {});
+      this.setData({ recs: this.data.recs.slice(), sel: null, selRec: null }, () => this.rebuild());
+      return;
+    }
     if (type === 'start' || type === 'complete' || type === 'abandon') {
       if (r.m !== 'want') return;
       app.globalData.editRec = r;

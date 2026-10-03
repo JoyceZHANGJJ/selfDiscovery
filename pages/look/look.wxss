@@ -5,6 +5,10 @@
 .app { position: static; min-height: 100vh; display: block; }
 .screen { height: auto; }
 
+/* 首屏骨架屏占位（动画与尺寸沿用 app.wxss 的 .sk* 系列，这里只压一下搜索框那条的高度） */
+.skpage { padding-top: 2px; }
+.skpage .sk-search { height: 40px; margin-bottom: 10px; }
+
 /* 快捷时间筛选 */
 .ranges { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .rg { font-size: 13px; color: var(--ink3); padding: 5px 12px; border-radius: 999px; background: var(--soft); line-height: 1; }

@@ -14,29 +14,81 @@
         <view class="ft {{seg==='buy'?'on':''}}" data-s="buy" bindtap="onSeg"><text class="fd" style="background:{{cbuy}}"></text>购物</view>
       </view>
 
-      <block wx:if="{{show}}">
-        <!-- 行只负责显示；编辑由页面唯一的 inline-editor 组件叠上来（见页尾） -->
-        <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
-          <view class="edge" style="background:{{item.c}}"></view>
-          <view class="hd">
-            <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
-            <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
-            <text class="tv">{{item.txt}}</text>
-            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
-          </view>
+      <!-- 快捷新增：独立小卡片（和下面轴线式的待办行分层），位置仍在筛选与列表之间。
+           回车即记下、可连着加；目标模块跟随筛选，筛「全部」时可点左边药丸切换 -->
+      <view class="qadd" style="--mc:{{qaM==='buy'?cbuy:cmemo}}">
+        <view class="qadd-m" bindtap="onQaSwitch">
+          <view class="qadd-dot" style="background:{{qaM==='buy'?cbuy:cmemo}}"></view>
+          <text>{{qaName}}</text>
+          <text wx:if="{{seg==='all'}}" class="qadd-swap">切换</text>
         </view>
+        <input class="qadd-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="qadd" />
+        <view class="qadd-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">记下</view>
+      </view>
 
-        <view wx:if="{{done.length}}" class="dnlab">已完成 · {{done.length}}</view>
-        <view wx:for="{{done}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
-          <view class="edge" style="background:{{item.c}}"></view>
-          <view class="hd">
-            <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
-            <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
-            <text class="tv">{{item.txt}}</text>
-            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
-          </view>
-          <view class="done-at">{{item.doneLabel}}</view>
+      <block wx:if="{{show}}">
+        <!-- 待完成：带线标题 + 可收起（与看页同一套）；行只负责显示，编辑由页面唯一的 inline-editor 叠上来 -->
+        <view wx:if="{{undone.length}}" class="tfhd" bindtap="onFold" data-k="undone">
+          <view class="tt">待完成 · {{undone.length}}</view>
+          <view class="tl"></view>
+          <view class="tc {{openU?'open':''}}">▸</view>
         </view>
+        <block wx:if="{{openU}}">
+          <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{edId===item.id?'blank':''}} {{sel===item.id?'sel':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+            <view class="edge" style="background:{{item.c}}"></view>
+            <view class="hd">
+              <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
+              <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
+              <text class="tv">{{item.txt}}</text>
+              <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+            </view>
+          </view>
+        </block>
+
+        <!-- 已完成：同样可收起；按完成那天分段（与看页同一套日标签），段内按完成时间倒序 -->
+        <view wx:if="{{doneN}}" class="tfhd" bindtap="onFold" data-k="done">
+          <view class="tt">已完成 · {{doneN}}</view>
+          <view class="tl"></view>
+          <view class="tc {{openD?'open':''}}">▸</view>
+        </view>
+        <block wx:if="{{openD}}">
+          <view wx:for="{{doneGroups}}" wx:key="day" wx:for-item="g">
+            <view class="daylab">{{g.day}}</view>
+            <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{edId===item.id?'blank':''}} {{sel===item.id?'sel':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+              <view class="edge" style="background:{{item.c}}"></view>
+              <view class="hd">
+                <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
+                <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
+                <text class="tv">{{item.txt}}</text>
+                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+              </view>
+              <view class="done-at">{{item.doneAtText}}</view>
+            </view>
+          </view>
+        </block>
+
+        <!-- 已放弃：与已完成同构（按放弃那天分段）；点条目出操作条可「恢复」 -->
+        <view wx:if="{{abandN}}" class="tfhd" bindtap="onFold" data-k="aband">
+          <view class="tt">已放弃 · {{abandN}}</view>
+          <view class="tl"></view>
+          <view class="tc {{openA?'open':''}}">▸</view>
+        </view>
+        <block wx:if="{{openA}}">
+          <view wx:for="{{abandGroups}}" wx:key="day" wx:for-item="g">
+            <view class="daylab">{{g.day}}</view>
+            <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{edId===item.id?'blank':''}} {{sel===item.id?'sel':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+              <view class="edge" style="background:{{item.c}}"></view>
+              <view class="hd">
+                <!-- 圈里画 × 且不可点：完成要走操作条里的「恢复」，不是直接勾掉 -->
+                <view class="ck"></view>
+                <text class="mn" style="color:{{item.c}}" wx:if="{{seg==='all'}}">{{item.m}}</text>
+                <text class="tv">{{item.txt}}</text>
+                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+              </view>
+              <view class="done-at">{{item.abandAtText}}</view>
+            </view>
+          </view>
+        </block>
       </block>
 
       <view wx:if="{{empty}}" class="empty-mini">还没有备忘或购物记录</view>
@@ -44,6 +96,9 @@
 
     <!-- 待办就地编辑：与记页 / 看页共用同一个组件 -->
     <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:del="onEditDel" />
+
+    <!-- 记录操作条：点条目出（放弃 / 恢复 / 改 / 删除）；勾选框仍然是完成，两者互不干扰 -->
+    <rec-actions rec="{{selRec}}" visible="{{sel!=null}}" bind:action="onRecAction" />
   </view>
 
   <!-- 删除撤销（与记 / 看页同一套） -->

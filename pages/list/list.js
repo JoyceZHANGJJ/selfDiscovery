@@ -2,6 +2,19 @@
 const store = require('../../utils/store.js');
 const app = getApp();
 
+// 待办的时间只存 HH:MM（与 store.normTime 的输出一致；「今天 / 非今天」的显示交给 taskTime）
+function hhmm(ts) {
+  const d = new Date(ts);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+
+// 某天 0 点的毫秒时间戳：已完成按「完成那天」分段用（与看页同一套，跨年不会撞 key）
+function dayStartTs(ts) {
+  const d = new Date(ts || Date.now());
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 Page({
   data: {
     theme: 'sand',
@@ -9,12 +22,28 @@ Page({
     seg: 'all',            // all | memo | buy
     cmemo: store.mcolor('memo'),
     cbuy: store.mcolor('buy'),
+    // 顶部快捷新增：输入 → 回车 → 立刻出现在列表顶部，可连着加（目标模块跟筛选走）
+    qaTxt: '',
+    qaM: 'memo',           // seg='all' 时的目标模块：memo | buy
+    qaName: '备忘',
+    qaPh: '要记住什么',
     show: false,
     tit: '待办 · 备忘与购物',
     sum: '',
     undone: [],
-    done: [],
+    doneGroups: [],
+    doneN: 0,
+    abandGroups: [],
+    abandN: 0,
+    // 收起态：只默认展开「待完成」——清单页一进来先看要干什么；
+    // 已完成 / 已放弃都收起，条数在各自的标题上看得见，想看再点开
+    openU: true,
+    openD: false,
+    openA: false,
     empty: false,
+    // 点条目出的记录操作条（放弃 / 恢复 / 改 / 删除；完成永远走条目上的勾选框）
+    sel: null,
+    selRec: null,
     // 删除后的撤销条（与记 / 看页同一套）
     delUndo: null,
     // 长按就地编辑：全局唯一一个编辑器，叠加到被长按的那一行
@@ -45,6 +74,9 @@ Page({
       // 待办的时间：今天显示时刻，非今天显示简洁日期（避免只有 HH:MM 看不出是哪天）
       t: r.tt || r.t,
       done: !!r.done, doneLabel: store.doneLabel(r.doneAt),
+      // 完成时间带「完成 ·」前缀：行右侧那个裸时间是「记录时间」，两个时间要能分得清
+      doneAtText: r.doneAt ? ('完成 · ' + hhmm(r.doneAt)) : '已完成',
+      abandAtText: r.abandonedAt ? ('放弃 · ' + hhmm(r.abandonedAt)) : '已放弃',
       reason: r.reason || '', usefor: r.usefor || ''
     };
   },
@@ -55,18 +87,112 @@ Page({
     const list = seg === 'all' ? all : all.filter(r => r.m === seg);
     // 注意：recVM 的产物里没有 ts / doneAt，必须在 map 之前对原始记录排序，
     // 否则 sort 比较的全是 undefined，等于没排（已完成要按完成时间倒序，就是这个坑）
-    const undone = list.filter(r => !r.done).sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
-    const done = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0)).map(r => this.recVM(r));
-    const u = undone.length, dn = done.length;
-    const sum = u ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '')) : (dn ? '全部完成 · ' + dn + ' 条' : '');
+    const undone = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
+    const doneRecs = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+    const abandRecs = list.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
+    // 已完成 / 已放弃各按「那天」分段（与看页同一套）：段头给日期，行内只写「完成 / 放弃 · HH:MM」
+    const doneGroups = this.groupByDay(doneRecs, r => r.doneAt || r.ts);
+    const abandGroups = this.groupByDay(abandRecs, r => r.abandonedAt || r.ts);
+    const u = undone.length, dn = doneRecs.length, an = abandRecs.length;
+    const sum = u
+      ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
+      : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
     const tit = seg === 'memo' ? '备忘' : (seg === 'buy' ? '购物' : '待办 · 备忘与购物');
-    this.setData({ show: list.length > 0, tit, sum, undone, done, empty: list.length === 0 });
+    // 快捷新增的目标模块：筛选定了就跟筛选走（筛「全部」时用 qaM，可在输入框左边点「切换」改）
+    const qm = (seg === 'memo' || seg === 'buy') ? seg : this.data.qaM;
+    this.setData({
+      show: list.length > 0, tit, sum, undone, doneGroups, doneN: dn, abandGroups, abandN: an, empty: list.length === 0,
+      qaM: qm, qaName: qm === 'buy' ? '购物' : '备忘', qaPh: qm === 'buy' ? '要买什么' : '要记住什么'
+    });
+  },
+
+  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签
+  groupByDay(recs, tsOf) {
+    const map = {}, order = [];
+    recs.forEach(r => {
+      const k = dayStartTs(tsOf(r));
+      if (!map[k]) { map[k] = { day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
+      map[k].recs.push(this.recVM(r));
+    });
+    return order.map(k => map[k]);
   },
 
   onSeg(e) {
     this.data.seg = e.currentTarget.dataset.s;
     this.setData({ seg: this.data.seg });
     this.rebuild();
+  },
+
+  /* 待完成 / 已完成 / 已放弃 三段的收起（与看页同一套带线标题 + ▸ 箭头） */
+  onFold(e) {
+    const k = e.currentTarget.dataset.k;
+    if (k === 'undone') this.setData({ openU: !this.data.openU });
+    else if (k === 'aband') this.setData({ openA: !this.data.openA });
+    else this.setData({ openD: !this.data.openD });
+  },
+
+  /* ---------------- 点条目：记录操作条（放弃 / 恢复 / 改 / 删除） ----------------
+     勾选框是「完成」（catchtap 单独处理），点条目的其它地方才是次级操作，两者互不干扰 */
+  onRecTap(e) {
+    if (this._lpAt && Date.now() - this._lpAt < 400) return;   // 长按刚触发过，忽略随之而来的点击
+    const id = e.currentTarget.dataset.id;
+    if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
+    const r = this.findRec(id);
+    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
+  },
+
+  /* 操作条统一入口（与记 / 看页共用 rec-actions 组件）：待办只用到 放弃 / 恢复 / 改 / 删 */
+  onRecAction(e) {
+    const type = e.detail.type;
+    const id = this.data.sel; if (id == null) return;
+    const r = this.findRec(id);
+    if (!r || !store.isTask(r.m)) return;
+    if (type === 'abandon') {
+      r.status = 'abandon'; r.abandonedAt = Date.now();
+      store.updateRecord(r).catch(() => {});
+      this.setData({ sel: null, selRec: null });
+      this.rebuild();
+      return;
+    }
+    if (type === 'restore') {
+      r.status = ''; r.abandonedAt = 0;
+      store.updateRecord(r).catch(() => {});
+      this.setData({ sel: null, selRec: null });
+      this.rebuild();
+      return;
+    }
+    if (type === 'edit') { this.setData({ sel: null, selRec: null }); this._openEdit(id, r.txt || ''); return; }
+    if (type === 'del') { this.setData({ sel: null, selRec: null }); this._del(r); }
+  },
+
+  /* ---------------- 快捷新增待办 ---------------- */
+  // 目标模块：筛选到具体模块时就是它，否则用「切换」选的那个
+  qaTarget() {
+    const s = this.data.seg;
+    return (s === 'memo' || s === 'buy') ? s : (this.data.qaM === 'buy' ? 'buy' : 'memo');
+  },
+  // 只有「全部」时目标才可切（筛了备忘 / 购物时目标就是筛选本身）
+  onQaSwitch() {
+    if (this.data.seg !== 'all') return;
+    this.data.qaM = this.data.qaM === 'buy' ? 'memo' : 'buy';
+    this.rebuild();
+  },
+  onQaInput(e) { this.setData({ qaTxt: e.detail.value }); },
+  /* 回车（或点「记下」）即落库：输入框清空、列表顶部立刻多一条，可继续输下一条 */
+  onQaSave() {
+    const txt = (this.data.qaTxt || '').trim();
+    if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
+    const m = this.qaTarget();
+    const ts = Date.now();
+    const rec = { m, txt, ts, t: hhmm(ts), ext: [], extSrc: [], done: false, doneAt: 0, status: '' };
+    store.addRecord(rec).then(rid => {
+      rec._rid = rid; rec.id = rid;
+      if (!app.globalData.records) app.globalData.records = [];
+      app.globalData.records.unshift(store.decorate(rec));
+      this.setData({ qaTxt: '' });
+      this.rebuild();
+      wx.showToast({ title: '已记入' + (m === 'buy' ? '购物' : '备忘'), icon: 'none', duration: 900 });
+    }).catch(() => wx.showToast({ title: '没记上，再试一次', icon: 'none' }));
   },
 
   onCheck(e) {
@@ -99,6 +225,8 @@ Page({
     const id = e.currentTarget.dataset.id;
     const r = this.findRec(id);
     if (!r || !store.isTask(r.m)) return;
+    this._lpAt = Date.now();     // 长按之后紧跟的那次点击要忽略，否则会立刻弹出操作条
+    this.setData({ sel: null, selRec: null });
     this._openEdit(id, r.txt || '');
   },
 
@@ -171,11 +299,15 @@ Page({
     });
   },
 
-  /* 就地编辑里的「删除」：删掉这条待办，并给出撤销机会（与记 / 看页一致） */
+  /* 就地编辑里的「删除」 */
   onEditDel() {
     const r = this.findRec(this.data.edId);
     this._closeEdit();
     if (!r || !store.isTask(r.m)) return;
+    this._del(r);
+  },
+  /* 删除 + 一次撤销机会（就地编辑的「删除」与操作条的「删除」共用） */
+  _del(r) {
     const i = (app.globalData.records || []).indexOf(r);
     store.deleteRecord(r).then(() => {
       if (i >= 0) app.globalData.records.splice(i, 1);
@@ -185,11 +317,12 @@ Page({
     });
   },
 
-  /* 点到页面其它地方：收起删除撤销条（与记 / 看页一致：不是浮层本身的点击都收起） */
+  /* 点到页面其它地方：操作条与删除撤销条都收起（与记 / 看页一致：不是浮层本身的点击都收起） */
   onBodyTap() {
-    if (!this.data.delUndo) return;
-    this._stopDelTimer();
-    this.setData({ delUndo: null });
+    const patch = {};
+    if (this.data.sel != null) { patch.sel = null; patch.selRec = null; }
+    if (this.data.delUndo) { patch.delUndo = null; this._stopDelTimer(); }
+    if (Object.keys(patch).length) this.setData(patch);
   },
   _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
   _startDelTimer() {

@@ -7,3 +7,29 @@
 .screen { height: auto; position: relative; }
 
 .ehint { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
+
+/* 快捷新增：一张独立小卡片（列表是轴线行，它是带边框/底色的块，层次一眼分开）。
+   位置仍在筛选与列表之间，上下留白拉开距离 */
+.qadd {
+  display: flex; align-items: center;
+  margin: 12px 0 16px; padding: 8px 10px;
+  background: var(--surface, #fff); border: 1px solid var(--line2, #E2DCD1); border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(35,35,31,.05);
+}
+/* 目标模块：模块色小药丸（描边 + 同色文字/圆点；--mc 由页面按 备忘 / 购物 传进来） */
+.qadd-m {
+  display: flex; align-items: center; flex-shrink: 0; margin-right: 8px;
+  font-size: 12.5px; color: var(--mc, #55524A); padding: 5px 10px;
+  border: 1px solid var(--mc, #E2DCD1); border-radius: 999px;
+}
+.qadd-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+.qadd-swap { font-size: 10.5px; color: var(--ink3); text-decoration: underline; margin-left: 6px; }
+/* 输入框沿用记页那套 mini-in 的手感：平时是柔和底色、聚焦才亮边框 */
+.qadd-in {
+  flex: 1; min-width: 0; height: 34px; line-height: 34px; border: 1px solid transparent;
+  border-radius: 10px; padding: 0 11px; font-size: 14px; font-family: inherit; background: var(--soft);
+  box-sizing: border-box; caret-color: var(--accent);
+}
+.qadd-in:focus { background: var(--surface, #fff); border-color: var(--accent); box-shadow: var(--ring); }
+.qadd-go { flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--ink3); padding: 8px 0 8px 12px; }
+.qadd-go.on { color: var(--accent); }

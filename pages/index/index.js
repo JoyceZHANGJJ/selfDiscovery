@@ -55,7 +55,6 @@ Page({
     greet: { t: '', s: '' },
     composer: {},
     recent: [],
-    froze: null,
     editing: false,
     focusIdx: -1,
     scrollTop: 0,
@@ -322,7 +321,7 @@ Page({
     let f = store.FIELDS[tag];
     if (!f) {
       const d = (app.globalData.dims || []).find(x => x.k === tag);
-      if (d) f = { main: 'm_' + tag, items: [{ g: 'm_' + tag, freeze: true, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
+      if (d) f = { main: 'm_' + tag, items: [{ g: 'm_' + tag, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
     }
     const main = f.main;
     const mainOpts = store.getOPT(main).map(v => ({ v, on: this.st.mainPick === v }));
@@ -366,9 +365,10 @@ Page({
         (this.st.pick[it.g] || []).forEach(v => {
           if (store.getOPT(it.g).indexOf(v) < 0) opts.unshift({ v, on: true });
         });
-        const ph = it.freeze ? '手填：加 ~ 才存入选项池' : '也可以手填，和选项一起记下（不加入选项）';
+        // 手填只记这一条，不进选项池（要复用同一句话，去「✎ 管理」里加）
+        const ph = '也可以手填，和选项一起记下（不加入选项池）';
         // sub：情绪下面的档位副行——不显示标题、不给管理入口，chip 小一号，未选情绪时隐藏
-        return { type: 'g', first: idx === 0, group: it.g, label: it.sub ? '' : store.GLABEL[it.g], single: !!it.single, freeze: !!it.freeze, noInput: !!it.noInput, ph, opts, typedVal: this.st.typed[it.g] || '',
+        return { type: 'g', first: idx === 0, group: it.g, label: it.sub ? '' : store.GLABEL[it.g], single: !!it.single, noInput: !!it.noInput, ph, opts, typedVal: this.st.typed[it.g] || '',
           sub: !!it.sub, hide: !!it.sub && !showDeg };
       }
       if (it.fx) {
@@ -385,7 +385,7 @@ Page({
     // 备忘 / 购物：只保留一个输入框，不显示标题、选项池与管理入口
     const plain = store.isTask(tag);
     // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
-    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 默认只记这次，加 ~ 存入选项池',
+    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
       // 「归类」不需要输入框：从选项池点选即可（要靠「✎ 管理」增删），
       // 所以带描述的模块把主输入框整个去掉，输入框只留给「具体的描述」
       mainInput: !descItem,
@@ -565,7 +565,7 @@ Page({
     let f = store.FIELDS[this.st.tag];
     if (!f) {
       const d = (app.globalData.dims || []).find(x => x.k === this.st.tag);
-      if (d) f = { main: 'm_' + this.st.tag, items: [{ g: 'm_' + this.st.tag, freeze: true, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
+      if (d) f = { main: 'm_' + this.st.tag, items: [{ g: 'm_' + this.st.tag, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
     }
     // 编辑时：按记录类型拼装时间
     //  · 非 done：创建时间=ts；做了(legacy m='done')：结束时间=ts(完成)，创建(惦记)=refTs
@@ -627,36 +627,31 @@ Page({
         rec.endTs = er.endTs || 0;
       }
     }
-    // 主项：手填时可加 ~ 前缀（默认只记这次，加 ~ 存入选项池）
-    let mainRaw = this.st.mainPick || this.st.main || '';
-    const mainOnce = store.isOnce(mainRaw);
-    rec.txt = store.stripOnce(mainRaw);
-    // 带「具体的描述」的模块（觉察）：主项只能从选项池点选，提示语换个说法
-    const descModule = !!(f && (f.items || []).some(it => it.free === store.DESC_KEY));
-    if (!rec.txt) { wx.showToast({ title: descModule ? '先选一个「归类」' : '先写点什么', icon: 'none' }); return; }
+    // 主项：从选项池点选（对着没有「描述」的模块，也允许手填——手填只记这一条，不进选项池）
+    const mainRaw = this.st.mainPick || this.st.main || '';
+    rec.txt = (mainRaw || '').trim();
+    // 「具体的描述」：觉察 / 无感的主项只能从选项池点选；可做那边允许「只填这一个框」——
+    // 那时这段文字本身就是「事」（FIELDS 里用 asMain 标出来），所以先把描述提上来再校验
+    const descItem = f && (f.items || []).find(it => it.free === store.DESC_KEY);
+    if (!rec.txt && descItem && descItem.asMain) {
+      const dv = (this.st.free[store.DESC_KEY] || '').trim();
+      if (dv) {
+        rec.txt = dv;
+        this.st.free[store.DESC_KEY] = '';    // 它已经作为「事」了，别再存一份描述
+      }
+    }
+    if (!rec.txt) { wx.showToast({ title: this.st.tag === 'obs' ? '先选一个「归类」' : '先写点什么', icon: 'none' }); return; }
     // 想做模块：分类为必选（默认已选「想做」）
     if (this.st.tag === 'want' && (!this.st.pick['wantKind'] || !this.st.pick['wantKind'].length)) {
       wx.showToast({ title: '请选择分类（想要/可做/喜欢）', icon: 'none' });
       return;
     }
-    if (!this.st.mainPick && mainOnce && store.FIELDS[this.st.tag]) {
-      const mg = f.main;
-      const O = app.globalData.OPT;
-      if (!O[mg]) O[mg] = [];
-      if (O[mg].indexOf(rec.txt) < 0) { O[mg].push(rec.txt); store.addOption(mg, rec.txt); }
-      this.st.froze = { txt: rec.txt, g: mg };
-    }
     const ext = [], extSrc = [];
     f.items.forEach(it => {
       if (it.g) {
         (this.st.pick[it.g] || []).forEach(v => { ext.push(v); extSrc.push(it.g); });
-        const rawTv = (this.st.typed[it.g] || '');
-        const tv = store.stripOnce(rawTv);
-        if (tv && ext.indexOf(tv) < 0) {
-          ext.push(tv); extSrc.push(it.g);
-          // 仅当带 ~ 前缀（且该组允许固化）才存入选项池
-          if (it.freeze && store.isOnce(rawTv)) this.freezeOpt(it.g, tv);
-        }
+        const tv = (this.st.typed[it.g] || '').trim();
+        if (tv && ext.indexOf(tv) < 0) { ext.push(tv); extSrc.push(it.g); }
       } else if (it.fx) {
         (this.st.pick['fx:' + it.fx] || []).forEach(v => { ext.push(v); extSrc.push('fx:' + it.fx); });
       } else if (it.free) {
@@ -693,27 +688,9 @@ Page({
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.ensureDefaultKind();   // 记下后仍在 可做 时，把默认分类选回来
-    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', froze: this.st.froze });
+    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
     this.recompute();
     wx.showToast({ title: '已记下', icon: 'success', duration: 700 });
-  },
-  freezeOpt(g, v) {
-    const O = app.globalData.OPT;
-    if (O[g] && O[g].indexOf(v) >= 0) return;
-    if (!O[g]) O[g] = [];
-    O[g].push(v);
-    store.addOption(g, v);
-    this.st.froze = { txt: v, g };
-  },
-  onFrozeUndo() {
-    if (this.guardEdit()) return;
-    const f = this.st.froze; if (!f) return;
-    const O = app.globalData.OPT;
-    if (O[f.g]) O[f.g] = O[f.g].filter(x => x !== f.txt);
-    store.removeOption(f.g, f.txt);
-    this.st.froze = null;
-    this.setData({ froze: null });
-    this.recompute();
   },
   onEditCancel() {
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
@@ -820,7 +797,7 @@ Page({
     const id = e.currentTarget.dataset.id;
     if (this.data.recSel === id) { this.setData({ recSel: null, recSelRec: null }); return; }
     const r = (app.globalData.records || []).find(x => x.id === id);
-    this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs } : null });
+    this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
   },
 
   /* 记录操作条统一入口（记页「最近」与看页共用 rec-actions 组件；行为各自实现，按钮集合只维护一处）
@@ -831,6 +808,16 @@ Page({
     const id = this.data.recSel; if (id == null) return;
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r) return;
+    // 待办（备忘 / 购物）：放弃 / 恢复只动状态与时间，不进编辑态（完成仍走条目上的勾选框）
+    if (r.m === 'memo' || r.m === 'buy') {
+      if (type !== 'abandon' && type !== 'restore') return;
+      if (type === 'abandon') { r.status = 'abandon'; r.abandonedAt = Date.now(); }
+      else { r.status = ''; r.abandonedAt = 0; }
+      store.updateRecord(r).catch(() => {});
+      this.setData({ recSel: null, recSelRec: null });
+      this.recompute();
+      return;
+    }
     if (type === 'start' || type === 'complete' || type === 'abandon') {
       if (r.m !== 'want') return;
       app.globalData.editRec = r;
@@ -944,6 +931,9 @@ Page({
       this.recompute();
     });
   },
+
+  /* 悬浮球「＋」快捷记下一条待办后：只刷新「最近」，不碰正在输入的内容 */
+  onQuickTodo() { this.recompute(); },
 
   /* 下拉刷新：统一走页面级下拉（列表 refresher 已关闭） */
   onRefresh() {

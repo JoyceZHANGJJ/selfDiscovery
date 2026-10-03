@@ -1,6 +1,7 @@
 {
   "usingComponents": {
-    "inline-editor": "/components/inline-editor/inline-editor"
+    "inline-editor": "/components/inline-editor/inline-editor",
+    "rec-actions": "/components/rec-actions/rec-actions"
   },
   "navigationStyle": "custom",
   "enablePullDownRefresh": true
