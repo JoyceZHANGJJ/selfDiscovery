@@ -276,8 +276,12 @@ Page({
     });
   },
 
-  /* 待办清单：未完成在上（按时间倒序），已完成沉底（按完成时间倒序）；待完成/已完成各自可折叠 */
+  /* 待办清单：未完成在上（按时间倒序），已完成沉底（按完成时间倒序）；待完成/已完成各自可折叠。
+     「全部」里不再平铺待办——待办只在自己那个维度（备忘 / 购物）下看 */
   buildTasks(ts) {
+    if (!store.isTask(this.data.filter)) {
+      return { show: false, tit: '', sum: '', undone: [], done: [], doneN: 0, openU: true, openD: false };
+    }
     const undone = ts.filter(r => !r.done).map(r => this.recVM(r));
     const done = ts.filter(r => r.done).map(r => this.recVM(r));
     undone.sort((a, b) => (b.ts || 0) - (a.ts || 0));
