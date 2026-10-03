@@ -1,6 +1,7 @@
 <view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
   <view class="statusbar-mask"></view>
-  <scroll-view class="screen" scroll-y type="list">
+  <!-- 整页页面级滚动（与记 / 看 一致）：不再套 scroll-view -->
+  <view class="screen">
     <view class="body">
       <view class="sect-t">设置</view>
 
@@ -75,7 +76,7 @@
       <view class="srow"><view class="sl">数据位置</view><view class="sv">云开发数据库</view></view>
       <view class="srow" bindtap="openLog"><view class="sl">更新日志</view><view class="sv">最近 {{logLatest}} ▸</view></view>
     </view>
-  </scroll-view>
+  </view>
 
   <!-- 导入浮层 -->
   <view wx:if="{{importOverlay}}" class="sheet">
