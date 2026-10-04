@@ -73,8 +73,9 @@
 .qa-in:focus { border-color: var(--accent, #7C9A86); }
 .qa-go { flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--ink3, #8B8779); padding: 8px 2px 8px 12px; }
 .qa-go.on { color: var(--accent, #7C9A86); }
-/* 撤销条：.undo-bar 是整屏宽，这里左右内缩、与面板同宽对齐，并抬到遮罩之上（否则点它会先被遮罩吃掉） */
-.undo-bar.qa-undo { left: 16px; right: 16px; z-index: 62; }
+/* 撤销条：位置与样式全部沿用全局 .undo-bar（屏幕正中的小卡片），这里只抬到遮罩 / 面板之上——
+   否则点「撤销」会先被遮罩吃掉 */
+.undo-bar.qa-undo { z-index: 62; }
 /* 球展开时（显示 ×）压深一档，和「收起」区分开 */
 .fab.on { background: var(--ink2, #55524A); }
 /* 注：ballOnly（清单页这类非 tab 页）只隐藏底部 tab 栏，球与面板的位置与 tab 页完全一致

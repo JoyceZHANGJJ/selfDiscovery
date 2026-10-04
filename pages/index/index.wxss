@@ -19,6 +19,8 @@
 /* 「最近 / 已完成」切换：标题位上的两个词（选中的加深 + 主题色下划线），不额外加控件 */
 .rectabs .rt { font-size: 13px; font-weight: 800; color: var(--ink4); margin-right: 16px; padding-bottom: 2px; border-bottom: 2px solid transparent; }
 .rectabs .rt.on { color: var(--ink); border-bottom-color: var(--accent); }
+/* 最近列表的手势提示：点一下出操作条 / 左滑直接改 / 长按复制（与清单页同一套小字） */
+.qhint { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
 .composer .big-in { margin-top: 10px; }
 .composer .extra:first-child { margin-top: 14px; }
 /* 待办 / 随记：输入框上方的「类别」行。它紧跟维度标签行，要和非纯输入型模块的
@@ -48,7 +50,6 @@
 /* 在做：第 N 天 标签（与看页一致） */
 .tag.doing { font-size: 11px; color: #fff; background: #C0A05A; padding: 1px 7px; border-radius: 999px; margin-right: 6px; line-height: 1.5; }
 
-/* 「已删除 …」撤销条（浮在屏幕上，与记卡无关）：位置与看 / 清单页统一——落在底部 tab 栏
-   之上（用全局 .undo-bar 的 66px）。之前单独抬到 122px 是为了躲开吸底的「记下 / 保存修改」
-   操作行，但那个高度正好和右下角的「＋」快捷球撞在一起，也和其它页不一致，所以取消。
+/* 「已删除 …」撤销条（浮在屏幕上，与记卡无关）：位置与样式统一由全局 .undo-bar 管——
+   现在是屏幕正中的小卡片（带弹出动效 + 实心「撤销」药丸），不再贴底部，也不再各页各调。
    注：「已记入 …」那条不在这里——它排进记卡内部、跟着记卡一起收放（见上面的 .sbline） */

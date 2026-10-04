@@ -26,6 +26,8 @@
 .tagrow .tg { flex-shrink: 0; }
 .tagrow-wrap { position: relative; }
 .tagrow-fade { position: absolute; top: 0; right: 0; width: 8px; height: 21px; background: linear-gradient(to right, rgba(51,50,45,0), rgba(51,50,45,.08)); pointer-events: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); }
+/* 左侧那份：往回滚过、左边还有 chip 没露出来时给提示（与右侧同一套，只是镜像） */
+.tagrow-fade-l { right: auto; left: 0; background: linear-gradient(to left, rgba(51,50,45,0), rgba(51,50,45,.08)); }
 .tg { font-size: 13.5px; padding: 0 0 4px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink3); display: inline-flex; align-items: center; gap: 5px; }
 .tg .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); }
 .tg.on { border-bottom-color: var(--accent); color: var(--accent); font-weight: 700; }
@@ -59,6 +61,10 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 吸底操作行（记页）：记卡在视口里时，这一行始终贴在视口底部（bottom 由页面按时键盘高度给），
    卡片滚出视口后它随卡片一起离开——配合不透明底色，滚动的列表不会从它下面透出来 */
 .savebar.sticky { position: sticky; z-index: 22; background: var(--bg); padding: 10px 0 6px; }
+/* 键盘弹着时的形态：sticky 受父容器（记卡）与滚动状态限制，不保证能上移到键盘上方，
+   这时改成真正的 fixed——bottom 由页面按键盘高度给（style="bottom:{{barBottom}}"）。
+   左右的 30px = 页面 .body 的 14px + 记卡 .composer 的 16px，让按钮与卡片里的内容左右对齐 */
+.savebar.kb { position: fixed; left: 0; right: 0; max-width: 640px; margin: 0 auto; padding: 10px 30px 6px; }
 /* 吸到底部时给一点过渡，避免像"硬贴在列表上" */
 .savebar.sticky::before { content: ''; position: absolute; left: 0; right: 0; top: -14px; height: 14px; background: linear-gradient(to bottom, rgba(255,255,255,0), var(--bg)); pointer-events: none; }
 .btn { flex: 1; padding: 11px 0; border-radius: var(--r-btn); background: var(--accent, #2F8F7B); color: #fff; font-size: 14.5px; font-weight: 700; border: 0; text-align: center; }
@@ -89,6 +95,8 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .st-ex { font-size: 12px; color: var(--ink3); margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--line); }
 .barrow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; }
 .barrow .bn { flex: 0 0 74px; color: var(--ink2); font-size: 12.5px; }
+/* 统计块的占位行（看页）：只为撑住高度、不让统计随二级筛选伸缩，内容不可见 */
+.barrow.pad { visibility: hidden; }
 .barrow .bb { flex: 1; height: 8px; background: var(--soft); border-radius: 99px; overflow: hidden; }
 .barrow .bf { height: 100%; border-radius: 99px; background: var(--accent); }
 .barrow .bv { flex: 0 0 26px; text-align: right; font-size: 12px; color: var(--ink3); }
@@ -200,12 +208,14 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 备忘 / 购物清单：不走时间流，平铺成列表 */
 .rec.list { padding: 10px 13px; margin: 0 0 7px; border-radius: 12px; box-shadow: none; }
 .rec.list .hd { gap: 9px; }
-/* 清单行：事项标题完整显示（超长自动折行，不省略不溢出）；原因/用途可省略；时间必显 */
+/* 清单行：事项标题完整显示（超长自动折行，不省略不溢出）；原因/用途最多折两行；时间必显 */
 .rec.list .mn { flex-shrink: 0; white-space: nowrap; }
 .rec.list .tv { flex: 1 1 auto; min-width: 0; white-space: normal; word-break: break-all; }
 /* 时间那行不伸展（flex-grow:0）：否则会和事项标题平分宽度，把标题挤成两行、右侧留一片空白 */
 .rec.list .twr { display: flex; align-items: baseline; gap: 5px; flex: 0 1 auto; justify-content: flex-end; min-width: 0; font-size: 11.5px; color: var(--ink3); }
-.rec.list .twx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 原因 / 放弃原因：最多折两行，超出第二行省略。
+   已放弃的待办，「放弃原因」在 store.decorate 里就被映射到了 reason，所以和原因是同一个元素、同一套样式 */
+.rec.list .twx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: normal; word-break: break-all; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .rec.list .twd { flex-shrink: 0; }
 .rec.list .twt { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rec.list .tw { flex-shrink: 0; white-space: nowrap; margin-left: auto; }
@@ -221,6 +231,12 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
    放在 .rec.list 之后覆盖一次，避免它自己的 padding / margin / 圆角把扁平样式顶回去 */
 .rec.list.tl { background: transparent; border: 0; border-radius: 0; box-shadow: none; margin: 0; padding: 8px 0 8px 24px; }
 .tsum { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
+/* 待办清单的标题行（组件 todo-list）：左边标题 + 汇总，右边留给使用方的入口
+   （看页的「去清单页管理 ›」）——入口右起、与标题顶端对齐，不再单独占一行。
+   没传插槽内容时右侧那个盒子是空的（宽 0），清单页的排布不变 */
+.tl-top { display: flex; align-items: flex-start; }
+.tl-top-l { flex: 1 1 auto; min-width: 0; }
+.tl-top-r { flex: 0 0 auto; }
 /* 清单页各段的「显示更多」（把长段先收在最近一段后面，避免一次铺开太多行） */
 .moreline { text-align: center; font-size: 12.5px; color: var(--accent); padding: 10px 0 2px; }
 /* 日期行里的「展开全部 N 条」（某天完成的特别多时）：跟在日期后面，不打断时间线轴线 */
@@ -327,7 +343,26 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .actbar > view.del { color: #F0A9A5; }
 .actbar > view.tx { flex: 2; font-size: 12.5px; color: #E8E6DE; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding-left: 12px; }
 .actbar > view:active { opacity: .65; }
-.undo-bar { position: fixed; left: 0; right: 0; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); max-width: 640px; margin: 0 auto; z-index: 50; }
+/* 「已删除 … · 撤销」/「已记入 … · 撤销」：原来贴着底部、整屏宽的一条，很容易被忽略。
+   改成屏幕正中的小卡片（左右居中、圆角 + 描边 + 投影），带一点点「弹出来」的动效，
+   「撤销」也从下划线文字变成实心药丸，一眼能看见、也更好点。
+   注：只在 .undo-bar 上生效——.toastline 还有一处「记卡内的已记入确认行」（.sbline），
+   那条要跟着记卡待在文档流里，不能浮起来。 */
+.undo-bar {
+  position: fixed; left: 50%; top: 50%; right: auto; bottom: auto;
+  transform: translate(-50%, -50%);
+  width: auto; min-width: 216px; max-width: 82vw;
+  margin: 0; z-index: 60;
+  background: #fff; border: 1px solid var(--line2); border-radius: 14px;
+  padding: 12px 14px; box-shadow: 0 14px 34px rgba(35, 35, 31, .20), 0 4px 10px rgba(35, 35, 31, .12);
+  animation: undo-pop .22s cubic-bezier(.2, .9, .3, 1.15);
+}
+.undo-bar .tb { font-size: 12.5px; font-weight: 700; color: #fff; background: var(--accent); text-decoration: none; padding: 5px 11px; border-radius: 999px; }
+.undo-bar .tb:active { opacity: .85; }
+@keyframes undo-pop {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.82); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
 
 /* ================= 自定义 tabBar ================= */
 .tabbar { display: flex; border-top: 1px solid var(--line); background: var(--bg); flex-shrink: 0; padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 40; }

@@ -114,6 +114,9 @@ const FIELDS = {
   ] },
   want: { main: 'wantItem', items: [
     { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },
+    // 「怎么做」：紧跟在分类下方，写打算怎么做（可跳过）。
+    // 注意 srcList 是「按标签匹配」导入的，插在中间不会打乱旧文本的详情对齐
+    { free: 'howto', label: '怎么做', ph: '要怎么做？', ta: true },
     { free: 'trigger', label: '是什么让你想做', ph: '刚看到别人晒成果，有点不甘心' },
     { free: 'hope', label: '希望最终变成什么样', ph: '变成每天稳定的习惯' },
     // 「进行中感受」仅在做中/点「开始」后显示（由 index 编辑态按状态过滤）
@@ -133,7 +136,10 @@ const FIELDS = {
      「原因」合并了原先 备忘的「原因」与 购物的「干什么用」（迁移时统一成 free:tasknote） */
   todo: { main: 'todoItem', items: [
     { g: 'todoKind', single: true, noInput: true, required: true },
-    { free: 'tasknote', label: '原因', ph: '为什么记这条？可不填', ta: true }
+    { free: 'tasknote', label: '原因', ph: '为什么记这条？可不填', ta: true },
+    // 「放弃原因」仅点「放弃」或编辑「已放弃」记录时显示（由 index 编辑态按状态过滤，
+    // 与可做那边同一个键名 free:abandonWhy，保存/恢复/导出的处理都复用同一套）
+    { free: 'abandonWhy', label: '放弃原因', ph: '为什么放弃？随便写', ta: true }
   ] },
   /* 随记：随手记一句想法 / 灵感。不是待办（没有勾选、不进清单页），也不需要归类。
      类别（jotKind，默认 念头 / 灵感，可在「✎ 管理」里加）只从选项池点选，
@@ -207,7 +213,8 @@ const COLMAP = {
   'free:desc': '描述',
   'free:trigger': '诱因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
-  'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受'
+  'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受',
+  'free:howto': '怎么做'
 };
 const FALLBACK = { obs: '感受', want: '诱因', nope: '感受', now: '感受', like: '当时感受' };
 
@@ -244,6 +251,27 @@ function getQuickCats() {
   return defaultQuickCats();
 }
 function setQuickCats(arr) { const a = normQuickCats(arr).slice(0, QUICKCATS_MAX); try { wx.setStorageSync(QUICKCATS_LS, a); } catch (e) {} return a; }
+// 常用主题：右上角圆点（theme-switcher）只在这几个之间循环，最多 FAVTHEMES_MAX 个。
+// 由用户在「设置 · 外观」里勾选；没勾过（或勾的都失效）时按主题表顺序取前 FAVTHEMES_MAX 个。
+const FAVTHEMES_LS = 'self_favthemes_v1';
+const FAVTHEMES_MAX = 5;
+function defaultFavThemes() { return themeList().slice(0, FAVTHEMES_MAX).map(t => t.k); }
+// 只认「仍然存在」的主题：主题表里被下掉的不计数、也不占名额；
+// 顺序也按主题表排（不管勾选先后），这样圆点的循环方向始终是可预期的
+function normFavThemes(arr) {
+  return themeList().map(t => t.k).filter(k => (arr || []).indexOf(k) >= 0);
+}
+function getFavThemes() {
+  try {
+    const v = wx.getStorageSync(FAVTHEMES_LS);
+    if (v && Array.isArray(v) && v.length) {
+      const a = normFavThemes(v);
+      if (a.length) return a;
+    }
+  } catch (e) {}
+  return defaultFavThemes();
+}
+function setFavThemes(arr) { const a = normFavThemes(arr).slice(0, FAVTHEMES_MAX); try { wx.setStorageSync(FAVTHEMES_LS, a); } catch (e) {} return a; }
 // 去做模块默认分类：优先锁定值「想做」（不随选项顺序变化），找不到再退第一个，最后兜底「想做」
 function wantKindDefault() {
   const k = getOPT('wantKind');
@@ -421,6 +449,7 @@ function decorate(r) {
   o.cat = '';
   o.reason = '';
   o.usefor = '';
+  o.abandonWhy = '';
   // 「具体的描述」：与「归类」(txt) 配对，取出后供列表同排展示
   o.desc = '';
   const _es = o.extSrc || [], _ex = o.ext || [];
@@ -428,8 +457,12 @@ function decorate(r) {
     if (!_ex[i]) continue;
     if (_es[i] === 'todoKind') o.cat = _ex[i];
     else if (_es[i] === 'free:tasknote' || _es[i] === 'free:memonote' || _es[i] === 'free:buynote') o.reason = _ex[i];
+    else if (_es[i] === 'free:abandonWhy') o.abandonWhy = _ex[i];
     else if (_es[i] === DESC_SRC) o.desc = _ex[i];
   }
+  // 已放弃的待办：行内「原因」的位置改显示「放弃原因」——只取它，不再显示原来的原因；
+  // 显隐规则与原因完全一致（有值才显示那一行，见 components/todo-list 的 .twr）
+  if (isTask(o.m) && o.status === 'abandon' && o.abandonWhy) o.reason = o.abandonWhy;
   return o;
 }
 // 待办型记录（备忘 / 购物 已合并为 todo；memo / buy 只用于兼容迁移前的老数据）
@@ -1104,6 +1137,47 @@ function migrateJotKind() {
   });
 }
 
+/* 一次性迁移：把历史记录里类别是「备忘」的待办并到「识己」（2026-10）
+   **只改记录，两个类别都留着**：「识己」是本地用的主类别，但「备忘」以后还想用，
+   所以选项池里的「备忘」不能少（上一版曾误把它一起改掉，这里缺了就补回来）。
+   ・记录：走 renameInRecords（不像 renameOption，它不碰选项池），按 extSrc==='todoKind' 精确核对
+   ・补回「备忘」：与「✎ 管理」里新增一项同一套写法（顺序 + 云端 + 清删除标记 + 归用户自己管）
+   ・内存里已加载的记录同步改一遍，本会话不用刷新就能看到
+   ・目标类别「识己」不在池子里时不动记录（免得记录挂在不存在的类别上），只打日志 */
+const MIG_TODOREC_KEY = 'self_mig_todorec_202610';
+const TODOREC_OV = '备忘', TODOREC_NV = '识己';
+function migrateTodoRecords() {
+  return new Promise((resolve) => {
+    if (wx.getStorageSync(MIG_TODOREC_KEY)) { resolve(true); return; }
+    // ① 选项池里补回「备忘」（缺了才补）
+    if (G.OPT && G.OPT.todoKind && G.OPT.todoKind.indexOf(TODOREC_OV) < 0) {
+      G.OPT.todoKind.unshift(TODOREC_OV);
+      setOptOrder('todoKind', G.OPT.todoKind);
+      addOption('todoKind', TODOREC_OV);
+      if (isDefault('todoKind', TODOREC_OV)) clearDelDef('todoKind', TODOREC_OV);
+      markOptCustom('todoKind', G.OPT.todoKind);
+      console.log('[mig] 待办类别补回「备忘」（以后还能用它记）');
+    }
+    // ② 目标类别不在池子里就不动记录：宁可不改，也不要让记录挂到一个不存在的类别上
+    if ((getOPT('todoKind') || []).indexOf(TODOREC_NV) < 0) {
+      console.warn('[mig] 待办记录未合并：选项池里没有「' + TODOREC_NV + '」，先在「✎ 管理」里加上它');
+      resolve(true);
+      return;
+    }
+    // ③ 历史记录：备忘 → 识己（跑不完（量太大）就不写标记，下次启动接着跑）
+    renameInRecords('todoKind', TODOREC_OV, TODOREC_NV).then((ok) => {
+      (G.records || []).forEach(r => {
+        if (!isTask(r.m)) return;
+        const src = r.extSrc || [], ex = r.ext || [];
+        for (let i = 0; i < src.length; i++) if (src[i] === 'todoKind' && ex[i] === TODOREC_OV) ex[i] = TODOREC_NV;
+      });
+      if (ok) wx.setStorageSync(MIG_TODOREC_KEY, 1);
+      console.log('[mig] 待办记录并到「识己」：备忘 → 识己' + (ok ? '（类别都保留）' : '：未跑完，下次启动继续'));
+      resolve(true);
+    }).catch(e => { console.warn('[mig] 待办记录合并失败（下次启动重试）：', e); resolve(false); });
+  });
+}
+
 /* ---------------- 一次性迁移：无感 / 悦己 并入觉察（2026-10） ----------------
    选项池的合并已经固化进 OPT 常量（那两个组本身已删除），这里只做记录迁移：
    ① m 改成 obs，细节来源按映射改写，再按觉察的来源顺序重建 ext/extSrc
@@ -1391,7 +1465,8 @@ function ensureAll() {
       .then(() => migrateTasksToTodo())
       // 喜恶改名放在「无感 / 悦己 并入觉察」之后：那一步会把旧词带进觉察，这里一并改掉
       .then(() => migrateObsKind())
-      .then(() => migrateJotKind());
+      .then(() => migrateJotKind())
+      .then(() => migrateTodoRecords());
   }).catch(() => { _loading = false; });
 }
 
@@ -1410,9 +1485,9 @@ function reload() {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, themeAccent,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
-  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,
+  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, migrateTodoRecords, takeRenameMap,
   isDefault, addDelDef, clearDelDef, markOptCustom,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, reload, regDim, unregDim,
   globalData: G

@@ -56,6 +56,7 @@ Page({
   onLoad() {
     this._cursor = null;
     this._loading = false;
+    this._gen = 0;              // 取数代次：切维度 / 换筛选 / 搜索都会 +1，用来丢掉过期响应（见 resetLoad）
     this._searchTimer = null;
     this._everLoaded = false;   // 骨架屏只在「还没成功加载过一次」时出场（见 resetLoad）
   },
@@ -150,6 +151,20 @@ Page({
 
   // 统计面板：默认用后端统计结果（count / 聚合，不受列表分页影响）；
   // useClient=true（搜索态）时改用当前已加载的全量搜索结果在客户端算
+  /* 统计块的高度只跟「维度」有关，不跟二级筛选走：把条形行数补到该维度可能的最大值，
+     缺的行用占位行撑住（占位行不可见，只占高度）。这样换喜恶 / 类别时统计块不再伸缩，
+     下面的时间线也就不会跟着上下跳——跳得最明显的就是觉察的喜恶筛选（Top 归类 0~4 行）。 */
+  _padStats(stats, filter) {
+    if (!stats || stats.hide || !stats.bars) return stats;
+    let max;
+    if (filter === 'all') max = stats.bars.length;                                // 全部：条数＝维度数，本来就固定
+    else if (filter === 'jot') max = (store.getOPT('jotKind') || []).length + 1;  // 随记：类别池 + 「未分类」
+    else max = 4;                                                                // 觉察 / 此刻 / 可做：Top 最多 4 条
+    const pads = [];
+    for (let i = stats.bars.length; i < max; i++) pads.push(i);
+    return Object.assign({}, stats, { pads });
+  },
+
   buildStats(filter, list, useClient) {
     // 待办（备忘 / 购物）不展示统计，只在下面清单里看
     if (filter === 'todo') return { hide: true };
@@ -270,6 +285,17 @@ Page({
     };
   },
 
+  /* 换筛选 / 换时间范围 / 换维度：数据都是异步回来的。
+     立刻 alignTop 等于按**旧**布局算位置，新内容一到（条数变了）就会被浏览器夹回来，
+     看着就是跳一下。所以这里只记下要对齐的目标，等这一批数据渲染完（rebuild 末尾）再对。 */
+  _alignLater(sel) { this._alignSel = sel; },
+  _flushAlign() {
+    const sel = this._alignSel;
+    if (!sel) return;
+    this._alignSel = '';
+    ui.alignTop(this, sel);
+  },
+
   rebuild() {
     const all = this.data.recs;
     const q = this.data.q.trim().toLowerCase();
@@ -305,7 +331,7 @@ Page({
     const map = {}, days = [];
     aware.forEach(r => { if (!map[r.day]) { map[r.day] = []; days.push(r.day); } map[r.day].push(this.recVM(r)); });
     const groups = days.map(d => ({ day: d, recs: map[d] }));
-    const stats = this.buildStats(effM, list, !!q);
+    const stats = this._padStats(this.buildStats(effM, list, !!q), effM);
     // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别时，标题也带上它——
     // 避免列表筛过了、标题却说整个模块
     const kn = (['obs', 'todo', 'jot'].indexOf(effM) >= 0 && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
@@ -321,6 +347,7 @@ Page({
       empty: groups.length === 0 && tasks.length === 0,
       stats
     });
+    this._flushAlign();   // 数据渲染完了，按最终布局对齐（见 _alignLater）
   },
 
   /* 待办清单：待完成在上（按时间倒序）；已完成、已放弃各成一段（按各自时间倒序 + 按天分段）；
@@ -331,16 +358,17 @@ Page({
     }
     // 注意：recVM 的产物里没有 ts / doneAt / abandonedAt，必须在 map 之前对原始记录排序，
     // 否则 sort 比较的全是 undefined，等于没排
-    const undoneAll = ts.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
+    const undoneRaw = ts.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0));
     const doneRecs = ts.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = ts.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
     const doneDays = this.groupByDay(doneRecs, r => r.doneAt || r.ts);
     const abandDays = this.groupByDay(abandRecs, r => r.abandonedAt || r.ts);
-    // 数量与列出的行是同一份数据（待办视图不分页）；渲染量由「显示更多」窗口收口
-    const undone = undoneAll.slice(0, this.data.limU);
-    const doneGroups = store.winDays(doneDays, this.data.limD, this.data.doneDayAll);
-    const abandGroups = store.winDays(abandDays, this.data.limA, this.data.abandDayAll);
-    const u = undoneAll.length, dn = doneRecs.length, an = abandRecs.length;
+    // 数量与列出的行是同一份数据（待办视图不分页）；渲染量由「显示更多」窗口收口，
+    // 并且只有窗口里真正要渲染的那几条才 map 成 VM（待办攒多了也不会卡）
+    const undone = undoneRaw.slice(0, this.data.limU).map(r => this.recVM(r));
+    const doneGroups = this.winGroups(doneDays, this.data.limD, this.data.doneDayAll);
+    const abandGroups = this.winGroups(abandDays, this.data.limA, this.data.abandDayAll);
+    const u = undoneRaw.length, dn = doneRecs.length, an = abandRecs.length;
     const sum = u
       ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
       : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
@@ -354,15 +382,20 @@ Page({
     };
   },
 
-  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签，段内保持传入顺序
+  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签，段内保持传入顺序。
+  // 只分组、不 map 成 VM——窗口外那些天不用白算（见 winGroups）
   groupByDay(recs, tsOf) {
     const map = {}, order = [];
     recs.forEach(r => {
       const k = date.dayStart(tsOf(r));
       if (!map[k]) { map[k] = { key: k, day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
-      map[k].recs.push(this.recVM(r));
+      map[k].recs.push(r);
     });
     return order.map(k => map[k]);
+  },
+  /* 「按天分段 + 显示更多窗口」：只把窗口里真正要渲染的那几条 map 成 VM（窗口规则见 store.winDays） */
+  winGroups(days, lim, dayAll) {
+    return store.winDays(days, lim, dayAll).map(g => Object.assign({}, g, { recs: g.recs.map(r => this.recVM(r)) }));
   },
 
   /* ---------------- 游标分页 ---------------- */
@@ -388,6 +421,11 @@ Page({
   },
   // 重置并加载第一页 + 统计总数
   resetLoad() {
+    // 切维度 / 换筛选 / 搜索都从这里走：代次 +1 把在途的旧请求作废（不然旧响应回来会盖掉新内容）；
+    // 顺手清 _loading —— 上一次取数还在飞时若不清，这一页的首屏会被 loadMore 直接跳过，
+    // 页面就一直空着，直到用户滚到底触发 onReachBottom 才补上第一页
+    this._gen = (this._gen || 0) + 1;
+    this._loading = false;
     this._cursor = null;
     // 只有「还没成功加载过一次」时才让骨架屏接管：切筛选 / 换时间也会走这里，
     // 每次都闪一下骨架比短暂的空列表还晃眼
@@ -403,6 +441,7 @@ Page({
     if (this._loading) return;
     if (!first && !this.data.hasMore) return;
     if (this.data.q.trim()) { this.fullSearch(); return; }
+    const gen = this._gen;   // 这一页属于哪一代：回来时对不上就不要了
     this._loading = true;
     this.setData({ loading: true });
     const q = this.effQuery();
@@ -418,6 +457,7 @@ Page({
       excludeIds: first ? null : (this.data.recs || []).map(r => r._rid)
     };
     store.loadRecordsPage(params).then(({ list, hasMore, nextCursor }) => {
+      if (gen !== this._gen) return;   // 期间又切过维度 / 筛选：这一页已经过期，不能往 setData 里塞
       this._cursor = nextCursor;
       const recs = first ? list : this.data.recs.concat(list);
       this._loading = false;
@@ -429,6 +469,7 @@ Page({
         if (!hasMore && recs.length > 10) this.hintTabTop();
       });
     }).catch(() => {
+      if (gen !== this._gen) return;
       this._loading = false;
       // 失败也要撤掉骨架屏，否则会一直卡在占位上（空列表 + 下拉刷新重试）
       this.setData({ loading: false, hasMore: false, ready: true });
@@ -462,15 +503,18 @@ Page({
   loadStats() {
     const f = this.data.filter;
     const startTs = this.data.rangeStart;
+    const gen = this._gen;
+    // 统计也是异步回来的：期间又切了维度 / 筛选，这批数字就属于上一屏了，直接丢掉
+    const set = (stat) => { if (gen === this._gen) this.setData({ stat }, () => this.rebuild()); };
     if (this.data.q.trim()) return;
     // 待办视图不展示统计面板（三个数量的口径在 buildTasks 里，取自本地全量）
-    if (f === 'todo') { this.setData({ stat: {} }, () => this.rebuild()); return; }
+    if (f === 'todo') { set({}); return; }
     if (f === 'all') {
-      store.countByModule({ startTs }).then(byMod => this.setData({ stat: { byMod } }, () => this.rebuild()));
+      store.countByModule({ startTs }).then(byMod => set({ byMod }));
       return;
     }
     if (f === 'want') {
-      store.countByStatus({ startTs }).then(bySt => this.setData({ stat: { bySt } }, () => this.rebuild()));
+      store.countByStatus({ startTs }).then(bySt => set({ bySt }));
       return;
     }
     // 随记：按类别数数量（类别取自选项池，可增删）——和待办一样只看数量，不做文本 Top。
@@ -484,7 +528,7 @@ Page({
         const total = arr[arr.length - 1] || 0;
         const byCat = {};
         cats.forEach((c, i) => { byCat[c] = arr[i] || 0; });
-        this.setData({ stat: { total, byCat } }, () => this.rebuild());
+        set({ total, byCat });
       });
       return;
     }
@@ -501,22 +545,25 @@ Page({
     Promise.all(jobs).then(([total, tops, fg, chg, tire]) => {
       const stat = { total: total || 0, tops: tops || [] };
       if (f === 'obs') stat.ext = { '忘了时间': fg || 0, '充电': chg || 0, '耗电': tire || 0 };
-      this.setData({ stat }, () => this.rebuild());
+      set(stat);
     });
   },
   // 搜索：全量拉取后客户端过滤（搜索需覆盖全部记录，不走游标分页）
   fullSearch() {
+    const gen = this._gen;
     this._loading = true;
     this.setData({ loading: true, hasMore: false });
     const q = this.effQuery();
     // 待办不看时间范围（页面上没有那行筛选），其它维度照旧
     const params = { m: q.m, mNot: q.mNot, startTs: this.data.filter === 'todo' ? null : this.data.rangeStart };
     store.loadAllRecords(params).then(all => {
+      if (gen !== this._gen) return;   // 期间改过搜索词 / 切过维度：这份结果已经过期
       const q2 = this.data.q.trim().toLowerCase();
       const list = all.filter(r => (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q2) >= 0);
       this._loading = false;
       this.setData({ recs: list, loading: false }, () => this.rebuild());
     }).catch(() => {
+      if (gen !== this._gen) return;
       this._loading = false;
       this.setData({ loading: false });
     });
@@ -562,11 +609,25 @@ Page({
     this.resetLoad();
     // 换维度后把这一页的标题对齐到屏幕顶部（像切 tab 那样主动滚一下）：
     // 各维度时间线长短差很多，不主动对齐就会被浏览器被动拉回，看着像整页在跳
-    ui.alignTop(this, '#blk-title');
+    this._alignLater('#blk-title');
   },
-  /* 左右滑动切维度（全部 / 各维度）：向左滑下一个，向右滑上一个 */
+  /* 左右滑动切维度（全部 / 各维度）：向左滑下一个，向右滑上一个。
+     例外：行尾左滑归行内（时间线行、待办行都是「进记卡改」，见 onRowSwipe / onRowTouchend）——
+     那一下不能再切维度。所以这里延后一拍再切，行内动作一到就把它撤掉
+     （组件派发的事件与根节点原生事件的先后没法保证，两边都兜住） */
   onSwipeStart(e) { swipe.start(this, e); },
-  onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
+  onSwipeEnd(e) {
+    const d = swipe.end(this, e);
+    if (!d) return;
+    if (this._segTimer) clearTimeout(this._segTimer);
+    this._segTimer = setTimeout(() => {
+      this._segTimer = null;
+      if (this._rowActAt && Date.now() - this._rowActAt < 400) { this._rowActAt = 0; return; }
+      this.stepDim(d);
+    }, 60);
+  },
+  /* 行内动作（左滑改这一条）一到，就把可能还在排队的「切维度」撤掉 */
+  _cancelSeg() { if (this._segTimer) { clearTimeout(this._segTimer); this._segTimer = null; } },
   stepDim(dir) {
     const mods = this.data.modules || this.modulesVM();
     const keys = ['all'].concat(mods.map(m => m.k));
@@ -581,14 +642,15 @@ Page({
     this.data.kindFilter = e.currentTarget.dataset.k || 'all';
     this.setData({ kindFilter: this.data.kindFilter, sel: null, selRec: null });
     this.resetLoad();
-    ui.alignTop(this, '.filters.states');   // 换完把这一行（喜恶 / 类别 / 状态）顶到屏幕上
+    // 这里**不主动滚动**：换二级筛只是换这一屏的记录，页面停在你点的地方。
+    // 之前会把筛选行顶到屏幕上，看着就是「跳到顶部」（与记页换维度、清单页切段同一个取舍）
   },
   // 可以 维度下的状态切换：未做 / 在做 / 做了
   onStateFilter(e) {
     this.data.stateFilter = e.currentTarget.dataset.s;
     this.setData({ stateFilter: this.data.stateFilter });
     this.resetLoad();
-    ui.alignTop(this, '.filters.states');
+    // 同上：不主动滚动（可做 未做 / 在做 / 做了 / 不做 只是换一批记录）
   },
   // 快捷时间选择：全部 / 今天 / 近7天 / 近30天
   onRange(e) {
@@ -596,7 +658,7 @@ Page({
     const map = { all: '全部', today: '今天', '7d': '近7天', '30d': '近30天' };
     this.setData({ range: r, rangeLabel: map[r] || '全部', rangeStart: this.rangeStartOf(r), stateFilter: 'all' });
     this.resetLoad();
-    ui.alignTop(this, '.ranges');
+    this._alignLater('.ranges');
   },
   rangeStartOf(range) {
     if (range === 'all') return null;
@@ -692,14 +754,50 @@ Page({
     this.setData({ recs: this.data.recs.slice() }, () => this.rebuild());
   },
 
-  /* ---------------- 长按记录 ----------------
-     看页对待办只作概览（管理去清单页），所以待办长按不做事；
-     其它维度：与点「改」等价，跳记页完整编辑 */
+  /* ---------------- 长按记录：复制这句话 ----------------
+     待办行与时间线上的行一样：点一下出操作条、行尾左滑进记卡改（改 / 删都在记卡 / 本页处理），
+     长按一律复制原文；「放弃 / 恢复」待办在本页直接落库（不必跳页） */
   onRowLongPress(e) {
     const id = this._id(e);
     const r = this.findRec(id);
-    if (!r || store.isTask(r.m)) return;   // 待办不在这里改
+    if (!r) return;
     this._lpAt = Date.now();   // 长按后紧跟着的那次点击要忽略掉
+    this.copyRec(r);
+  },
+  /* 把一条记录放进剪贴板：只复制那一句话本身 */
+  copyRec(r) {
+    const txt = r.txt || '';
+    if (!txt) return;
+    wx.setClipboardData({
+      data: txt,
+      success: () => { if (wx.vibrateShort) wx.vibrateShort(); },
+      fail: () => wx.showToast({ title: '没复制上，再试一次', icon: 'none' })
+    });
+  },
+  /* 行级手势：时间线上的行「行尾左滑」＝进记卡改这一条（看页是「概览 + 管理去别处」的口径，
+     与操作条里的「改」同一条路）。**只有行尾起手的横滑才算行内**，其余横滑原样不动，
+     交给根节点切维度；纵向滑动照旧交给页面滚动 */
+  onRowTouchStart(e) { this._rowEdge = swipe.atEdge(e); swipe.start(this, e); },
+  onRowTouchCancel() { this._swX = null; this._swY = null; },
+  onRowTouchend(e) {
+    const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
+    const edge = this._rowEdge; this._rowEdge = false;
+    if (edge && ds.id != null && swipe.dir(this, e) === 'left') {
+      swipe.end(this, e);   // 这一下归行内：吃掉起点，根节点那次 end 就什么也拿不到
+      const r = this.findRec(ds.id);
+      if (r && !store.isTask(r.m)) this.rowAct(r);
+    }
+  },
+  /* 行内动作（左滑「改这一条」）：跳记页完整编辑（与操作条里的「改」同一条路）。
+     顺手记时间戳并撤掉排队中的「切维度」——这次滑动不该再被当成切维度 */
+  rowAct(r) {
+    this._lpAt = Date.now();     // 刚滑过：紧跟其后的 tap（若有）不当成点选
+    this._rowActAt = Date.now();
+    this._cancelSeg();
+    this.editInCard(r);
+  },
+  /* 跳记页完整编辑（看页是「概览 + 管理去记卡」的口径，待办 / 时间线行都走这条） */
+  editInCard(r) {
     app.globalData.editRec = store.decorate(r);
     this.setData({ sel: null, selRec: null });
     wx.switchTab({ url: '/pages/index/index' });
@@ -710,8 +808,15 @@ Page({
     const id = this._id(e);
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
-    if (r && store.isTask(r.m)) return;   // 看页的待办只作概览：不出操作条
+    // 待办也出操作条（放弃 / 恢复 本地处理，改 / 删 走下面统一分支）
     this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
+  },
+  /* 待办行（todo-list 组件里）的「行尾左滑」：与时间线行同一口径——进记卡改这一条 */
+  onRowSwipe(e) {
+    const d = e.detail || {};
+    if (d.id == null) return;
+    const r = this.findRec(d.id);
+    if (r) this.rowAct(r);
   },
 
   /* 记录操作条统一入口（与记页共用 rec-actions 组件；看页行为：流转/改/结束 跳到记页（结束时间待「保存修改」时才记），恢复/删 本地直接处理）

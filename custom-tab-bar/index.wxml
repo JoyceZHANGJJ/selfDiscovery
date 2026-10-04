@@ -23,8 +23,8 @@
     </view>
   </view>
 
-  <!-- 记下后给一次撤销（与其它页同一套样式） -->
-  <view wx:if="{{qaUndo}}" class="toastline undo-bar qa-undo" style="bottom:{{qaBottom}}">
+  <!-- 记下后给一次撤销（与其它页同一套样式：屏幕正中的小卡片，见 app.wxss 的 .undo-bar） -->
+  <view wx:if="{{qaUndo}}" class="toastline undo-bar qa-undo">
     <view class="tx">已记入{{qaUndo.name}}「{{qaUndo.txt}}」</view>
     <view class="tb" bindtap="onQaUndo">撤销</view>
   </view>

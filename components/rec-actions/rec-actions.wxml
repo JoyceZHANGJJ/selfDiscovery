@@ -1,4 +1,6 @@
-<view class="actbar {{visible ? 'on' : ''}}">
+<!-- bottom 可选：页面没传就用样式里的默认值（抬到底部 tab 栏之上）。
+     清单页这类「没有 tab 栏」的页面传一个更小的值，免得条子悬在半空、下面留一条空档 -->
+<view class="actbar {{visible ? 'on' : ''}}" style="{{bottom ? 'bottom:' + bottom : ''}}">
   <view wx:if="{{title}}" class="tx">{{title}}</view>
 
   <view wx:if="{{flow.length}}" class="grp flowgrp">

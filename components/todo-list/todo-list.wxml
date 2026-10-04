@@ -2,10 +2,16 @@
      这里只负责渲染与折叠态，勾选/选中/长按/展开等交互都通过事件交给页面处理，
      这样清单页与看页可以各自接同一份渲染，行为口径保持一致。 -->
 <view class="todo-list">
-  <view wx:if="{{tit}}" class="sect-t">{{tit}}</view>
-  <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
-  <!-- 标题下方插槽：使用方（如看页）可放「去清单页管理」入口 -->
-  <slot></slot>
+  <!-- 标题行：左边标题（+汇总），右边留给使用方的入口（看页的「去清单页管理 ›」）——
+       入口与标题**同一行、右起**，不再在下面单独占一行（见 app.wxss 的 .tl-top）。
+       没传插槽内容时右侧是空的（宽度为 0），清单页的排布不受影响 -->
+  <view class="tl-top">
+    <view class="tl-top-l">
+      <view wx:if="{{tit}}" class="sect-t">{{tit}}</view>
+      <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
+    </view>
+    <view class="tl-top-r"><slot></slot></view>
+  </view>
 
   <!-- 待完成 -->
   <view wx:if="{{undoneN}}">
@@ -15,7 +21,7 @@
       <view class="tc {{openU?'open':''}}">▸</view>
     </view>
     <block wx:if="{{openU}}">
-      <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{sel===item.id?'sel':''}} {{item.done?'done':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+      <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{sel===item.id?'sel':''}} {{item.done?'done':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchstart="onTouchStart" bindtouchend="onTouchEnd" bindtouchcancel="onTouchCancel">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
@@ -39,7 +45,7 @@
     <block wx:if="{{openD}}">
       <view wx:for="{{doneGroups}}" wx:key="key" wx:for-item="g">
         <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="d" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
-        <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+        <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchstart="onTouchStart" bindtouchend="onTouchEnd" bindtouchcancel="onTouchCancel">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">
             <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
@@ -64,7 +70,7 @@
     <block wx:if="{{openA}}">
       <view wx:for="{{abandGroups}}" wx:key="key" wx:for-item="g">
         <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="a" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
-        <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+        <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchstart="onTouchStart" bindtouchend="onTouchEnd" bindtouchcancel="onTouchCancel">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">
             <!-- 圈里画 × 且不可点：完成要走操作条里的「恢复」，不是直接勾掉 -->

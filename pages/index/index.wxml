@@ -21,8 +21,10 @@
       </view>
 
       <block wx:else>
-      <!-- 输入区（含问候与模块标签，整块卡片） -->
-      <view class="composer" catchtap="noop" id="blk-top">
+      <!-- 输入区（含问候与模块标签，整块卡片）。
+           操作行吸底 / 跟随时它脱离文档流，记卡会少一截：这里补回等高的下内边距，
+           既让记卡末尾的字段不被操作行盖住，也让「操作行本该在哪」的推算保持稳定 -->
+      <view class="composer" style="{{(kbOn||barFollow) ? 'padding-bottom:' + (barH + 16) + 'px' : ''}}" catchtap="noop" id="blk-top">
         <!-- 问候 -->
         <view class="greet-row">
           <view class="greet-wrap">
@@ -54,10 +56,10 @@
               <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
             </view>
           </view>
-          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" />
+          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
-            <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
+            <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
           </view>
         </block>
         <block wx:else>
@@ -68,11 +70,11 @@
         <!-- 归类 / 什么事：都不给主输入框，只从上面的选项池点选（要靠「✎ 管理」增删），
              这样它始终是可归类的名词，不会被写成一整句话。
              可做的文字输入走下面「具体的描述」那个框——只填它时，它就是「事」（见 doSave） -->
-        <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" id="fldmain" bindfocus="onFieldFocus"></textarea>
+        <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
 
         <!-- 具体的描述：与「归类」配对（点可归类、描述不可归类），自由记录、可跳过，不带标题 -->
         <view wx:if="{{composer.hasDesc}}" class="extra descrow">
-          <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
+          <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
         </view>
 
         <view class="extra-h">细节 · 都可跳过</view>
@@ -89,9 +91,9 @@
             <view class="chips">
               <view wx:for="{{item.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{item.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
             </view>
-            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="fld{{index}}" bindfocus="onFieldFocus" />
+            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fld{{index}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           </block>
-          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
+          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
         </view>
         </block>
         </block>
@@ -117,12 +119,14 @@
           <picker class="ev" mode="date" value="{{editAbandonDate}}" bindchange="onEditAbandonDate"><view class="evv">{{editAbandonDate}}</view></picker>
           <picker class="ev" mode="time" value="{{editAbandonTime}}" bindchange="onEditAbandonTime"><view class="evv">{{editAbandonTime}}</view></picker>
         </view>
+        <!-- 已放弃的待办：不给「放弃时间」输入框，只标一行状态（与列表里的「放弃 · HH:MM」口径一致） -->
 
         <!-- 操作行吸底：胶囊卡片再长（编辑态字段多）也能随时点到「记下 / 保存修改 / 取消」。
              bottom 由页面按键盘高度/底部 tab 栏算好传进来；
+             键盘弹着（kbOn）或「跟着输入框」（barFollow）时再加 .kb，改成真 fixed；
              记下后的提示条是这个吸底块的最后一行（就在按钮下方），
              所以它出现时记卡跟着撑开、消失后收回 -->
-        <view class="savebar sticky" id="savebar" style="bottom:{{barBottom}}">
+        <view class="savebar sticky {{(kbOn||barFollow)?'kb':''}}" id="savebar" style="bottom:{{barBottom}}">
           <view class="sbbtns">
             <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
             <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
@@ -151,12 +155,16 @@
         <text class="rt {{recentTab==='todo'?'on':''}}" data-k="todo" catchtap="onRecentTab">待办</text>
         <text class="rt {{recentTab==='done'?'on':''}}" data-k="done" catchtap="onRecentTab">已完成</text>
       </view>
+      <!-- 手势提示：三个手势都看不见，列出来省得靠猜（有记录时才占位） -->
+      <view wx:if="{{ready && recent.length}}" class="qhint">点一下出操作条 · 长按复制 · 行尾左滑直接改</view>
       <view wx:if="{{!ready}}">
         <view class="sk-rec"></view>
         <view class="sk-rec"></view>
       </view>
       <view wx:if="{{ready && recent.length===0}}" class="empty-mini">{{recentEmpty}}</view>
-      <view wx:for="{{recent}}" wx:key="id" id="{{item.task ? 'erow-'+item.id : ''}}" class="rec tl {{item.task?'list':''}} {{item.longTxt?'long':''}} {{item.desc?'has-desc':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+      <!-- id 用 erow-<id>：就地编辑器（inline-editor）按它量取这一行的位置（见 _openQ）。
+           手势：点一下出操作条 / 长按复制 / 左滑就地改（行内横滑优先，见 onRowTouchend） -->
+      <view wx:for="{{recent}}" wx:key="id" id="erow-{{item.id}}" class="rec tl {{item.task?'list':''}} {{item.longTxt?'long':''}} {{item.desc?'has-desc':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
@@ -188,7 +196,8 @@
     <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
   </view>
 
-  <!-- 待办长按就地编辑：与清单 / 看页共用同一个组件（改事项 + 删除） -->
+  <!-- 就地编辑（待办 / 随记：改这一句话 + 删除）：与清单 / 看页共用同一个组件。
+       最近里行上「左滑」即弹出（见 index.js 的 onRowTouchend → swipeEdit）；长按是复制 -->
   <inline-editor visible="{{qeOn}}" focus="{{qeFocus}}" rect="{{qe}}" value="{{qeTxt}}" bind:save="onQSave" bind:del="onQDel" />
 
   <theme-switcher lock="{{editing}}" bind:locked="onLocked" />

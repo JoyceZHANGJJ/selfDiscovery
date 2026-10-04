@@ -38,8 +38,11 @@ Component({
     },
     onTap() {
       if (this.data.lock) { this.triggerEvent('locked'); return; }
-      const list = store.themeList();
+      // 只在「常用主题」之间循环（设置页勾的那几个，最多 5 个）；一个都没勾时退回全部主题
+      let list = store.getFavThemes().map(k => store.themeOf(k));
+      if (!list.length) list = store.themeList();
       const idx = list.findIndex(x => x.k === store.curTheme());
+      // 当前主题不在常用里时（刚取消勾选）从第一个常用主题开始
       const next = list[(idx + 1) % list.length];
       wx.setStorageSync('theme', next.k);
       this.setData({ name: next.n });
