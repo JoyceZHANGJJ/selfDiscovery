@@ -50,6 +50,7 @@ Component({
       const pages = getCurrentPages();
       const page = pages[pages.length - 1];
       if (page && page.setData) page.setData({ theme: next.k, themeStyle: store.themeStyle(next.k) });
+      store.syncWindowBg(next.k);   // 从圆点切主题同样要立刻换窗口底色
       if (page && typeof page.getTabBar === 'function' && page.getTabBar()) {
         page.getTabBar().setData({ theme: next.k });
       }

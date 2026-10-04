@@ -2,6 +2,15 @@
   display: flex;
   align-items: center;
   padding: 0 6px;
+  position: relative;
+}
+/* 命中区补齐：圆点只有 22px → 撑到约 41px。
+   **只向上 / 左右扩**（向下只扩 2px）：它在页面 DOM 的最后、绘制在最上层，
+   向下多扩会把页面顶部第一行的点击抢走（比如设置页的「问候语轮换」） */
+.tsw::after {
+  content: '';
+  position: absolute;
+  left: -8px; right: -8px; top: -11px; bottom: -2px;
 }
 .tsname {
   font-size: 12px;

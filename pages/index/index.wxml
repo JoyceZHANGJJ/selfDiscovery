@@ -57,7 +57,7 @@
              先定类别，再写内容；其余细节行（如待办的「原因」）仍在输入框下方 -->
         <block wx:if="{{composer.plain}}">
           <view wx:for="{{composer.catItems}}" wx:key="index" wx:for-item="it" class="extra cattop">
-            <view class="qrow"><view class="ql">{{it.label}}</view><view class="mg" data-g="{{it.group}}" bindtap="onManage">✎ 管理</view></view>
+            <view class="qrow"><view class="ql">{{it.label}}</view><view class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
             <view class="chips">
               <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
             </view>
@@ -69,7 +69,7 @@
           </view>
         </block>
         <block wx:else>
-        <view class="ehead"><view class="et">{{composer.mainLabel}}</view><view class="mg" data-g="{{composer.main}}" bindtap="onManage">✎ 管理</view></view>
+        <view class="ehead"><view class="et">{{composer.mainLabel}}</view><view class="mg" data-g="{{composer.main}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
         <view wx:if="{{composer.mainOpts.length}}" class="chips">
           <view wx:for="{{composer.mainOpts}}" wx:key="*this" class="chip {{item.on?'on':''}}" data-v="{{item.v}}" bindtap="onMainChip">{{item.v}}</view>
         </view>
@@ -91,7 +91,7 @@
                档位副行（item.sub）连管理入口也不给——它就是感受的一个强度档位 -->
           <view wx:if="{{!item.sub && (item.label || item.type==='g')}}" class="qrow">
             <view class="ql">{{item.label}}</view>
-            <view wx:if="{{item.type==='g'}}" class="mg" data-g="{{item.group}}" bindtap="onManage">✎ 管理</view>
+            <view wx:if="{{item.type==='g'}}" class="mg" data-g="{{item.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view>
           </view>
           <block wx:if="{{item.type==='g' || item.type==='fx'}}">
             <view class="chips">

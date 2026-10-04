@@ -292,6 +292,7 @@ Page({
     const t = store.curTheme();
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
+    store.syncWindowBg(t);   // 下拉露出的底色跟着主题走，否则与页面 var(--bg) 分层
   },
 
   /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
@@ -1356,7 +1357,11 @@ Page({
      同时收掉记卡里那条「已记入」——两条说的是同一件事，留刚弹出的那条 */
   onQuickTodo() { this._stopSaveTimer(); this.setData({ saveUndo: null }); this.recompute(); },
 
-  /* 下拉刷新：统一走页面级下拉（列表 refresher 已关闭） */
+  /* 下拉刷新：统一走页面级下拉（列表 refresher 已关闭）
+     记录是串行分页拉的（每页 20 条，N 条要 N/20 次往返），全量等完要好几秒。
+     所以第一页（最新 20 条）一到就先渲染并收起下拉，剩余页在后台补齐——和「看」页
+     首屏就 stopPullDownRefresh 一个路子。补齐后 G.records 仍是全量，编辑/删除的
+     findIndex、splice 都不受影响。 */
   onRefresh() {
     // 编辑态：下拉刷新会丢掉未保存的编辑，拦下
     if (this.data.editing) { wx.stopPullDownRefresh(); this.guardEdit(); return; }
@@ -1366,7 +1371,8 @@ Page({
     this.setData({ brandPlay: true });
     if (this._brandTimer) clearTimeout(this._brandTimer);
     this._brandTimer = setTimeout(() => this.setData({ brandPlay: false }), 900);
-    store.reload().then(() => {
+
+    const afterData = () => {
       wx.stopPullDownRefresh();
       this._refreshing = false;
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
@@ -1375,7 +1381,22 @@ Page({
       this.ensureModuleDefaults();
       this.rotateGreet();
       this.recompute();
-    }).catch(() => { wx.stopPullDownRefresh(); this._refreshing = false; });
+    };
+
+    store.reload({
+      // 第一页（最新 20 条）先到：先用它渲染，界面立刻可用，下拉也收起来
+      onFirstPage: (firstPage) => {
+        if (this._refreshing !== true) return;      // 全量已先完成（页数少时可能同一轮就回来了）
+        const G = app.globalData;                  // store.globalData 就是 app.globalData
+        const all = G.records || [];
+        // 拼上内存里已有的更早记录，避免第一页覆盖掉正在看的老数据
+        const seen = {}; firstPage.forEach(r => { seen[r._rid] = 1; });
+        const older = all.filter(r => !seen[r._rid]);
+        G.records = firstPage.concat(older);
+        this.recompute();
+        wx.stopPullDownRefresh();
+      }
+    }).then(afterData).catch(() => { wx.stopPullDownRefresh(); this._refreshing = false; });
   },
 
   /* 点「最近」标题右侧「清单」：进入待办清单（备忘 / 购物） */

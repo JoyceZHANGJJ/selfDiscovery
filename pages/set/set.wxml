@@ -99,7 +99,7 @@
 
   <!-- 导入浮层 -->
   <view wx:if="{{importOverlay}}" class="sheet">
-    <view class="sh-h"><view class="st">导入记录</view><view class="sx" bindtap="closeImport">✕</view></view>
+    <view class="sh-h"><view class="st">导入记录</view><view class="sx" bindtap="closeImport" aria-label="关闭">✕</view></view>
     <view class="sh-sub">粘贴导出的文本，一行一条</view>
     <view class="sh-list">
       <textarea class="ta" adjust-position="{{false}}" cursor-spacing="20" style="width:100%;min-height:180px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.6;background:var(--soft);color:var(--ink);box-sizing:border-box" value="{{importText}}" bindinput="onImportInput" maxlength="-1" placeholder="日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）"></textarea>
@@ -113,7 +113,7 @@
 
   <!-- 新增维度浮层 -->
   <view wx:if="{{dimOverlay}}" class="sheet">
-    <view class="sh-h"><view class="st">新增维度</view><view class="sx" bindtap="confirmDim">✓</view></view>
+    <view class="sh-h"><view class="st">新增维度</view><view class="sx" bindtap="confirmDim" aria-label="新增维度">✓</view></view>
     <view class="sh-sub">维度会顺次排在后面，带一个内容选项池和一个补充输入框</view>
     <view class="sh-list">
       <input class="mini-in" placeholder="维度名称，如「运动」" value="{{dimName}}" bindinput="onDimName" adjust-position="{{false}}" cursor-spacing="20" />
@@ -129,7 +129,7 @@
 
   <!-- 更新日志浮层 -->
   <view wx:if="{{logOverlay}}" class="sheet">
-    <view class="sh-h"><view class="st">更新日志</view><view class="sx" bindtap="closeLog">✕</view></view>
+    <view class="sh-h"><view class="st">更新日志</view><view class="sx" bindtap="closeLog" aria-label="关闭">✕</view></view>
     <view class="sh-sub">按时间倒序，记录每次功能升级</view>
     <view class="sh-list">
       <view wx:for="{{logs}}" wx:key="d" class="lg-b">
@@ -143,7 +143,7 @@
 
   <!-- 主题浮层：点色点即切换（整站立即生效）；右侧「常用」勾选＝加入右上圆点的循环，最多 favMax 个 -->
   <view wx:if="{{themeOverlay}}" class="sheet">
-    <view class="sh-h"><view class="st">主题</view><view class="sx" bindtap="closeTheme">✕</view></view>
+    <view class="sh-h"><view class="st">主题</view><view class="sx" bindtap="closeTheme" aria-label="关闭">✕</view></view>
     <view class="sh-sub">点一下即切换；勾「常用」＝加入右上圆点的切换循环，最多 {{favMax}} 个</view>
     <view class="sh-list">
       <view wx:for="{{themeOpts}}" wx:key="k" class="th-row">

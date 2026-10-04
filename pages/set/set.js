@@ -48,6 +48,7 @@ Page({
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
+    store.syncWindowBg();
     // tabBar 的 hidden 跟着「有没有浮层」走，不能写死 false：
     // 从后台切回来也会走一次 onShow，写死就会把 tab 栏放出来、压住浮层底部的按钮（主题面板的「完成」）
     const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
@@ -172,6 +173,7 @@ Page({
       theme: k, themeStyle: store.themeStyle(k), themeName: store.themeOf(k).n,
       themeOpts: this.data.themeOpts.map(o => Object.assign({}, o, { on: o.k === k }))
     });
+    store.syncWindowBg(k);   // 切主题的当下就换窗口底色，别等下次 onShow
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ theme: k });
     const sw = this.selectComponent('#themeSw');   // 右上圆点的名称也跟着换
     if (sw && sw.applyTheme) sw.applyTheme();
