@@ -117,8 +117,10 @@ Page(pageBase({
       // 进入 可做 / 待办 / 随记 时若还没选必选项，补上默认（分类 / 类别；以往靠 onTag 触发，这里兜底）
       this.ensureModuleDefaults(cur);
       // 回到记页且没有待编辑记录时，清掉可能残留的编辑态，避免所有操作一直被拦
-      // （从「管理选项」页返回时除外：编辑中的内容与状态要原样保留）
-      if (!app.globalData.editRec && !this.st.fromManage) this.setData({ editing: false });
+      // （从「管理选项」页返回、以及**从后台回来**时除外：编辑中的内容与状态要原样保留——
+      //   推到后台再回来把 editing 清成 false，吸底操作行就会从「保存修改」变回「记下」）
+      const fromBg = !!app._fromBg; app._fromBg = false;
+      if (!app.globalData.editRec && !this.st.fromManage && !fromBg) this.setData({ editing: false });
       // 从「管理选项」返回：把刚改名过的选项同步到已选中的 chip / 手填值上，避免旧名残留
       if (this.st.fromManage) this.applyRenames();
       this.st.fromManage = false;

@@ -27,6 +27,11 @@ App({
     this.checkUpdate();
   },
 
+  // 进后台的标记：页面 onShow 消费它来区分「后台回来」与「切 tab 回来」——
+  // 后台回来**不能**清掉页面正在进行的编辑态（否则吸底操作行从「保存修改」变回「记下」，
+  // 写了一半的内容看着就像丢了）；只有切 tab 回来才做各页的复位
+  onHide() { this._fromBg = true; },
+
   checkUpdate() {
     if (!wx.getUpdateManager) return; // 基础库低于 1.9.90 不支持
     const um = wx.getUpdateManager();

@@ -162,13 +162,12 @@ const themeOf = themes.themeOf;
 // 各主题 bg 都不相同（#FFFFFF / #F8FAF2 / #FFF8F2 / #F7F5FC …），所以必须跟着主题走。
 // tabBar 是 custom，底色由 .tabbar 用 var(--bg) 画，不受这里影响，无需处理。
 function syncWindowBg(k) {
-  const key = k || curTheme();
-  const bg = (themeOf(key).vars || {}).bg;
-  if (!bg || bg === _lastWindowBg) return;
-  _lastWindowBg = bg;
+  const bg = (themeOf(k || curTheme()).vars || {}).bg;
+  // 不做「同值去重」：wx.setBackgroundColor 是**页面级**的，navigate 到新页面后
+  // 底色会回到 app.json 的默认值，每个页面 onShow 都要重设一次（开销可忽略）
+  if (!bg) return;
   wx.setBackgroundColor({ backgroundColor: bg, backgroundColorTop: bg, backgroundColorBottom: bg });
 }
-let _lastWindowBg = '';
 
 // 读取当前主题；若 storage 里是已被删除的废弃主题，回落切换列表第一个，
 // 避免冷启动套上不存在的主题、CSS 变量全空（输入框/按钮背景透明）
@@ -587,6 +586,22 @@ function db() { return wx.cloud.database(); }
 function recCol() { return db().collection('records'); }
 function optCol() { return db().collection('options'); }
 function cfgCol() { return db().collection('usercfg'); }
+// usercfg 按 type 存「一篇配置」：有则改、无则加——原来这段 upsert 写了 5 遍（第三批 · 去重）
+// 返回 true / false，表示云端这一笔是否写成功（调用方通常只用来留痕）
+function saveCfg(type, data) {
+  return cfgCol().where({ type }).get().then(res => {
+    const docs = res.data || [];
+    if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data } }).then(() => true).catch(() => false);
+    return cfgCol().add({ data: { type, data } }).then(() => true).catch(() => false);
+  });
+}
+// 读一篇配置：返回该篇的 data；没有 / 出错返回 null，默认值由调用方决定
+function loadCfg(type) {
+  return cfgCol().where({ type }).get().then(res => {
+    const docs = res.data || [];
+    return (docs[0] && docs[0].data != null) ? docs[0].data : null;
+  });
+}
 
 // 记录按微信用户（_openid）隔离：云数据库默认「仅创建者可读写」，
 // 不同用户创建的文档彼此不可见，这里无需手动加 openid 过滤。
@@ -798,10 +813,8 @@ function applyDelDef(O, delDef) {
 function loadDelDef() {
   return new Promise(resolve => {
     const local = loadDelDefLocal();
-    cfgCol().where({ type: 'delDef' }).get().then(res => {
-      const docs = res.data || [];
-      const cloud = (docs[0] && docs[0].data) || [];
-      const merged = Array.from(new Set([...local, ...cloud]));
+    loadCfg('delDef').then(cloud => {
+      const merged = Array.from(new Set([...local, ...(cloud || [])]));
       persistDelDefLocal(merged);
       _delDef = merged;
       resolve(merged);
@@ -811,11 +824,7 @@ function loadDelDef() {
 function saveDelDef(arr) {
   _delDef = arr.slice();
   persistDelDefLocal(arr);
-  return cfgCol().where({ type: 'delDef' }).get().then(res => {
-    const docs = res.data || [];
-    if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: arr } }).then(() => true).catch(() => false);
-    return cfgCol().add({ data: { type: 'delDef', data: arr } }).then(() => true).catch(() => false);
-  }).catch(e => { log.warn('delDef.sync', e, 'usercfg 集合已创建？'); return false; });
+  return saveCfg('delDef', arr).catch(e => { log.warn('delDef.sync', e, 'usercfg 集合已创建？'); return false; });
 }
 function addDelDef(g, v) {
   if (!isDefault(g, v)) return Promise.resolve(false);
@@ -842,9 +851,8 @@ function persistOptCustomLocal(map) { try { wx.setStorageSync(OPTCUSTOM_LS, map)
 function loadOptCustom() {
   return new Promise(resolve => {
     const local = loadOptCustomLocal();
-    cfgCol().where({ type: 'optCustom' }).get().then(res => {
-      const cloud = (res.data && res.data[0] && res.data[0].data) || {};
-      const merged = Object.assign({}, local, cloud);
+    loadCfg('optCustom').then(cloud => {
+      const merged = Object.assign({}, local, cloud || {});
       persistOptCustomLocal(merged);
       _optCustom = merged;
       resolve(merged);
@@ -854,11 +862,7 @@ function loadOptCustom() {
 function saveOptCustom(map) {
   _optCustom = map;
   persistOptCustomLocal(map);
-  return cfgCol().where({ type: 'optCustom' }).get().then(res => {
-    const docs = res.data || [];
-    if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: map } }).then(() => true).catch(() => false);
-    return cfgCol().add({ data: { type: 'optCustom', data: map } }).then(() => true).catch(() => false);
-  }).catch(e => { log.warn('optCustom.sync', e); return false; });
+  return saveCfg('optCustom', map).catch(e => { log.warn('optCustom.sync', e); return false; });
 }
 // 用户动过某组后调用：把这一组的完整列表存下来，此后这一组以它为准
 function markOptCustom(g, arr) {
@@ -875,20 +879,15 @@ function persistOptOrderLocal(map) { try { wx.setStorageSync(ORDER_LS, map); } c
 function loadOptOrder() {
   return new Promise(resolve => {
     const local = loadOptOrderLocal();
-    cfgCol().where({ type: 'optOrder' }).get().then(res => {
-      const cloud = (res.data && res.data[0] && res.data[0].data) || {};
-      const merged = Object.assign({}, local, cloud); // 云端覆盖本地
+    loadCfg('optOrder').then(cloud => {
+      const merged = Object.assign({}, local, cloud || {}); // 云端覆盖本地
       persistOptOrderLocal(merged);
       resolve(merged);
     }).catch(e => { log.warn('optOrder.load', e); resolve(local); });
   });
 }
 function saveOptOrderToCloud(map) {
-  return cfgCol().where({ type: 'optOrder' }).get().then(res => {
-    const docs = res.data || [];
-    if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: map } }).then(() => true).catch(() => false);
-    return cfgCol().add({ data: { type: 'optOrder', data: map } }).then(() => true).catch(() => false);
-  }).catch(e => { log.warn('optOrder.sync', e, 'usercfg 集合已创建？'); return false; });
+  return saveCfg('optOrder', map).catch(e => { log.warn('optOrder.sync', e, 'usercfg 集合已创建？'); return false; });
 }
 // 更新某组顺序并持久化（同步 G.OPT 内存、本地、云端）
 function setOptOrder(g, arr) {
@@ -1412,38 +1411,24 @@ function migrateTasksToTodo() {
 // 自定义维度
 function loadDims() {
   return new Promise((resolve) => {
-    cfgCol().where({ type: 'dims' }).get().then(res => {
-      const d = (res.data && res.data[0] && res.data[0].data) || [];
-      resolve(d);
-    }).catch(e => { log.warn('dims.load', e); resolve([]); });
+    loadCfg('dims').then(d => resolve(d || [])).catch(e => { log.warn('dims.load', e); resolve([]); });
   });
 }
 function saveDims(arr) {
   return new Promise((resolve) => {
-    cfgCol().where({ type: 'dims' }).get().then(res => {
-      const docs = res.data || [];
-      if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: arr } }).then(resolve).catch(resolve);
-      cfgCol().add({ data: { type: 'dims', data: arr } }).then(resolve).catch(resolve);
-    }).catch(e => { log.warn('dims.sync', e, 'usercfg 集合已创建？'); resolve(); });
+    saveCfg('dims', arr).then(resolve).catch(e => { log.warn('dims.sync', e, 'usercfg 集合已创建？'); resolve(); });
   });
 }
 
 // 问候语
 function loadGreets() {
   return new Promise((resolve) => {
-    cfgCol().where({ type: 'greets' }).get().then(res => {
-      const d = (res.data && res.data[0] && res.data[0].data) || null;
-      resolve(d);
-    }).catch(e => { log.warn('greets.load', e); resolve(null); });
+    loadCfg('greets').then(d => resolve(d || null)).catch(e => { log.warn('greets.load', e); resolve(null); });
   });
 }
 function saveGreets(obj) {
   return new Promise((resolve) => {
-    cfgCol().where({ type: 'greets' }).get().then(res => {
-      const docs = res.data || [];
-      if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: obj } }).then(resolve).catch(resolve);
-      cfgCol().add({ data: { type: 'greets', data: obj } }).then(resolve).catch(resolve);
-    }).catch(e => { log.warn('greets.sync', e, 'usercfg 集合已创建？'); resolve(); });
+    saveCfg('greets', obj).then(resolve).catch(e => { log.warn('greets.sync', e, 'usercfg 集合已创建？'); resolve(); });
   });
 }
 

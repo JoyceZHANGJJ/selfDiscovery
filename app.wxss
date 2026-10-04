@@ -84,6 +84,19 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .mini-b { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; position: relative; }
 .mini-b::after { content: ''; position: absolute; left: -4px; right: -4px; top: -8px; bottom: -8px; }
 .mini-b.del { color: var(--danger); border-color: #E5C9C7; }
+/* 主题选择行（设置页入口 → 独立子页面 pages/theme/theme；.th-* 原在 set.wxss，
+   主题页拆出去后两页都要用，收敛到全局） */
+.th-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.th-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.th-swatch { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 0 1px var(--line2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; }
+/* 命中区补齐：色点 26px → 撑到 44px（上下左右各 9px，与 .th-row 的行间距 20px 对齐，行与行不互相抢） */
+.th-swatch::after { content: ''; position: absolute; left: -9px; right: -9px; top: -9px; bottom: -9px; }
+/* 当前主题：外环换成它自己的主色（内联 style 覆盖上面那条灰环），再加中心白点 */
+.th-tick { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.th-name { font-size: 14px; color: var(--ink); }
+.th-name.on { font-weight: 700; color: var(--accent); }
+.th-fav { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; flex-shrink: 0; }
+.th-fav.on { color: #fff; background: var(--accent); border-color: var(--accent); }
 .mini-in:focus { background: var(--surface); border-color: var(--accent); box-shadow: var(--ring); }
 .savebar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 /* 吸底操作行（记页）：记卡在视口里时，这一行始终贴在视口底部（bottom 由页面按时键盘高度给），
