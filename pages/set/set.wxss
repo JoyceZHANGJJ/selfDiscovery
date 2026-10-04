@@ -5,7 +5,9 @@
 .app { position: static; min-height: 100vh; display: block; }
 .screen { height: auto; }
 .dot { width: 8px; height: 8px; border-radius: 50%; }
-.mini-b { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; }
+/* 命中区补齐（与记页同一套）：约 23px 高 → 撑到约 39px */
+.mini-b { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; position: relative; }
+.mini-b::after { content: ''; position: absolute; left: -4px; right: -4px; top: -8px; bottom: -8px; }
 .mini-b.del { color: var(--danger); border-color: #E5C9C7; }
 .gr-row { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--line); }
 .gr-t { flex: 1; font-size: 13px; color: var(--ink); min-width: 0; word-break: break-all; }
@@ -28,7 +30,9 @@
 /* 主题选择：左边色点 + 名称（点一下即切），右边「常用」勾选（加入右上圆点的循环） */
 .th-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .th-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
-.th-swatch { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 0 1px var(--line2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+/* 命中区补齐：色点 26px → 撑到 44px（上下左右各 9px，与 .th-row 的行间距 20px 对齐，行与行不互相抢） */
+.th-swatch { width: 26px; height: 26px; border-radius: 50%; box-shadow: 0 0 0 1px var(--line2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; }
+.th-swatch::after { content: ''; position: absolute; left: -9px; right: -9px; top: -9px; bottom: -9px; }
 /* 当前主题：外环换成它自己的主色（内联 style 覆盖上面那条灰环），再加中心白点 */
 .th-tick { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
 .th-name { font-size: 14px; color: var(--ink); }

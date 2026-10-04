@@ -61,8 +61,11 @@
 /* 快捷类别：纯文字（与记卡里的「类别 / 喜恶」同一套）——无边框无底，
    选中＝主题色 + 加粗；类别颜色由前面的小圆点带出来（原来靠药丸底色）。
    最多 10 个，横向铺不下就换行（面板吸在球上方，往上长） */
-.qa-chips { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 10px; }
-.qa-chip { display: inline-flex; align-items: center; font-size: 13.5px; color: var(--ink, #22252A); padding: 3px 0; box-sizing: border-box; }
+/* 行间距 4px → 8px：给类别的可点区留位置（见 .qa-chip::after），否则会互相抢 */
+.qa-chips { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 10px; }
+/* 命中区补齐：类别约 22px 高 → 撑到约 30px（面板贴在键盘上方，空间紧，只补到这个程度） */
+.qa-chip { display: inline-flex; align-items: center; font-size: 13.5px; color: var(--ink, #22252A); padding: 3px 0; box-sizing: border-box; position: relative; }
+.qa-chip::after { content: ''; position: absolute; left: -4px; right: -4px; top: -4px; bottom: -4px; }
 .qa-chip.on { color: var(--accent, #7C9A86); font-weight: 700; }
 .qa-row { display: flex; align-items: center; }
 .qa-in {
@@ -71,7 +74,10 @@
   box-sizing: border-box; caret-color: var(--accent, #7C9A86);
 }
 .qa-in:focus { border-color: var(--accent, #7C9A86); }
-.qa-go { flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--ink3, #8B8779); padding: 8px 2px 8px 12px; }
+/* 命中区补齐：约 35px 高 → 撑到约 45px。**不向左扩**：左边是输入框，
+   本按钮绘制在它之上，往左扩会把输入框右侧的点击抢走（点了输入框却触发「记下」） */
+.qa-go { flex-shrink: 0; font-size: 13.5px; font-weight: 700; color: var(--ink3, #8B8779); padding: 8px 2px 8px 12px; position: relative; }
+.qa-go::after { content: ''; position: absolute; left: 0; right: -4px; top: -5px; bottom: -5px; }
 .qa-go.on { color: var(--accent, #7C9A86); }
 /* 撤销条：位置与样式全部沿用全局 .undo-bar（屏幕正中的小卡片），这里只抬到遮罩 / 面板之上——
    否则点「撤销」会先被遮罩吃掉 */

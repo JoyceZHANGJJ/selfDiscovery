@@ -17,7 +17,9 @@
 .actbar .flow:active, .actbar .edit:active, .actbar .del:active { opacity: .6; }
 
 /* 流转按钮 */
-.flow { font-size: 13px; padding: 6px 14px; border-radius: 8px; line-height: 1; }
+/* 命中区补齐：约 25px 高 → 撑到约 37px（上下 6px、左右 4px，与 flowgrp 的间距 8px 对齐） */
+.flow { font-size: 13px; padding: 6px 14px; border-radius: 8px; line-height: 1; position: relative; }
+.flow::after { content: ''; position: absolute; left: -4px; right: -4px; top: -6px; bottom: -6px; }
 .flow.start { color: #6E8CB0; background: rgba(110,140,176,.12); }
 .flow.done { color: #6E8CB0; background: rgba(110,140,176,.12); }
 .flow.abandon { color: #948AA8; background: rgba(148,138,168,.14); }   /* 放弃：灰紫，区别于开始/完成 */

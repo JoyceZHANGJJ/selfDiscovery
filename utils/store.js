@@ -156,6 +156,20 @@ const themeList = themes.themeList;
 const themeStyle = themes.themeStyle;
 const themeOf = themes.themeOf;
 
+// 把窗口底色（下拉时露出的那层）同步成当前主题的 bg。
+// app.json 里的 window.backgroundColor 只能写死一个值，切到别的主题时下拉会露出
+// 写死的那色，与页面的 var(--bg) 对不上，出现分层（首页/看页/回看都露）。
+// 各主题 bg 都不相同（#FFFFFF / #F8FAF2 / #FFF8F2 / #F7F5FC …），所以必须跟着主题走。
+// tabBar 是 custom，底色由 .tabbar 用 var(--bg) 画，不受这里影响，无需处理。
+function syncWindowBg(k) {
+  const key = k || curTheme();
+  const bg = (themeOf(key).vars || {}).bg;
+  if (!bg || bg === _lastWindowBg) return;
+  _lastWindowBg = bg;
+  wx.setBackgroundColor({ backgroundColor: bg, backgroundColorTop: bg, backgroundColorBottom: bg });
+}
+let _lastWindowBg = '';
+
 // 读取当前主题；若 storage 里是已被删除的废弃主题，回落切换列表第一个，
 // 避免冷启动套上不存在的主题、CSS 变量全空（输入框/按钮背景透明）
 function curTheme() {
@@ -633,14 +647,22 @@ function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, sta
   });
 }
 // 全量拉取（导出 / 搜索 / 记页数据源）：按小程序端上限 20 自动翻页直到取完
-function loadAllRecords({ m = null, mNot = null, startTs = null } = {}) {
+// onFirstPage 是「渐进加载」的钩子：第一页（20 条）拿到就立刻回调一次，
+// 剩余页继续在后台串行拉。下拉刷新用它先渲染、先收起下拉，不必等全部页拉完
+// （串行分页要 N/20 次网络往返，全量等完才会让人等好几秒）。
+function loadAllRecords({ m = null, mNot = null, startTs = null, onFirstPage = null } = {}) {
   const PAGE = 20;
   let cursor = null;
+  let first = true;
   const out = [];
   const seen = {};
   function step() {
     return loadRecordsPage({ before: cursor, limit: PAGE, m, mNot, startTs, excludeIds: Object.keys(seen) }).then(({ list, hasMore, nextCursor }) => {
       list.forEach(r => { if (!seen[r._rid]) { seen[r._rid] = 1; out.push(r); } });
+      if (first) {
+        first = false;
+        if (typeof onFirstPage === 'function') { try { onFirstPage(out.slice()); } catch (e) { log.warn('loadAll.first', e); } }
+      }
       // 本页没有新增（全是已加载的同毫秒记录或已取完）→ 结束，防止死循环
       if (!list.length) return out;
       if (hasMore && nextCursor != null) { cursor = nextCursor; return step(); }
@@ -698,7 +720,8 @@ function countByTxt({ m = null, startTs = null, top = 8, extTags = null } = {}) 
     .catch(e => { log.warn('records.topTxt', e); return []; });
 }
 // 兼容旧调用：全量加载（去掉 300 上限，避免早期记录被静默丢弃）
-function loadRecords() { return loadAllRecords({}).then(list => list); }
+// opts.onFirstPage：渐进加载钩子，见 loadAllRecords
+function loadRecords(opts) { return loadAllRecords(opts || {}).then(list => list); }
 function addRecord(rec) {
   const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0, createTime: db().serverDate() };
   if (rec.status) data.status = rec.status;
@@ -1488,9 +1511,20 @@ function ensureAll() {
 }
 
 // 下拉刷新用：忽略 loaded 缓存，重新从云端全量拉取（同步多端数据）
-function reload() {
-  return Promise.all([loadRecords(), loadOptions(), loadDims(), loadGreets()]).then(([recs, O, dims, greets]) => {
+// opts.onFirstPage：第一页到达时先回调一次（页面可先渲染/先收起下拉），
+// 全部页拉完后再 resolve —— 调用方拿到的是最终全量，G.records 不受影响。
+function reload(opts) {
+  const o = opts || {};
+  // 渐进加载期间用户可能又新记了几条；那几条内存里有、这次全量未必包含（写入还在路上），
+  // 直接 G.records = recs 会把它们抹掉。记下旧 id，全量回来后把这些「本地新增」补回去。
+  const before = o.onFirstPage ? (G.records || []).slice() : null;
+  return Promise.all([loadRecords({ onFirstPage: o.onFirstPage }), loadOptions(), loadDims(), loadGreets()]).then(([recs, O, dims, greets]) => {
     (G.dims || []).forEach(d => unregDim(d.k)); // 先注销自定义维度，避免重复注册
+    if (before) {
+      const got = {}; recs.forEach(r => { got[r._rid] = 1; });
+      const localNew = before.filter(r => !got[r._rid]);
+      if (localNew.length) recs = recs.concat(localNew).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    }
     G.records = recs;
     G.OPT = O;
     G.dims = dims || [];
@@ -1501,7 +1535,7 @@ function reload() {
 }
 
 module.exports = {
-  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf,
+  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, syncWindowBg,
   dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, migrateTodoRecords, takeRenameMap,

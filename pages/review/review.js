@@ -88,6 +88,7 @@ Page({
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
+    store.syncWindowBg();
     this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(ok => {

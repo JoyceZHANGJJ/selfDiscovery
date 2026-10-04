@@ -40,6 +40,7 @@
       class="tbb {{selected === index ? 'on' : ''}} {{selected === index && pulse ? 'pulse' : ''}} {{selected === index && hint ? 'hint' : ''}}"
       data-index="{{index}}"
       bindtap="switchTab"
+      aria-role="button" aria-label="{{item.text}}"
     >
       <text class="ic">{{item.icon}}</text>
       <text>{{item.text}}</text>

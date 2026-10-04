@@ -2,6 +2,59 @@
 
 一个记录「觉察 / 此刻 / 可做 / 待办 / 随记」的微信小程序（云开发）。
 
+## 目录结构
+
+```
+app.js              启动：云环境初始化、ensureAll 拉全量、主题兜底、更新检查
+app.json            6 个页面 + 自定义 tabBar
+app.wxss            全局样式（配色由 JS 注入 CSS 变量，这里不定义颜色）
+utils/
+  store.js          常量表 + 纯计算 + 云 CRUD + 选项池/配置持久化 + 7 套一次性迁移 + 全局状态
+  themes.js         主题配色的单一来源（15 套，10 套参与切换循环）
+  vm.js             记录展示 VM 的公共字段（记 / 看 / 清单 共用，各页再补自己的）
+  date.js / ui.js / swipe.js / log.js / changelog.js
+                    日期 · 胶囊与对齐（含**输入层已知坑**）· 横滑判定 · 错误留痕 · 更新日志
+pages/index         记：记卡 + 最近列表 + 就地编辑
+pages/look          看：筛选 + 分页时间线 + 统计 + 待办概览
+pages/list          清单：待办 / 随记的管理（筛选 + 折叠 + 操作条）
+pages/review        回看：周 / 月复盘 + 主题档案
+pages/set           设置：问候语、快捷记类别、主题与常用主题、导入导出
+pages/options       选项池「✎ 管理」
+components/         todo-list（待办三段）· rec-actions（操作条）· inline-editor · theme-switcher
+custom-tab-bar/     底部 tab + 快捷记「＋」球（清单页以 quick-ball 复用同一个组件）
+tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对
+```
+
+## 数据模型
+
+集合：`records` / `options` / `usercfg`（云开发，**没有云函数**）。
+
+一条记录 `records`：
+
+| 字段 | 说明 |
+| --- | --- |
+| `m` | 模块：`obs` 觉察 / `now` 此刻 / `want` 可做 / `todo` 待办 / `jot` 随记，或自定义维度 `d…` |
+| `txt` | 主项一句话（觉察是「归类」、此刻是「想记的是」、可做是「什么事」） |
+| `ts` / `t` | 创建时间戳 / 显示用的时刻 |
+| `ext` / `extSrc` | **细节值与其来源，按下标一一对应**（见下） |
+| `done` / `doneAt` | 完成标记与完成时间 |
+| `status` / `startedAt` / `abandonedAt` | 流转：可做与待办的 `doing` / `done` / `abandon` |
+| `endTs` | 觉察的结束时间 |
+| `ref` / `refTxt` / `refTs` | 老数据（原「做了」模块）遗留的引用 |
+
+**`ext` 与 `extSrc` 是按顺序对齐的两条数组**——这是细节回显、改名、迁移、导出导入的地基：
+- `extSrc[i]` 说明 `ext[i]` 来自哪：选项组 key（如 `obsKind`）、`free:xxx`（自由填写）、`fx:xxx`（写死的固定组，如沉浸 / 精力）；
+- 任何改字段的动作都要两条一起改（`buildExt` / `mapExtSrc` / `decorate`）；导出格式也是按这个顺序排的。
+
+`usercfg` 按 `type` 存配置：`dims`（自定义维度）/ `greets`（问候语）/ `delDef` / `optCustom` / `optOrder`。
+
+## 如何运行
+
+1. 微信开发者工具打开本目录，填好 AppID。
+2. 开通云开发，环境 ID 写在 `app.js` 的 `CLOUD_ENV`。
+3. 建好下面那三张索引；集合若不存在，在控制台新建 `records` / `options` / `usercfg`（权限「仅创建者可读写」）。
+4. 编译即可。改完代码建议先跑一遍 `python3 tools/check-syntax.py`（见下）。
+
 ## 改完自查：语法 / 配对检查
 
 项目没有 node / eslint 的运行环境，而小程序是「**一个语法错误就整包加载失败**」（`utils/store.js` 出过一次：漏一个收尾括号 → `require` 直接抛错 → 整个小程序白屏，报错还看不懂）。

@@ -35,7 +35,9 @@
 .doc-note .nd { flex-shrink: 0; color: var(--ink3); font-variant-numeric: tabular-nums; }
 .doc-note .nv { flex: 1; min-width: 0; color: var(--ink2); word-break: break-word; }
 .doc-dim { font-size: 12px; color: var(--ink3); }
-.doc-more { text-align: center; font-size: 12.5px; color: var(--accent); padding: 10px 0 2px; }
+/* 命中区补齐：约 34px 高 → 撑到约 44px。只向下扩（上方紧挨着档案卡片，向上扩会抢它的点击） */
+.doc-more { text-align: center; font-size: 12.5px; color: var(--accent); padding: 10px 0 2px; position: relative; }
+.doc-more::after { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: -10px; }
 
 /* ================= 周 / 月复盘 ================= */
 

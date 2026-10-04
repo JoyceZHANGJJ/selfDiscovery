@@ -26,7 +26,9 @@
 .tagrow-fade { position: absolute; top: 0; right: 0; width: 8px; height: 21px; background: linear-gradient(to right, rgba(51,50,45,0), rgba(51,50,45,.08)); pointer-events: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); }
 /* 左侧那份：往回滚过、左边还有 chip 没露出来时给提示（与右侧同一套，只是镜像） */
 .tagrow-fade-l { right: auto; left: 0; background: linear-gradient(to left, rgba(51,50,45,0), rgba(51,50,45,.08)); }
-.tg { font-size: 13.5px; padding: 0 0 4px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink3); display: inline-flex; align-items: center; gap: 5px; }
+/* 命中区补齐：维度 tag 约 22px 高 → 撑到约 44px（左右只扩 5px；下划线仍是选中态的唯一标识） */
+.tg { font-size: 13.5px; padding: 0 0 4px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink3); display: inline-flex; align-items: center; gap: 5px; position: relative; }
+.tg::after { content: ''; position: absolute; left: -5px; right: -5px; top: -11px; bottom: -11px; }
 .tg .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); }
 .tg.on { border-bottom-color: var(--accent); color: var(--accent); font-weight: 700; }
 .tg.on .dot { background: currentColor; }
@@ -45,11 +47,22 @@
 .qrow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 11px 0 6px; }
 .qrow:first-child { margin-top: 0; }
 .qrow .ql { font-size: 12px; color: var(--ink3); }
-.qrow .mg, .ehead .mg { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); border-radius: 99px; padding: 1px 9px; background: #fff; }
+/* 命中区补齐（N8）：小元素不好点，用一层**透明**的 ::after 把可点范围撑到 44px——
+   它不占布局、不改视觉；与相邻内容重叠的那部分由后面的元素接管（绘制在上方），不会抢走点击。
+   左右只扩少量，避免同类元素之间互相抢。 */
+.qrow .mg, .ehead .mg { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); border-radius: 99px; padding: 1px 9px; background: #fff; position: relative; }
+/* 「✎ 管理」实际只有约 19px 高 → 撑到约 43px */
+.qrow .mg::after, .ehead .mg::after { content: ''; position: absolute; left: -8px; right: -8px; top: -12px; bottom: -12px; }
 .q { font-size: 12px; color: var(--ink3); margin: 9px 0 6px; }
 .q:first-child { margin-top: 0; }
-.chips { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
-.chip { font-size: 13.5px; padding: 2px 0; background: none; border: 0; color: var(--ink); }
+/* 行间距 4px → 12px：给 chip 的可点区留出位置（见下面 .chip::after）。
+   chip 之间挨得太近（原来只有 4px），把命中区扩到 44px 会互相抢——
+   后面的 chip 绘制在前面之上，结果就是「点上一行 chip 的下半，命中的是下一行」。
+   所以这里让间距与扩展量对齐：各扩 6px、间距 12px，正好相接、不重叠 */
+.chips { display: flex; flex-wrap: wrap; gap: 12px 14px; align-items: baseline; }
+/* 命中区补齐：选项 chip 约 21px 高 → 撑到约 33px（上下各 6px，与 .chips 的行间距对齐） */
+.chip { font-size: 13.5px; padding: 2px 0; background: none; border: 0; color: var(--ink); position: relative; }
+.chip::after { content: ''; position: absolute; left: -4px; right: -4px; top: -6px; bottom: -6px; }
 .chip.on { color: var(--accent); font-weight: 700; }
 .mini-in { width: 100%; resize: none; border: 1px solid transparent; border-radius: 11px; padding: 0 11px; height: 34px; line-height: 34px; font-size: 13.5px; font-family: inherit; outline: none; background: var(--soft, #F4F5F5); color: var(--ink, #22252A); caret-color: var(--accent, #2F8F7B); box-sizing: border-box; display: block; }
 textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-height: 20px; }
@@ -79,8 +92,12 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .fab:active { transform: scale(.94); }
 .search { width: 100%; height: 40px; border: 1px solid var(--line2); border-radius: var(--r-in); padding: 0 13px; font-size: 14px; line-height: 40px; font-family: inherit; outline: none; background: #fff; caret-color: var(--accent); box-sizing: border-box; }
 .search:focus { border-color: var(--accent); box-shadow: var(--ring); }
-.filters { display: flex; gap: 6px; margin: 11px 0 4px; flex-wrap: wrap; }
-.ft { font-size: 12.5px; padding: 5px 2px; border: 0; background: none; color: var(--ink3); border-bottom: 2px solid transparent; }
+/* 间距 6px → 10px：给筛选 tab 的可点区留位置（见下面 .ft::after），与 chip 同理——
+   挨得太近时把命中区扩开会互相抢（后面的绘制在前面之上） */
+.filters { display: flex; gap: 10px; margin: 11px 0 4px; flex-wrap: wrap; }
+/* 命中区补齐：筛选 tab 约 25px 高 → 撑到约 35px（上下 / 左右各 5px，与间距 10px 对齐） */
+.ft { font-size: 12.5px; padding: 5px 2px; border: 0; background: none; color: var(--ink3); border-bottom: 2px solid transparent; position: relative; }
+.ft::after { content: ''; position: absolute; left: -5px; right: -5px; top: -5px; bottom: -5px; }
 .ft.on { color: var(--accent); font-weight: 700; border-bottom-color: var(--accent); }
 .ft .fd { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); margin-right: 5px; vertical-align: middle; }
 /* 选中项的小圆点保留自己的类别色：筛选行是「下划线 tab」而不是填充药丸，
@@ -185,6 +202,12 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rec.ab .ck::before, .rec.ab .ck::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 1.5px; border-radius: 2px; background: #fff; }
 .rec.ab .ck::before { transform: translate(-50%, -50%) rotate(45deg); }
 .rec.ab .ck::after { transform: translate(-50%, -50%) rotate(-45deg); }
+/* 命中区补齐：勾选圈只有 17px → 用 ::before 铺一层透明区域撑到约 43px（不占布局、视觉不变）。
+   「已放弃」的 × 已经占用 ::before/::after（且它本来不可点），所以把那两笔复位成居中画法 */
+/* 只向左（行首的空白）与上下各扩一点：**不向右扩**——右边紧挨着文字，
+   勾选圈是 position:relative（定位元素绘制在普通内容之上），向右扩会把文字左侧的点击抢走 */
+.rec .ck::before { content: ''; position: absolute; left: -13px; right: 0; top: -8px; bottom: -8px; }
+.rec.ab .ck::before { right: auto; bottom: auto; }
 .rec.ab .tv { color: var(--ink3); text-decoration: line-through; }
 .rec.done .edge { opacity: .35; }
 .rec.done .tw { opacity: .6; }
@@ -222,13 +245,21 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .tl-top-l { flex: 1 1 auto; min-width: 0; }
 .tl-top-r { flex: 0 0 auto; }
 /* 清单页各段的「显示更多」（把长段先收在最近一段后面，避免一次铺开太多行） */
-.moreline { text-align: center; font-size: 12.5px; color: var(--accent); padding: 10px 0 2px; }
-/* 日期行里的「展开全部 N 条」（某天完成的特别多时）：跟在日期后面，不打断时间线轴线 */
-.daymore { margin-left: 7px; color: var(--accent); letter-spacing: 0; }
+/* 命中区补齐：整块约 34px 高 → 撑到约 44px。**只向下扩**：上方紧挨着最后一条记录行，
+   向上扩会被它抢（本块在 DOM 后面，绘制在上，反而会把行的点击吃掉） */
+.moreline { text-align: center; font-size: 12.5px; color: var(--accent); padding: 10px 0 2px; position: relative; }
+.moreline::after { content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: -10px; }
+/* 日期行里的「展开全部 N 条」（某天完成的特别多时）：跟在日期后面，不打断时间线轴线。
+   命中区补齐：它只有约 17px 高；inline 元素的垂直 padding 不撑开行高（布局不变），
+   只把可点范围撑到约 43px——这里不能用 ::after 扩展，text 组件的伪元素支持不稳 */
+.daymore { margin-left: 7px; color: var(--accent); letter-spacing: 0; padding: 13px 0; }
 .dnlab { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--ink3); margin: 14px 0 3px; letter-spacing: .06em; }
 .dnlab::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 /* 待办清单：待完成 / 已完成 可折叠（沿用之前的细线标题样式，不加卡片） */
-.tfhd { display: flex; align-items: center; gap: 9px; margin: 14px 0 3px; }
+/* 命中区补齐：段头整行可点（折叠 / 展开），但行高只有约 18px → 撑到约 44px。
+   透明层不占布局（margin: 14px 0 3px 的间距不变）；上下相邻的记录行绘制在它之上，不会被抢走点击 */
+.tfhd { display: flex; align-items: center; gap: 9px; margin: 14px 0 3px; position: relative; }
+.tfhd::after { content: ''; position: absolute; left: 0; right: 0; top: -13px; bottom: -13px; }
 .tfhd .tt { font-size: 11.5px; color: var(--ink3); letter-spacing: .06em; flex-shrink: 0; }
 .tfhd .tl { flex: 1; height: 1px; background: var(--line); }
 .tfhd .tc { font-size: 10px; color: var(--ink3); transition: transform .18s; flex-shrink: 0; }
@@ -313,7 +344,9 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .sheet { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column; padding: calc(var(--status-h, 20px) + 70px) 0 calc(10px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
 .sh-h { display: flex; align-items: center; justify-content: space-between; padding: 15px 22px 2px; flex-shrink: 0; }
 .sh-h .st { font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
-.sh-h .sx { width: 30px; height: 30px; border-radius: 50%; background: var(--soft); color: var(--ink2); font-size: 12px; display: flex; align-items: center; justify-content: center; }
+/* 命中区补齐：浮层关闭 30px → 撑到约 44px（四周都没有别的可点元素，放心扩） */
+.sh-h .sx { width: 30px; height: 30px; border-radius: 50%; background: var(--soft); color: var(--ink2); font-size: 12px; display: flex; align-items: center; justify-content: center; position: relative; }
+.sh-h .sx::after { content: ''; position: absolute; left: -7px; right: -7px; top: -7px; bottom: -7px; }
 .sh-sub { font-size: 12px; color: var(--ink3); padding: 0 22px 12px; flex-shrink: 0; }
 .sh-list { flex: 1; overflow-y: auto; padding: 2px 22px 4px; }
 .opt-row { display: flex; align-items: center; gap: 9px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 11px; margin-bottom: 8px; }

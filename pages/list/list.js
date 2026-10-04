@@ -114,6 +114,7 @@ Page({
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     const t = store.curTheme();
     this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
+    store.syncWindowBg(t);
   },
 
   recVM(r) {
