@@ -531,15 +531,19 @@ function jotCat(r) {
   return i >= 0 ? (ex[i] || '') : '';
 }
 
-// 按天分段（[{key, day, recs}]）的「只渲染最近 N 天」窗口：每天默认最多放 20 条，
-// 被「展开全部」过的天（dayAll 里有它的 key）则放全。清单页 / 看页共用。
+// 每天默认最多先渲染多少条：超过才有「展开全部」。这个数只在这里写一份——
+// todo-list.wxml 以前也写死了一份 20（g.n > 20），改一处忘另一处就会出现
+// 「显示了 20 条但入口不出现」（或反之）；现在 wxml 只看 winDays 返回的 more / all
+const DAY_WIN = 20;
+// 按天分段（[{key, day, recs}]）的「只渲染最近 N 天」窗口：清单页 / 看页共用。
 // key 统一转成字符串：它要经 data-* 传回 dataset，避免数字 / 字符串对不上
 function winDays(days, lim, dayAll) {
   return (days || []).slice(0, lim).map(g => {
     const key = String(g.key);
     const all = !!(dayAll && dayAll[key]);
-    const recs = all ? g.recs : g.recs.slice(0, 20);
-    return { key, day: g.day, recs, n: g.recs.length, all };
+    const recs = all ? g.recs : g.recs.slice(0, DAY_WIN);
+    const n = g.recs.length;
+    return { key, day: g.day, recs, n, all, more: !all && n > recs.length };
   });
 }
 // 完成时间文案：已完成 · X月X日 HH:MM
