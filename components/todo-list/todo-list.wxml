@@ -44,7 +44,7 @@
     </view>
     <block wx:if="{{openD}}">
       <view wx:for="{{doneGroups}}" wx:key="key" wx:for-item="g">
-        <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="d" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
+        <view class="daylab">{{g.day}}<text wx:if="{{g.more || g.all}}" class="daymore" data-k="{{g.key}}" data-w="d" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
         <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchstart="onTouchStart" bindtouchend="onTouchEnd" bindtouchcancel="onTouchCancel">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">
@@ -69,7 +69,7 @@
     </view>
     <block wx:if="{{openA}}">
       <view wx:for="{{abandGroups}}" wx:key="key" wx:for-item="g">
-        <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="a" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
+        <view class="daylab">{{g.day}}<text wx:if="{{g.more || g.all}}" class="daymore" data-k="{{g.key}}" data-w="a" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
         <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchstart="onTouchStart" bindtouchend="onTouchEnd" bindtouchcancel="onTouchCancel">
           <view class="edge" style="background:{{item.c}}"></view>
           <view class="hd">

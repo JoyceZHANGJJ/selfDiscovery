@@ -1,3 +1,11 @@
+/* 组件根上挂一份底部偏移变量：page 级变量（app.wxss）对自定义组件内部不可靠，
+   球 / 面板 / tab 栏都在本组件里，必须在这里自给自足（值与 app.wxss 的 page 块保持一致） */
+.tabroot {
+  --max-w: 640px;
+  --tabbar-h: 58px;
+  --fab-bottom: 116px;
+  --qa-bottom: 178px;
+}
 .tabbar {
   display: flex;
   border-top: 1px solid var(--line, #EAE5DC);
@@ -6,7 +14,7 @@
   padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px));
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  max-width: 640px;
+  max-width: var(--max-w);
   margin: 0 auto;
   z-index: 40;
 }
@@ -49,7 +57,7 @@
    操作条 / tab 栏 / 球）都收起。z-index 取在操作条(50) / 标题条(45) 之上、面板与撤销条(62) 之下。 */
 .qa-mask { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 61; }
 .qa {
-  position: fixed; left: 16px; right: 16px; bottom: calc(178px + env(safe-area-inset-bottom, 0px));
+  position: fixed; left: 16px; right: 16px; bottom: calc(var(--qa-bottom) + env(safe-area-inset-bottom, 0px));
   max-width: 608px; margin: 0 auto; z-index: 62;
   background: var(--bg, #FAF8F4); border: 1px solid var(--line2, #E2DCD1); border-radius: 16px;
   padding: 11px 12px 12px; box-sizing: border-box;

@@ -1,24 +1,14 @@
 // pages/look/look.js —— 看
 const store = require('../../utils/store.js');
+const pageBase = require('../../utils/pageBase.js');
 const ui = require('../../utils/ui.js');
 const swipe = require('../../utils/swipe.js');
 const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
 const app = getApp();
 
-Page({
+Page(pageBase({
   data: {
-    theme: 'mint',
-    statusH: 20,
-    themeStyle: store.themeStyle('mint'),
-    // 程序名彩蛋：与记页同一套（按胶囊矩形定位 + 下拉逐字浮现）
-    appName: (app && app.APP_NAME) || '',
-    brandTop: 0,
-    brandLeft: 0,
-    brandW: 0,
-    brandH: 0,
-    brandChars: [],
-    brandPlay: false,
     modules: [],
     filter: 'all',
     filterName: '全部',
@@ -86,31 +76,7 @@ Page({
     });
   },
 
-  ensureTheme() {
-    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
-    store.syncWindowBg();
-  },
-
-  /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
-     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来（与记页同一套）。
-     矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
-     会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
-  layoutBrand() {
-    const mb = ui.capsuleRect();
-    if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
-    this.setData({
-      brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
-      brandChars: String(this.data.appName || '').split('')
-    });
-  },
-
-  /* 名字露出来的这会儿，播一次逐字浮现 */
-  playBrand() {
-    this.setData({ brandPlay: true });
-    if (this._brandTimer) clearTimeout(this._brandTimer);
-    this._brandTimer = setTimeout(() => this.setData({ brandPlay: false }), 900);
-  },
+  /* 主题 / 程序名（ensureTheme / layoutBrand / playBrand）已收敛到 utils/pageBase.js */
 
   modulesVM() {
     // 维度筛选不单列「做了」：它与「可做 → 做了」状态筛选重复，避免入口歧义
@@ -393,21 +359,7 @@ Page({
     };
   },
 
-  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签，段内保持传入顺序。
-  // 只分组、不 map 成 VM——窗口外那些天不用白算（见 winGroups）
-  groupByDay(recs, tsOf) {
-    const map = {}, order = [];
-    recs.forEach(r => {
-      const k = date.dayStart(tsOf(r));
-      if (!map[k]) { map[k] = { key: k, day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
-      map[k].recs.push(r);
-    });
-    return order.map(k => map[k]);
-  },
-  /* 「按天分段 + 显示更多窗口」：只把窗口里真正要渲染的那几条 map 成 VM（窗口规则见 store.winDays） */
-  winGroups(days, lim, dayAll) {
-    return store.winDays(days, lim, dayAll).map(g => Object.assign({}, g, { recs: g.recs.map(r => this.recVM(r)) }));
-  },
+  /* groupByDay / winGroups 已收敛到 utils/pageBase.js（与清单页同一份） */
 
   /* ---------------- 游标分页 ---------------- */
   // 「可以」维度下「做了」已是 want 记录的一种状态（status=done），不再单独查 done 模块
@@ -687,14 +639,10 @@ Page({
     this.clearFloats();
   },
 
+  /* onTabReselect 覆盖 pageBase 的默认：本页回顶前先收起操作条（再点当前 tab = 干净的一页） */
   onTabReselect() {
     this.closeSel();
     wx.pageScrollTo({ scrollTop: 0, duration: 300 });
-  },
-
-  /* 切到其它 tab 再切回来（或首次进入）：整页回到顶部 */
-  scrollToTop() {
-    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
 
   /* 切换 tab 进入本页：恢复初始状态（回到「全部」维度、清空搜索与子筛选），并回顶 */
@@ -733,13 +681,7 @@ Page({
   },
 
   /* ---------------- 记录操作 ---------------- */
-  findRec(id) {
-    return (app.globalData.records || []).find(x => x.id === id) || (this.data.recs || []).find(x => x.id === id);
-  },
-
-  // 待办行现在可能在 todo-list 组件里：交互事件要么来自本页（dataset），要么来自组件（detail），统一取 id / 字段
-  _id(e) { return (e.detail && e.detail.id != null) ? e.detail.id : e.currentTarget.dataset.id; },
-  _detailOr(e, key) { return (e.detail && e.detail[key] != null) ? e.detail[key] : e.currentTarget.dataset[key]; },
+  /* findRec / _id / _detailOr 已收敛到 utils/pageBase.js（与清单页同一份） */
   syncGlobal(id, fn) {
     const g = app.globalData.records || [];
     const r = g.find(x => x.id === id); if (r) fn(r);
@@ -775,16 +717,7 @@ Page({
     this._lpAt = Date.now();   // 长按后紧跟着的那次点击要忽略掉
     this.copyRec(r);
   },
-  /* 把一条记录放进剪贴板：只复制那一句话本身 */
-  copyRec(r) {
-    const txt = r.txt || '';
-    if (!txt) return;
-    wx.setClipboardData({
-      data: txt,
-      success: () => { if (wx.vibrateShort) wx.vibrateShort(); },
-      fail: () => wx.showToast({ title: '没复制上，再试一次', icon: 'none' })
-    });
-  },
+  /* copyRec 已收敛到 utils/pageBase.js */
   /* 行级手势：时间线上的行「行尾左滑」＝进记卡改这一条（看页是「概览 + 管理去别处」的口径，
      与操作条里的「改」同一条路）。**只有行尾起手的横滑才算行内**，其余横滑原样不动，
      交给根节点切维度；纵向滑动照旧交给页面滚动 */
@@ -913,13 +846,7 @@ Page({
     if (this.data.delUndo) { patch.delUndo = null; this._stopDelTimer(); }
     if (Object.keys(patch).length) this.setData(patch);
   },
-  _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
-  _startDelTimer() {
-    this._stopDelTimer();
-    this._delTimer = setTimeout(() => {
-      if (this.data.delUndo) this.setData({ delUndo: null });
-    }, 3000);
-  },
+  /* _stopDelTimer / _startDelTimer 已收敛到 utils/pageBase.js */
 
   /* 删除一条记录并给出撤销机会（操作条「删除」与就地编辑的「删除」共用） */
   _delRec(r) {
@@ -964,4 +891,4 @@ Page({
       this.setData({ recs, delUndo: null }, () => this.rebuild());
     });
   }
-});
+}));

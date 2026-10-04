@@ -1,7 +1,7 @@
 // pages/list/list.js —— 清单：备忘 / 购物（待办）+ 随记（平铺列表）快捷查看
 const store = require('../../utils/store.js');
+const pageBase = require('../../utils/pageBase.js');
 const swipe = require('../../utils/swipe.js');
-const ui = require('../../utils/ui.js');
 const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
 const app = getApp();
@@ -14,14 +14,8 @@ function todoSeg(v) { return 'k:' + v; }
 // 能在清单页就地改 / 删的记录：待办 + 随记（都是「一句话」，区别只是前者有完成与状态）
 function canList(m) { return store.isTask(m) || m === 'jot'; }
 
-Page({
+Page(pageBase({
   data: {
-    theme: store.curTheme(),
-    statusH: 20,
-    themeStyle: store.themeStyle(store.curTheme()),
-    // 程序名彩蛋：与记页 / 看页同一套（按胶囊矩形定位 + 下拉逐字浮现）
-    appName: (app && app.APP_NAME) || '',
-    brandTop: 0, brandLeft: 0, brandW: 0, brandH: 0, brandChars: [], brandPlay: false,
     // seg：'all'（全部：下分待办 / 随记，见 allKind）| 'k:<待办类别>' | 'jot'（随记）——都来自选项池，可增删
     seg: 'all',            // 默认停在「全部」
     allKind: 'todo',       // 「全部」下的二级筛选：'todo'（默认）| 'jot'——同一时刻只显示一种，不上下叠着
@@ -90,32 +84,7 @@ Page({
     });
   },
 
-  /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
-     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来（与记页 / 看页同一套）。
-     矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
-     会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
-  layoutBrand() {
-    const mb = ui.capsuleRect();
-    if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
-    this.setData({
-      brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
-      brandChars: String(this.data.appName || '').split('')
-    });
-  },
-
-  /* 名字露出来的这会儿，播一次逐字浮现 */
-  playBrand() {
-    this.setData({ brandPlay: true });
-    if (this._brandTimer) clearTimeout(this._brandTimer);
-    this._brandTimer = setTimeout(() => this.setData({ brandPlay: false }), 900);
-  },
-
-  ensureTheme() {
-    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    const t = store.curTheme();
-    this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
-    store.syncWindowBg(t);
-  },
+  /* 主题 / 程序名（ensureTheme / layoutBrand / playBrand）已收敛到 utils/pageBase.js */
 
   recVM(r) {
     const v = vm.baseVM(r);
@@ -241,21 +210,7 @@ Page({
     this.setData(patch, () => this.rebuild());
   },
 
-  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签。
-  // 只分组、不 map 成 VM——窗口外那些天不用白算（见 winGroups）
-  groupByDay(recs, tsOf) {
-    const map = {}, order = [];
-    recs.forEach(r => {
-      const k = date.dayStart(tsOf(r));
-      if (!map[k]) { map[k] = { key: k, day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
-      map[k].recs.push(r);
-    });
-    return order.map(k => map[k]);
-  },
-  /* 「按天分段 + 显示更多窗口」：只把窗口里真正要渲染的那几条 map 成 VM（窗口规则见 store.winDays） */
-  winGroups(days, lim, dayAll) {
-    return store.winDays(days, lim, dayAll).map(g => Object.assign({}, g, { recs: g.recs.map(r => this.recVM(r)) }));
-  },
+  /* groupByDay / winGroups 已收敛到 utils/pageBase.js（与看页同一份） */
 
   /* 随记按「随记类别」分段：段头用日标签那套（.daylab，时间线轴线因此照常对齐），
      组序取随记类别池顺序——被删掉的老类别、以及没类别（合并前）的记录排在最后。
@@ -477,13 +432,7 @@ Page({
   },
 
   /* ---------------- 长按就地编辑（全局唯一编辑器） ---------------- */
-  findRec(id) {
-    return (app.globalData.records || []).find(x => x.id === id) || null;
-  },
-
-  // 待办行现在可能在 todo-list 组件里：交互事件要么来自本页（dataset），要么来自组件（detail），统一取 id / 字段
-  _id(e) { return (e.detail && e.detail.id != null) ? e.detail.id : e.currentTarget.dataset.id; },
-  _detailOr(e, key) { return (e.detail && e.detail[key] != null) ? e.detail[key] : e.currentTarget.dataset[key]; },
+  /* findRec / _id / _detailOr 已收敛到 utils/pageBase.js */
 
   /* 长按某条待办 / 随记＝复制这句话（改 / 删走「点一下出操作条」或「左滑直接改」） */
   onLongPress(e) {
@@ -494,16 +443,7 @@ Page({
     this._lpAt = Date.now();     // 长按之后紧跟的那次点击要忽略，否则会立刻弹出操作条
     this.copyRec(r);
   },
-  /* 把一条记录放进剪贴板：只复制那一句话本身 */
-  copyRec(r) {
-    const txt = r.txt || '';
-    if (!txt) return;
-    wx.setClipboardData({
-      data: txt,
-      success: () => { if (wx.vibrateShort) wx.vibrateShort(); },
-      fail: () => wx.showToast({ title: '没复制上，再试一次', icon: 'none' })
-    });
-  },
+  /* copyRec 已收敛到 utils/pageBase.js */
 
   /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器：
      编辑器做成和卡片同尺寸盖上去（同内边距/圆角/边框），页面滚动时跟着原行走。
@@ -634,13 +574,7 @@ Page({
     if (this.data.delUndo) { patch.delUndo = null; this._stopDelTimer(); }
     if (Object.keys(patch).length) this.setData(patch);
   },
-  _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
-  _startDelTimer() {
-    this._stopDelTimer();
-    this._delTimer = setTimeout(() => {
-      if (this.data.delUndo) this.setData({ delUndo: null });
-    }, 3000);
-  },
+  /* _stopDelTimer / _startDelTimer 已收敛到 utils/pageBase.js */
 
   /* 撤销删除：把记录原样加回来 */
   onUndoDel() {
@@ -659,4 +593,4 @@ Page({
       this.rebuild();
     });
   }
-});
+}));

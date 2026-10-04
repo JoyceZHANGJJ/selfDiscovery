@@ -1,12 +1,10 @@
 // pages/options/options.js —— 选项管理（独立页，返回即回到「记」）
 const store = require('../../utils/store.js');
+const pageBase = require('../../utils/pageBase.js');
 const app = getApp();
 
-Page({
+Page(pageBase({
   data: {
-    theme: store.curTheme(),
-    statusH: 20,
-    themeStyle: store.themeStyle(store.curTheme()),
     group: '',
     label: '',
     opts: [],
@@ -36,10 +34,7 @@ Page({
   },
 
   onShow() {
-    const t = store.curTheme();
-    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
-    store.syncWindowBg(t);
+    this.ensureTheme();
     this.refresh();
   },
 
@@ -158,4 +153,4 @@ Page({
     this.refresh();
   },
   onClose() { wx.navigateBack(); }
-});
+}));
