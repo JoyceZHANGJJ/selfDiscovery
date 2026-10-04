@@ -5,6 +5,25 @@
     <!-- body-top：与记页的记卡起始位置对齐（status-h + 46px，见 app.wxss 的 .body-top）——
          切 tab 时本页的标题与记页的记卡在同一水平线上 -->
     <view class="body body-top" bindtap="onBodyTap">
+      <!-- 取数失败：给一句说明 + 一个能点的重试 -->
+      <block wx:if="{{loadFail}}">
+        <view class="loadfail">
+          <view class="lft">没加载出来</view>
+          <view class="lfr" bindtap="onRetry">点击重试</view>
+        </view>
+      </block>
+      <!-- 骨架屏：首屏数据未就绪时占位（与记 / 看 同一套 .sk 样式） -->
+      <block wx:elif="{{!ready}}">
+        <view class="sk skpage">
+          <view class="sk-line sk-w30 sk-sm"></view>
+          <view class="sk-hr"></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w40"></view></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w40"></view></view>
+        </view>
+      </block>
+      <block wx:else>
       <view class="sect-t" id="blk-title">{{tit}}</view>
       <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
       <!-- 操作指引常驻：类别里没有数据时也留着（不然空类别只剩一行灰字，位置也会跳） -->
@@ -68,6 +87,7 @@
       </block>
 
       <view wx:if="{{empty}}" class="empty-mini">{{emptyText}}</view>
+      </block>
     </view>
 
     <!-- 待办就地编辑：与记页 / 看页共用同一个组件 -->

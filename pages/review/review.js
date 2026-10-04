@@ -79,7 +79,9 @@ Page({
     docLimit: 20,
     docs: [],            // 当前展示的档案
     docTotal: 0,
-    docHead: ''
+    docHead: '',
+    ready: false,        // 首屏数据未就绪时先渲染骨架屏（与记 / 看 同一套 .sk 样式）
+    loadFail: false      // 取数失败：撤掉骨架屏，给一句说明 + 可点的重试
   },
   _docs: [],             // 全量档案（不塞进 data，避免 setData 过大）
 
@@ -88,7 +90,23 @@ Page({
     this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
     this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'mint' });
-    store.ensureAll().then(() => this.build());
+    store.ensureAll().then(ok => {
+      if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
+      this.setData({ ready: true });
+      this.build();
+    });
+  },
+
+  /* 取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
+  onRetry() {
+    if (this._retrying) return;
+    this._retrying = true;
+    this.setData({ loadFail: false, ready: false });
+    store.ensureAll().then(ok => {
+      this._retrying = false;
+      if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
+      this.onShow();   // 成功了按正常进页再走一遍
+    });
   },
 
   /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，

@@ -155,7 +155,6 @@ const THEMES = themes.THEMES;
 const themeList = themes.themeList;
 const themeStyle = themes.themeStyle;
 const themeOf = themes.themeOf;
-const themeAccent = themes.themeAccent;
 
 // 读取当前主题；若 storage 里是已被删除的废弃主题，回落切换列表第一个，
 // 避免冷启动套上不存在的主题、CSS 变量全空（输入框/按钮背景透明）
@@ -166,26 +165,31 @@ function curTheme() {
 }
 
 // 问候语：白天 30 条 / 夜里 30 条（设置页可自定义，改完存云端；恢复默认即用这里）
+// 写新句子有两条讲究（白天跨 5:00–18:00、夜里跨 18:00–5:00，都是 13 小时）：
+//   ① **别点名具体时刻**（「早晨」「正午」「天黑透」「今晚」）：这一组是按时段轮换的，
+//      写死某个时刻，落到这个时段的其它时间就对不上（清晨看到「是正午了吧」很出戏）；
+//      ② **别断言天气 / 环境**（「今天天气很好」「雨刚停」），改成「…的话 / 的话」。
+//      已经发生的、或纯想象的画面（「风掠过整片芦苇」「月亮浸在湖里」）不受这条限制
 const GREETS = {
   day: [
-    '今天天气很好，去晒晒太阳怎么样？', '窗外有风的话，要不要闭上眼感受下？',
-    '阳光落在桌上，好像挺暖的', '今天的云走得慢，看一会儿吧',
-    '空气里有花香吗？要不要闻一闻？', '阳光照在手背上，暖洋洋的',
-    '风把窗帘吹得轻轻动，好温柔', '晨雾散开时，远山像被谁轻轻描了一笔',
-    '阳光落在叶尖，把叶子照得透亮', '风掠过整片芦苇，荡起一层温柔的银浪',
+    '天气好的话，去晒晒太阳怎么样？', '窗外有风的话，要不要闭上眼感受下？',
+    '光落在桌上，好像挺暖的', '云走得慢的话，看一会儿吧',
+    '空气里有花香吗？要不要闻一闻？', '光照在手背上，暖洋洋的',
+    '风把窗帘吹得轻轻动，好温柔', '雾散开时，远山像被谁轻轻描了一笔',
+    '光落在叶尖，把叶子照得透亮', '风掠过整片芦苇，荡起一层温柔的银浪',
     '晾着的衣服被风鼓起来，像在伸懒腰', '远处有鸟叫传过来，你听见了吗？',
-    '树影落在桌上，轻轻晃着，像水波', '天很蓝，云一朵一朵地慢慢走',
+    '树影落在桌上，轻轻晃着，像水波', '天很蓝的时候，云一朵一朵地慢慢走',
     '泡一杯茶放在手边，看热气慢慢散开', '光斜斜地照进来，细尘在里面浮着',
-    '路边的草刚修剪过，有股青涩的味道', '窗玻璃被晒得温温的，把手心贴上去试试',
+    '路边的草刚修剪过，有股青涩的味道', '窗玻璃温温的，把手心贴上去试试',
     '风替你翻了一页书，要不要读两行', '楼下的声音忽然停了，安静了一小会儿',
-    '影子缩到脚边了，是正午了吧', '下雨的话，就听一会儿雨声吧',
-    '雨刚停，空气里有泥土的味道', '水冲在手上是凉的，舒服吧',
+    '影子落在脚边，跟着你一起走', '下雨的话，就听一会儿雨声吧',
+    '雨后，空气里有泥土的味道', '水冲在手上是凉的，舒服吧',
     '风铃响了一下，是风来了', '阳台上的花又开了一朵',
     '有点困的话，就眯一小会儿', '光从窗帘缝里漏进来，在地板上画了一道',
-    '杯壁上凝了一层水珠，凉丝丝的', '今天不冷不热，刚刚好'
+    '杯壁上凝了一层水珠，凉丝丝的', '不冷不热的时候，刚刚好'
   ],
   night: [
-    '晚风很温柔，是不是？', '夜色很美，赏赏月如何？', '今天有什么小小的开心事？',
+    '晚风很温柔，是不是？', '夜色很美的话，赏赏月如何？', '今天有什么小小的开心事？',
     '灯亮起来了，屋里很安静吧', '窗外有星星的话，要不抬头看一眼？',
     '被窝外的世界安安静静的，是不是？', '月亮浸在湖里，碎成满池晃动的银',
     '路灯把树影投在墙上，像一幅会呼吸的画', '薄霜悄悄爬上窗，开出一树树细小的冰花',
@@ -196,8 +200,8 @@ const GREETS = {
     '虫鸣一阵一阵的，像在慢慢数着什么', '影子被路灯拉得很长，陪你慢慢走回去',
     '夜里有飞机经过，天上留下一道细细的光', '把灯关了吧，让眼睛先歇一会儿',
     '热水冲过后背，一天的累松了一点', '床头那本书还开着，看两页再睡？',
-    '把手机扣过去，今晚先到这儿吧', '窗户留一条缝，风会自己进来',
-    '窗外的树叶不动了，夜也跟着停下来', '天黑透了，屋里反而显得更暖',
+    '把手机扣过去，今天就到这儿吧', '窗户留一条缝，风会自己进来',
+    '窗外的树叶不动了，夜也跟着停下来', '天色暗下来，屋里反而显得更暖',
     '把被子裹紧一点，脚也跟着暖了', '枕头上有一点洗衣液的味道',
     '明天的事，留给明天再想吧', '放一首慢一点的歌，音量调小一点'
   ]
@@ -1447,10 +1451,22 @@ const G = {
 
 /* ---------------- 启动加载 ---------------- */
 let _loading = false;
+let _loadFail = false;
+// 返回 true = 数据就绪，false = 这一轮没拉到（云环境没开 / 网络问题）。
+// 以前失败只在 catch 里重置 _loading，页面拿不到任何信号：记页永远停在骨架屏、看页整屏空白；
+// 而且「排在后面的那些调用」会一直轮询 G.loaded 也永远等不到（失败不置 loaded）——现在一并给个结果
 function ensureAll() {
-  if (G.loaded) return Promise.resolve();
-  if (_loading) return new Promise(res => { const t = setInterval(() => { if (G.loaded) { clearInterval(t); res(); } }, 120); });
+  if (G.loaded) return Promise.resolve(true);
+  if (_loading) {
+    return new Promise(res => {
+      const t = setInterval(() => {
+        if (G.loaded) { clearInterval(t); res(true); }
+        else if (_loadFail) { clearInterval(t); res(false); }   // 这一轮已经失败：别让等的人一直挂着
+      }, 120);
+    });
+  }
   _loading = true;
+  _loadFail = false;
   return Promise.all([loadRecords(), loadOptions(), loadDims(), loadGreets()]).then(([recs, O, dims, greets]) => {
     G.records = recs;
     G.OPT = O;
@@ -1467,7 +1483,8 @@ function ensureAll() {
       .then(() => migrateObsKind())
       .then(() => migrateJotKind())
       .then(() => migrateTodoRecords());
-  }).catch(() => { _loading = false; });
+  }).then(() => { _loading = false; _loadFail = false; return true; })
+    .catch(() => { _loading = false; _loadFail = true; return false; });
 }
 
 // 下拉刷新用：忽略 loaded 缓存，重新从云端全量拉取（同步多端数据）
@@ -1484,7 +1501,7 @@ function reload() {
 }
 
 module.exports = {
-  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, themeAccent,
+  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf,
   dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, migrateTodoRecords, takeRenameMap,

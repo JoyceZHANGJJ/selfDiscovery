@@ -127,7 +127,4 @@ function themeStyle(k) {
   return Object.keys(v).map(name => '--' + name + ':' + v[name]).join(';');
 }
 
-// 主题的主色（切换器圆点用；直接读变量定义，避免再依赖单列字段）
-function themeAccent(k) { return (themeOf(k).vars || {}).accent || ''; }
-
-module.exports = { THEMES, themeList, themeOf, themeStyle, themeAccent };
+module.exports = { THEMES, themeList, themeOf, themeStyle };

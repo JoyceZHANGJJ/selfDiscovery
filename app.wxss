@@ -19,8 +19,6 @@
 .composer { background: radial-gradient(140% 140% at 50% 25%, var(--surface, #FFFFFF) 35%, var(--bg, #FFFFFF) 92%); border: 0; border-radius: var(--r-card); padding: 10px 16px 16px; margin: 0 0 22px; box-shadow: 0 14px 36px rgba(35,35,31,.08), 0 3px 10px rgba(35,35,31,.05); }
 .body-top .composer { padding-top: 10px; padding-left: 14px; padding-right: 14px; }
 .composer:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
-.suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
-.sg { font-size: 12px; padding: 4px 10px; border-radius: 99px; background: var(--soft); color: var(--ink2); }
 .tagrow { display: flex; gap: 14px; margin: 0 0 12px; padding-bottom: 4px; flex-wrap: nowrap; align-items: center; }
 .tagrow-scroll { width: 100%; white-space: nowrap; }
 .tagrow .tg { flex-shrink: 0; }
@@ -32,7 +30,6 @@
 .tg .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); }
 .tg.on { border-bottom-color: var(--accent); color: var(--accent); font-weight: 700; }
 .tg.on .dot { background: currentColor; }
-.spacer { flex: 1; }
 .big-in { width: 100%; border: 0; outline: none; resize: none; font-size: 14px; font-family: inherit; color: var(--ink, #22252A); background: var(--soft, #F4F5F5); border-radius: 12px; padding: 8px 12px; line-height: 21px; min-height: 52px; caret-color: var(--accent, #2F8F7B); box-sizing: border-box; display: block; }
 .big-in::placeholder { font-size: 14px; color: var(--ink4); }
 .extra { margin-top: 14px; padding-top: 0; border-top: 0; }
@@ -74,7 +71,6 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .toastline { margin-top: 13px; background: var(--accent-soft); border-radius: 12px; padding: 10px 13px; font-size: 13px; color: var(--ink2); display: flex; align-items: center; gap: 8px; }
 .toastline .tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toastline .tb { font-size: 12px; color: var(--accent); text-decoration: underline; flex-shrink: 0; }
-.edcancel { font-size: 13px; color: var(--ink3); padding: 10px 2px; }
 
 /* ================= 看 · 时间线 ================= */
 .sect-t { font-size: 13px; font-weight: 800; color: var(--ink2); margin: 16px 0 9px; letter-spacing: .02em; }
@@ -145,18 +141,6 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
    只有带描述的记录（.has-desc）才把标题也收成单行，其它记录保持原来的可折行行为 */
 .rec.tl.has-desc .tvw .tv { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rec .tvw .tdesc { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 400; color: var(--ink3); margin-left: 7px; }
-.dm { display: inline-flex; align-items: center; flex-shrink: 0; font-size: 11px; font-weight: 700; line-height: 1.5; border-radius: 99px; padding: 2px 8px; background: rgba(35,35,31,.06); }
-.dm-obs { background: var(--accent-soft); }
-.dm-now { background: rgba(47,143,138,.15); }
-.dm-want { background: rgba(192,138,46,.17); }
-.dm-nope { background: rgba(122,110,155,.15); }
-.dm-done { background: rgba(61,106,165,.14); }
-.dm-custom { background: rgba(35,35,31,.08); }
-.dm-memo { background: rgba(154,140,122,.18); }
-.dm-buy { background: rgba(192,133,82,.16); }
-.dm-todo { background: rgba(154,140,122,.18); }
-.dm-like { background: rgba(199,125,160,.16); }
-.f { font-size: 11px; color: var(--ink3); margin-right: 3px; }
 .sep { font-style: normal; font-size: 11px; color: var(--line2); margin: 0 5px; }
 .it { margin-right: 14px; }
 .it:last-child { margin-right: 0; }
@@ -203,7 +187,7 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rec.ab .ck::after { transform: translate(-50%, -50%) rotate(-45deg); }
 .rec.ab .tv { color: var(--ink3); text-decoration: line-through; }
 .rec.done .edge { opacity: .35; }
-.rec.done .tw, .rec.done .dm { opacity: .6; }
+.rec.done .tw { opacity: .6; }
 .rec .done-at { font-size: 11.5px; color: var(--accent); margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
 /* 备忘 / 购物清单：不走时间流，平铺成列表 */
 .rec.list { padding: 10px 13px; margin: 0 0 7px; border-radius: 12px; box-shadow: none; }
@@ -319,6 +303,12 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .fold .fico { color: var(--ink3); font-size: 11px; transition: transform .18s; }
 .gwrap.open .fold .fico { transform: rotate(90deg); }
 
+/* 取数失败态：以前什么都不显示（记页永远停在骨架屏、看页整屏空白），
+   现在撤掉骨架屏、给一句说明和一个能点的重试（见各页的 loadFail / onRetry） */
+.loadfail { text-align: center; padding: 30px 0 10px; }
+.loadfail .lft { font-size: 13px; color: var(--ink3); }
+.loadfail .lfr { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 6px 18px; }
+
 /* ================= 选项管理浮层 ================= */
 .sheet { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column; padding: calc(var(--status-h, 20px) + 70px) 0 calc(10px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
 .sh-h { display: flex; align-items: center; justify-content: space-between; padding: 15px 22px 2px; flex-shrink: 0; }
@@ -372,7 +362,6 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .tbb .ic { display: block; font-size: 15px; line-height: 1.3; }
 
 /* 纯文本省略 */
-.ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ================= 程序名（记 / 看 共用） =================
    按胶囊矩形 fixed 定位，平时被原生胶囊盖住；下拉刷新把页面（含这个 fixed 元素）推下去时才露出来 */

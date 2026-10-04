@@ -50,6 +50,7 @@
           </view>
           <view wx:else class="gr-add" data-pool="night" bindtap="addGreetTap">＋ 新增一句</view>
 
+          <view class="qc-hint">写新句子时别点名具体时刻（「早晨」「正午」「天黑透」「今晚」）：白天是 5:00–18:00、夜里是 18:00–5:00，写死了落到这个时段的其它时间就对不上；也别断言天气（改成「…的话」）。</view>
           <view class="gr-reset" bindtap="resetGreet">恢复默认问候语</view>
         </view>
       </view>

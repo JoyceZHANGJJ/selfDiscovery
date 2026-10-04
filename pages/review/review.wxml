@@ -4,6 +4,24 @@
        这样 wx.pageScrollTo（回顶、翻期、切视图）才是真的，原生下拉刷新也走同一套 -->
   <view class="screen">
     <view class="body">
+      <!-- 取数失败：给一句说明 + 一个能点的重试 -->
+      <block wx:if="{{loadFail}}">
+        <view class="loadfail">
+          <view class="lft">没加载出来</view>
+          <view class="lfr" bindtap="onRetry">点击重试</view>
+        </view>
+      </block>
+      <!-- 骨架屏：首屏数据未就绪时占位（与记 / 看 同一套 .sk 样式） -->
+      <block wx:elif="{{!ready}}">
+        <view class="sk skpage">
+          <view class="sk-line sk-w30 sk-sm"></view>
+          <view class="sk-hr"></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w40"></view></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+        </view>
+      </block>
+      <block wx:else>
       <view class="sect-t">回看</view>
 
       <!-- 周 / 月复盘，以及最后的「全部」（主题档案，全历史） -->
@@ -110,6 +128,7 @@
           <view class="heat"><i wx:for="{{trend}}" wx:key="index" class="l{{item.lv}}"></i></view>
           <view class="heat-sum">{{trendSum}}</view>
         </view>
+      </block>
       </block>
     </view>
   </view>

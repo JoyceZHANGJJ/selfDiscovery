@@ -3,8 +3,14 @@
   <!-- 整页改为页面级滚动（与记页一致）：搜索框等原生输入层由微信同步位置，不再套在 scroll-view 里 -->
   <view class="screen">
     <view class="body" bindtap="clearFloats">
+      <!-- 取数失败：给一句说明 + 一个能点的重试（以前这里什么都不显示，整屏空白） -->
+      <view wx:if="{{loadFail}}" class="loadfail">
+        <view class="lft">没加载出来</view>
+        <view class="lfr" bindtap="onRetry">点击重试</view>
+      </view>
+
       <!-- 骨架屏：首屏数据未就绪时占位（与记页同一套 .sk 样式），避免空白页闪一下 -->
-      <view wx:if="{{!ready}}" class="sk skpage">
+      <view wx:elif="{{!ready}}" class="sk skpage">
         <view class="sk-line sk-w30 sk-sm"></view>
         <view class="sk-box sk-search"></view>
         <view class="sk-row"><view class="sk-line sk-w30"></view><view class="sk-line sk-w30"></view><view class="sk-line sk-w30"></view></view>
@@ -68,7 +74,7 @@
         undone="{{tasks.undone}}" doneGroups="{{tasks.doneGroups}}" abandGroups="{{tasks.abandGroups}}"
         undoneN="{{tasks.undoneN}}" doneN="{{tasks.doneN}}" abandN="{{tasks.abandN}}"
         undoneHide="{{tasks.undoneHide}}" doneHide="{{tasks.doneHide}}" abandHide="{{tasks.abandHide}}"
-        bind:check="onRecCheck" bind:longpress="onRowLongPress" bind:swipeleft="onRowSwipe" bind:more="onTaskMore" bind:daymore="onDayMore">
+        bind:check="onRecCheck" bind:select="onRecTap" bind:longpress="onRowLongPress" bind:swipeleft="onRowSwipe" bind:more="onTaskMore" bind:daymore="onDayMore">
         <!-- 看页只作概览：给一个去清单页管理的入口——落在组件标题行的右端（与「待办」标题同一行、右起） -->
         <view class="tolist-link" bindtap="goList">去清单页管理 ›</view>
       </todo-list>
