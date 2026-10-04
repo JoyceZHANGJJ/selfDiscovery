@@ -45,6 +45,10 @@
           <view class="bb"><view class="bf" style="width:{{item.w}};background:{{item.c}}"></view></view>
           <view class="bv">{{item.n2}}</view>
         </view>
+        <!-- 占位行：让统计块高度只跟维度有关，换二级筛选（喜恶 / 类别）时不再伸缩（见 _padStats） -->
+        <view wx:for="{{stats.pads}}" wx:key="*this" class="barrow pad">
+          <view class="bn">占位</view><view class="bb"></view><view class="bv"></view>
+        </view>
         <view wx:if="{{stats.extra}}" class="st-ex">{{stats.extra}}</view>
       </view>
 
@@ -56,14 +60,16 @@
 
       <!-- 待办：看页只作「概览」——可勾选完成，但改 / 删 / 放弃 / 恢复都去清单页做。
            渲染复用公用组件 todo-list；manage=false 关闭「点击出操作条 / 长按就地编辑」 -->
+      <!-- manage=true：待办行也支持「点一下出操作条」与「行尾左滑改」（都是进记卡那一条路，
+           勾选完成照旧在本页直接勾；放弃 / 恢复仍是本地处理） -->
       <todo-list wx:if="{{tasks.show}}" id="todoList"
         tit="{{tasks.tit}}" sum="{{tasks.sum}}"
-        manage="{{false}}" showMn="{{filter==='all' || filter==='todo'}}"
+        manage="{{true}}" showMn="{{filter==='all' || filter==='todo'}}"
         undone="{{tasks.undone}}" doneGroups="{{tasks.doneGroups}}" abandGroups="{{tasks.abandGroups}}"
         undoneN="{{tasks.undoneN}}" doneN="{{tasks.doneN}}" abandN="{{tasks.abandN}}"
         undoneHide="{{tasks.undoneHide}}" doneHide="{{tasks.doneHide}}" abandHide="{{tasks.abandHide}}"
-        bind:check="onRecCheck" bind:more="onTaskMore" bind:daymore="onDayMore">
-        <!-- 看页只作概览：给一个去清单页管理的入口（插槽内容由本页处理事件） -->
+        bind:check="onRecCheck" bind:longpress="onRowLongPress" bind:swipeleft="onRowSwipe" bind:more="onTaskMore" bind:daymore="onDayMore">
+        <!-- 看页只作概览：给一个去清单页管理的入口——落在组件标题行的右端（与「待办」标题同一行、右起） -->
         <view class="tolist-link" bindtap="goList">去清单页管理 ›</view>
       </todo-list>
 
@@ -93,7 +99,8 @@
       <block wx:if="{{days.length}}">
         <view wx:for="{{days}}" wx:key="day" wx:for-item="grp">
           <view class="daylab">{{grp.day}}</view>
-          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{r.desc?'has-desc':''}} {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress">
+          <!-- 手势：点一下出操作条 / 左滑进记卡改 / 长按复制（行内横滑优先，见 onRowTouchend） -->
+          <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{r.desc?'has-desc':''}} {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
             <view class="edge" style="background:{{r.c}}"></view>
             <view class="hd"><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text wx:if="{{r.doingDays}}" class="tag doing">第{{r.doingDays}}天</text><view class="tvw"><text class="tv">{{r.txt}}</text><text wx:if="{{r.desc}}" class="tdesc">{{r.desc}}</text><text wx:if="{{r.dur}}" class="tdur">{{r.dur}}</text></view><text class="tw">{{r.d}}{{r.t}}</text></view>
             <view wx:if="{{r.from}}" class="from">{{r.from}}</view>

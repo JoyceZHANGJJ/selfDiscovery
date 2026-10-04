@@ -95,6 +95,7 @@ Component({
       this._kbHandler = null;
       if (this._qaUndoTimer) clearTimeout(this._qaUndoTimer);
       if (this._qaBlurTimer) clearTimeout(this._qaBlurTimer);
+      if (this._qaChipFocusTimer) clearTimeout(this._qaChipFocusTimer);
     }
   },
   methods: {
@@ -104,11 +105,10 @@ Component({
       const page = pages[pages.length - 1];
       return !!(page && page.data && page.data.editing);
     },
-    // 编辑态被拦：不跳转，让当前页把「保存修改」滚到屏幕中间
+    // 编辑态被拦：不跳转，只提示先处理当前编辑
     blocked() {
       const pages = getCurrentPages();
       const page = pages[pages.length - 1];
-      if (page && typeof page.scrollSaveToCenter === 'function') page.scrollSaveToCenter();
       // 优先复用页面的提示（内部会先 hideToast，保证连续点击每次都弹）
       if (page && typeof page.tipSaveFirst === 'function') { page.tipSaveFirst(); return; }
       if (wx.hideToast) wx.hideToast();
@@ -203,6 +203,8 @@ Component({
        已输入的文字留着（keepDraft），再点「＋」还能接着写；主动收起（点别处 / 点 ×）才清空。 */
     onQaBlur() {
       this._qaCancelBlurClose();
+      // 刚点过类别 chip：这次失焦是「换类别」带来的，不算离开输入——面板继续开着（见 onQaChip）
+      if (this._qaChipAt && Date.now() - this._qaChipAt < 600) return;
       this._qaBlurTimer = setTimeout(() => {
         this._qaBlurTimer = null;
         if (this.data.qa) this.closeQa(true);
@@ -226,13 +228,25 @@ Component({
       this._qaStopUndoTimer();
       this.setData({ qaUndo: null });
     },
-    /* 点类别 chip：切换「当前要记的类别」。切换时清掉草稿，避免误存到别的类别 */
+    /* 点类别 chip：切换「当前要记的类别」。**不动输入框里已经写的内容**——
+       先写完、再决定归到哪一类是最自然的顺序（草稿只在主动收起面板时才清，见 closeQa）。
+       输入框正开着（键盘弹着）时这一下也不能把面板关掉：点 chip 会让输入框失焦，
+       一失焦 onQaBlur 就会收起整个面板 —— 变成「想换个类别就得重新点一次球」。
+       所以①记下这次点击，让随之而来的失焦不关面板；②把焦点收回来（键盘不闪断）。 */
     onQaChip(e) {
       this._qaCancelBlurClose();
       const i = +e.currentTarget.dataset.i;
       if (i === this.data.qaIdx) return;
       const a = this.data.qaCats[i] || {};
-      this.setData({ qaIdx: i, qaName: a.n, qaPh: a.ph, qaC: a.c, qaTxt: '', qaFocus: false });
+      const keepFocus = !!this.data.qaFocus;
+      this._qaChipAt = Date.now();
+      this.setData({ qaIdx: i, qaName: a.n, qaPh: a.ph, qaC: a.c });
+      if (!keepFocus) return;
+      if (this._qaChipFocusTimer) clearTimeout(this._qaChipFocusTimer);
+      this._qaChipFocusTimer = setTimeout(() => {
+        this._qaChipFocusTimer = null;
+        if (this.data.qa) this.setData({ qaFocus: true });   // 失焦是刚才那下点击的副作用，收回来
+      }, 30);
     },
     /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条 */
     onQaSave() {

@@ -2,52 +2,69 @@
   <view class="statusbar-mask"></view>
   <!-- 整页页面级滚动（与记页一致）：输入框不套在 scroll-view 内，避免安卓上光标/文字飘出去 -->
   <view class="screen">
-    <view class="body" bindtap="onBodyTap">
+    <!-- body-top：与记页的记卡起始位置对齐（status-h + 46px，见 app.wxss 的 .body-top）——
+         切 tab 时本页的标题与记页的记卡在同一水平线上 -->
+    <view class="body body-top" bindtap="onBodyTap">
       <view class="sect-t" id="blk-title">{{tit}}</view>
       <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
-      <view wx:if="{{show}}" class="ehint">长按任意一条即可就地修改或删除</view>
+      <!-- 操作指引常驻：类别里没有数据时也留着（不然空类别只剩一行灰字，位置也会跳） -->
+      <view class="ehint">点一下出操作条 · 长按复制 · 行尾左滑直接改</view>
 
-      <!-- 区分：全部（待办）/ 各待办类别（来自选项池，「✎ 管理」里加新类别后自动多一项）/ 随记 -->
-      <view class="filters">
-        <view wx:for="{{segs}}" wx:key="k" class="ft {{seg===item.k?'on':''}}" data-s="{{item.k}}" bindtap="onSeg">
+      <!-- 一级筛选行（单行横向滚动，与记卡的维度行同一套）：
+           全部 + 各待办类别 + 随记 + 各随记类别——随记的类别直接排在待办类别后面，
+           都实时取选项池，「✎ 管理」里加新类别后自动多一项。
+           segInto：切段后把选中的 chip 滚进视野（滑到后面的段时那个 chip 才看得见、够得着）；
+           两侧渐隐：右侧还有内容时提示，往回滚过（左边还有 chip 没露出来）时左侧也提示 -->
+      <view class="tagrow-wrap" id="blk-filters">
+        <scroll-view id="segscroll" class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" scroll-into-view="{{segInto}}" scroll-with-animation bindscroll="onSegScroll">
+          <view class="tagrow" id="segrow">
+            <view wx:for="{{segs}}" wx:key="k" id="seg{{index}}" class="ft {{item.on?'on':''}}" data-s="{{item.k}}" bindtap="onSeg">
+              <text wx:if="{{item.c}}" class="fd" style="background:{{item.c}}"></text>{{item.n}}
+            </view>
+          </view>
+        </scroll-view>
+        <view wx:if="{{segFadeL}}" class="tagrow-fade tagrow-fade-l"></view>
+        <view wx:if="{{segFade}}" class="tagrow-fade"></view>
+      </view>
+
+      <!-- 「全部」下的二级筛选：待办（默认）/ 随记——只在一级是「全部」时出现。
+           待办与随记不上下叠在一页里，而是在这里二选一（同一时刻只渲染一种） -->
+      <view wx:if="{{seg==='all'}}" class="filters subrow">
+        <view wx:for="{{subs}}" wx:key="k" class="ft {{item.on?'on':''}}" data-k="{{item.k}}" bindtap="onAllKind">
           <text wx:if="{{item.c}}" class="fd" style="background:{{item.c}}"></text>{{item.n}}
         </view>
       </view>
 
-      <!-- 随记 · 类别（二级筛选）：全部 + 各随记类别（与看页觉察的「喜恶」同一套，带在选项池里增删）。
-           只在「随记」段里出现；选「全部」时下面的随记按类别分段展示 -->
-      <view wx:if="{{seg==='jot' && jotKinds.length}}" class="filters" id="blk-jotfilters">
-        <view class="ft {{jf==='all'?'on':''}}" data-k="all" bindtap="onJotFilter">全部</view>
-        <view wx:for="{{jotKinds}}" wx:key="*this" class="ft {{jf===item?'on':''}}" data-k="{{item}}" bindtap="onJotFilter">{{item}}</view>
-      </view>
-
       <!-- 本页只做「看与管理」：页面上不再放输入框，新增走右下角的「＋」球（快捷记面板）或记页 -->
       <block wx:if="{{show}}">
+        <!-- 待办清单（待完成 / 已完成 / 已放弃）：抽成公用组件 todo-list，清单页与看页共用同一份渲染；
+             交互（勾选 / 选中 / 长按 / 展开）通过事件回传页面处理。
+             标题与汇总行本页已经显示，所以不再让组件重复一遍（tit / sum 传空）。
+             foldKey 跟随段：每次切段把折叠态归位——第一个（待完成）展开、已完成 / 已放弃收起 -->
+        <todo-list wx:if="{{showTodo}}" id="todoList" foldKey="{{seg}}"
+          tit="" sum=""
+          sel="{{sel || ''}}" edId="{{edId}}" showMn="{{seg==='all'}}"
+          undone="{{undone}}" doneGroups="{{doneGroups}}" abandGroups="{{abandGroups}}"
+          undoneN="{{undoneN}}" doneN="{{doneN}}" abandN="{{abandN}}"
+          undoneHide="{{undoneHide}}" doneHide="{{doneHide}}" abandHide="{{abandHide}}"
+          bind:check="onCheck" bind:select="onRecTap" bind:longpress="onLongPress"
+          bind:swipeleft="onRowSwipe"
+          bind:touchend="onRowTouchend" bind:more="onMore" bind:daymore="onDayMore" />
+
         <!-- 随记：按「随记类别」分段展示（没有待完成 / 已完成 / 已放弃那套，也没有完成勾选）——
-             段头是类别（组序＝随记类别池顺序），组内按记录时间倒序；「随记」这一段就是全部随记，
-             只是分了几组，不会漏内容。行只负责显示，就地改 / 删由长按与操作条负责，
-             和待办共用同一个 inline-editor -->
-        <block wx:if="{{seg==='jot'}}">
+             段头是类别（组序＝随记类别池顺序），组内按记录时间倒序，不会漏内容。
+             进「随记」段 / 随记类别段、或在「全部」下选了随记时才渲染（与待办二选一，不上下叠）。
+             行只负责显示，就地改 / 删由长按与操作条负责，和待办共用同一个 inline-editor -->
+        <block wx:if="{{jotOn}}">
           <view wx:for="{{jotGroups}}" wx:key="key" wx:for-item="g">
             <view wx:if="{{g.head}}" class="daylab"><view class="jgdot" style="background:{{g.c}}"></view>{{g.day}}<text class="jgn">{{g.n}} 条</text></view>
-            <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{edId===item.id?'blank':''}} {{sel===item.id?'sel':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+            <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{edId===item.id?'blank':''}} {{sel===item.id?'sel':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onLongPress" bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
               <view class="edge" style="background:{{item.c}}"></view>
               <view class="hd"><text class="tv">{{item.txt}}</text><text class="tw">{{item.t}}</text></view>
             </view>
           </view>
           <view wx:if="{{jotHide}}" class="moreline" data-k="j" bindtap="onMore">显示更多（还有 {{jotHide}} 条）</view>
         </block>
-
-        <!-- 待办清单（待完成 / 已完成 / 已放弃）：抽成公用组件 todo-list，清单页与看页共用同一份渲染；
-             交互（勾选 / 选中 / 长按 / 展开）通过事件回传页面处理 -->
-        <todo-list wx:if="{{seg!=='jot'}}" id="todoList"
-          tit="{{tit}}" sum="{{sum}}"
-          sel="{{sel || ''}}" edId="{{edId}}" showMn="{{seg==='all'}}"
-          undone="{{undone}}" doneGroups="{{doneGroups}}" abandGroups="{{abandGroups}}"
-          undoneN="{{undoneN}}" doneN="{{doneN}}" abandN="{{abandN}}"
-          undoneHide="{{undoneHide}}" doneHide="{{doneHide}}" abandHide="{{abandHide}}"
-          bind:check="onCheck" bind:select="onRecTap" bind:longpress="onLongPress"
-          bind:touchend="onRowTouchend" bind:more="onMore" bind:daymore="onDayMore" />
       </block>
 
       <view wx:if="{{empty}}" class="empty-mini">{{emptyText}}</view>
@@ -56,8 +73,9 @@
     <!-- 待办就地编辑：与记页 / 看页共用同一个组件 -->
     <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:del="onEditDel" />
 
-    <!-- 记录操作条：点条目出（放弃 / 恢复 / 改 / 删除）；勾选框仍然是完成，两者互不干扰 -->
-    <rec-actions rec="{{selRec}}" visible="{{sel!=null}}" bind:action="onRecAction" />
+    <!-- 记录操作条：点条目出（放弃 / 恢复 / 改 / 删除）；勾选框仍然是完成，两者互不干扰。
+         本页没有底部 tab 栏，所以不给「抬到 tab 栏之上」的默认值，直接贴底 -->
+    <rec-actions rec="{{selRec}}" visible="{{sel!=null}}" bottom="env(safe-area-inset-bottom, 0px)" bind:action="onRecAction" />
   </view>
 
   <!-- 删除撤销（与记 / 看页同一套） -->
@@ -65,6 +83,14 @@
     <view class="tx">已删除「{{delUndo.txt}}」</view>
     <view class="tb" bindtap="onUndoDel">撤销</view>
   </view>
+
+  <!-- 程序名：按胶囊矩形定位，平时被原生胶囊挡住，下拉时随页面下移才露出来（与记 / 看页同一套） -->
+  <view wx:if="{{brandH}}" class="brand {{brandPlay?'play':''}}" style="position:fixed;top:{{brandTop}}px;left:{{brandLeft}}px;width:{{brandW}}px;height:{{brandH}}px;">
+    <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
+  </view>
+
+  <!-- 主题圆点（与记 / 看页同一套） -->
+  <theme-switcher lock="{{editing}}" bind:locked="onLocked" />
 
   <!-- 快捷记录：本页不是 tab 页（没有自定义 tabBar），所以手动挂一份组件（quick-ball 即它）——
        ballOnly 只渲染右下角的「＋」球与快捷记面板，不渲染底部 tab 栏。

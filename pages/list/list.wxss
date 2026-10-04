@@ -12,6 +12,18 @@
 
 .ehint { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
 
+/* 标题（.sect-t 默认带 16px 上边距）顶到 body 的 padding 上：这样它的上边缘与记页记卡的上边缘
+   在同一条线上（body-top 已把 padding-top 设成 status-h + 46px，与记页一致） */
+#blk-title { margin-top: 0; }
+
+/* 筛选行：复用记卡维度行那套（.tagrow-wrap / .tagrow-scroll / .tagrow / .tagrow-fade 在 app.wxss），
+   这里只让 chip（.ft）不换行、不压缩——单行横向滚动，类别多了靠渐隐提示还能滑 */
+.tagrow .ft { flex-shrink: 0; }
+
+/* 「全部」下的二级筛选（待办 / 随记）：复用筛选行 chip 那套（.filters / .ft，在 app.wxss），
+   只把上边距收紧一点，让它贴着上面那行 chips、看起来是从属关系 */
+.filters.subrow { margin: -6px 0 8px; }
+
 /* 随记按「随记类别」分段：段头复用日标签那套（.daylab，时间线轴线因此照常对齐），
    前面点一个类别色点、后面跟这类别的条数 */
 .daylab .jgdot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }

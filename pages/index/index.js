@@ -6,6 +6,10 @@ const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
 const app = getApp();
 
+// 「有默认值」的选项组：见 ensureModuleDefaults——这几个组进入对应维度时会自动补一个默认值，
+// 既然有默认值就不该被点空（再点已选中的那一个＝什么也没发生，保持必选）
+const REQUIRED_PICK = { wantKind: 1, todoKind: 1, jotKind: 1, obsStart: 1 };
+
 function nowStr() {
   const d = new Date();
   return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
@@ -59,7 +63,14 @@ Page({
     saveUndo: null,       // 刚记下那条的确认条（写清记进了哪里）
     // 吸底操作行（记下 / 保存修改 / 取消）的 bottom：默认抬到底部 tab 栏之上，键盘弹出时再抬到键盘之上
     barBottom: 'calc(58px + env(safe-area-inset-bottom, 0px))',
-    // 待办长按就地编辑（与清单 / 看页共用的 inline-editor 组件）
+    // 输入框的 cursor-spacing：键盘弹出时给吸底操作行让位的高度（≈ 操作行高度 + 余量，
+    // 进页后实测一次，见 _measureBar）。微信据此把聚焦的输入框滚到键盘上方，
+    // 于是「操作行贴键盘、输入框在操作行上方」
+    kbGap: 76,
+    barH: 61,             // 吸底操作行的实测高度（见 _measureBar）：_keepFieldAboveBar 算目标位置用
+    kbOn: false,          // 键盘是否弹着：弹着时操作行改真 fixed（见 app.wxss 的 .savebar.kb）
+    barFollow: false,     // 拿不到键盘高度时的退路：操作行改为「跟着聚焦的输入框」（见 _keepFieldAboveBar）
+    // 待办 / 随记长按就地编辑（与清单 / 看页共用的 inline-editor 组件）
     qeOn: false,
     qeFocus: false,       // 显示与聚焦分开：手指抬起后才聚焦（见 onRowTouchend）
     qeId: '',
@@ -89,21 +100,22 @@ Page({
   onLoad() {
     // 吸底操作行要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
     // 所以直接把键盘高度当 bottom，操作行始终落在键盘上方
-    this._kbHandler = (res) => {
-      const h = (res && res.height) || 0;
-      this.setData({ barBottom: h > 0 ? h + 'px' : 'calc(58px + env(safe-area-inset-bottom, 0px))' });
-    };
+    this._kbHandler = (res) => this._applyKb((res && res.height) || 0);
     if (wx.onKeyboardHeightChange) wx.onKeyboardHeightChange(this._kbHandler);
   },
 
   onUnload() {
     if (wx.offKeyboardHeightChange && this._kbHandler) wx.offKeyboardHeightChange(this._kbHandler);
+    if (this._kbTimer) { clearTimeout(this._kbTimer); this._kbTimer = null; }
+    if (this._barTimer) { clearTimeout(this._barTimer); this._barTimer = null; }
     this._kbHandler = null;
   },
 
   onShow() {
     this.ensureTheme();
     this.layoutBrand();
+    this._kbH = 0;
+    this._clearBarFollow();   // 键盘状态从零开始（上一次离开时的跟随位置不能留）
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 0, theme: store.curTheme() });
     store.ensureAll().then(() => {
       const mods = this.modulesVM();
@@ -126,6 +138,7 @@ Page({
       // 必须在 recompute() 之前置 ready:true，否则流转聚焦时真实输入框尚未渲染，scroll/聚焦都失效
       this.setData({ ready: true });
       this.recompute();
+      this._measureBar();   // 量一下吸底操作行的实际高度（键盘弹出时输入框要给它让位）
       // 悬浮球「备忘/购物」快速记：跳转后自动切到对应模块
       if (app.globalData && app.globalData.pendingTag) {
         const t = app.globalData.pendingTag;
@@ -138,6 +151,135 @@ Page({
   onHide() {
     // 离开页面（切 tab / 去清单 / 进后台）不保留操作条与撤销条，回来是一页干净的
     this.clearFloats();
+    this._clearBarFollow();   // 跟着输入框的操作行也收回来（进后台后键盘就没了）
+  },
+
+  /* 量吸底操作行（#savebar）的实际高度，加上余量作为输入框的 cursor-spacing（见 data.kbGap）：
+     键盘弹出时微信会把聚焦的输入框滚到「距键盘 kbGap」的位置——那一截正好留给操作行，
+     于是操作行贴在键盘上方、输入框在操作行上方，两者不会叠在一起。
+     取不到节点就沿用默认值（76，约等于默认样式下的行高 + 余量）。 */
+  _measureBar() {
+    wx.nextTick(() => {
+      const q = wx.createSelectorQuery().in(this);
+      q.select('#savebar').boundingClientRect();
+      q.exec(res => {
+        const r = res && res[0];
+        if (!r || !r.height) return;
+        const h = Math.round(r.height);
+        this.setData({ barH: h, kbGap: h + 14 });
+      });
+    });
+  },
+  /* 键盘高度变化（两个来源都通到这里）：全局 wx.onKeyboardHeightChange，以及输入框自带的
+     bindkeyboardheightchange（见 index.wxml）——部分机型上全局那条不派发，靠输入框这条兜住。
+     h > 0：操作行改真 fixed，bottom 给到键盘上方（sticky 受父容器与滚动状态限制，不保证能上移），
+            等动画与原生避让落定后再补一次输入框位置（见 _keepFieldAboveBar）；
+     h = 0（键盘收起）：把「跟着输入框」的操作行放回记卡底部。 */
+  _applyKb(h) {
+    h = Math.max(0, Math.round(h || 0));
+    // 刚聚焦的这一下，个别机型会先报一次 0（键盘还在起）——别当成「键盘收起」把操作行收回去，
+    // 否则表现就是「操作行闪一下又没了」
+    if (h === 0 && this._focusId && Date.now() - (this._focusAt || 0) < 800) return;
+    this._kbH = h;
+    if (h > 0) {
+      // 先不动操作行：它到底会不会被键盘盖住，等 _keepFieldAboveBar 量完再决定
+      //（量不到、或它本来就露在键盘上方时，保持卡片里的吸底形态不动）
+      if (this._kbTimer) clearTimeout(this._kbTimer);
+      this._kbTimer = setTimeout(() => { this._kbTimer = null; this._keepFieldAboveBar(); }, 320);
+    } else {
+      if (this._kbTimer) { clearTimeout(this._kbTimer); this._kbTimer = null; }
+      this._clearBarFollow();
+    }
+  },
+  /* 输入框自带的键盘高度事件（index.wxml 的 bindkeyboardheightchange）：与全局那条同源兜底 */
+  onFieldKb(e) { this._applyKb((e && e.detail && e.detail.height) || 0); },
+
+  /* 让「聚焦的输入框」与「吸底操作行」不打架——**但只在操作行真的会被键盘盖住时才动它**：
+     ・先判断盖不盖得住：操作行「不在浮层里时」的下沿，与「一定在键盘上方的下界」比。
+       知道键盘高度时下界就是键盘上沿；不知道时用微信给聚焦框留出的净空（cursor-spacing = kbGap）——
+       这段之内不会被键盘盖住，操作行本来就在其中就说明没被盖住，保持卡片里的吸底形态不动。
+     ・确实会被盖住时分两条路：知道键盘高度 → 操作行贴到键盘上方，再把这一框挪到它上方
+       （只往下滚、只滚超出量，并受「顶部安全带」限制，不会把输入框推到页面顶端）；
+       不知道键盘高度 → 操作行跟着这一框，钉在它正下方 8px
+       （微信已保证聚焦的框在键盘上方，于是「输入框 → 操作行 → 键盘」自然成立）。
+     ・滚动时浮层位置会过期，由 onPageScroll 兜住（见那里）。 */
+  _keepFieldAboveBar() {
+    const id = this._focusId;
+    if (!id) return;
+    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
+    const winH = info.windowHeight || 0;
+    const kbH = this._kbH || 0;
+    const kbTop = kbH > 0 ? winH - kbH : null;
+    const barH = this.data.barH || 61;
+    const q = wx.createSelectorQuery().in(this);
+    q.select('#' + id).boundingClientRect();
+    q.select('.composer').boundingClientRect();
+    q.selectViewport().scrollOffset();
+    q.exec(res => {
+      const f = res && res[0], c = res && res[1], off = res && res[2];
+      if (!f || !f.height || !off) return;
+
+      // 操作行「自然位置」的下沿（视口坐标）：它正常就在记卡最后一行，所以按**记卡**的下沿推算
+      //（记卡 padding-bottom 16px，见 app.wxss 的 .composer）。
+      // 不能直接量操作行自己：它是 sticky，可能已被顶到键盘线；转成 fixed 后又脱离文档流——
+      // 两种形态量到的都不是「它本来在哪」，之前就是因此把 1px 之差判成「没被盖住」而误收。
+      // 已经在浮层里时，用浮起来那一刻记下的值 + 滚动差换算回来（记卡的文档位置没变）
+      const naturalNow = c && c.bottom != null ? (c.bottom - 16) : null;
+      const floating = this._barFollow || this.data.kbOn;
+      const rowNatural = floating && this._barRowBottom != null
+        ? (this._barRowBottom - (off.scrollTop - (this._barOff0 || 0)))
+        : naturalNow;
+      if (!floating && naturalNow != null) { this._barRowBottom = naturalNow; this._barOff0 = off.scrollTop; }
+      // 「一定在键盘上方」的下界
+      const clearBottom = kbTop != null ? kbTop : (f.bottom + (this.data.kbGap || 75));
+      if (rowNatural != null && rowNatural <= clearBottom) {
+        // 本来就露在键盘上方：不动它（含「之前在浮着、现在不该浮了」的收回）
+        this._clearBarFollow('判定没被盖住 rowNatural=' + Math.round(rowNatural) + ' 下界=' + Math.round(clearBottom));
+        return;
+      }
+
+      if (kbTop != null) {
+        // 知道键盘高度：操作行贴到键盘上方，再把这一框挪到它上方 12px
+        if (!this.data.kbOn) this.setData({ barFollow: false, kbOn: true, barBottom: kbH + 'px' });
+        const over = Math.round(f.bottom - ((kbTop - barH) - 12));
+        if (over <= 0) return;
+        const limit = Math.max(0, Math.round(f.top - ((info.statusBarHeight || 20) + 56)));
+        const dy = Math.min(over, limit);
+        if (dy > 0) wx.pageScrollTo({ scrollTop: Math.round(off.scrollTop + dy), duration: 0 });
+        return;
+      }
+
+      // 不知道键盘高度：操作行跟着这一框，钉在它正下方 8px。
+      // 它是按 bottom 定位的，所以要再让开自己的高度，否则上沿会顶进输入框
+      if (!this._barFollow) {
+        this._barFollow = true;
+        this._barRowBottom = rowNatural;
+        this._barOff0 = off.scrollTop;
+        this.setData({ barFollow: true, kbOn: false });
+      }
+      const bottom = Math.max(0, Math.round(winH - f.bottom - 8 - barH));
+      if (Math.abs(bottom - (this._barPx || 0)) > 1) { this._barPx = bottom; this.setData({ barBottom: bottom + 'px' }); }
+    });
+  },
+  /* 操作行回到「卡片里的吸底行」形态（sticky、bottom 回到 tab 栏之上）：
+     键盘没盖住它、或键盘收起、或失焦 / 点空白 / 离开页面时都调它。
+     跟随态的位置是按旧坐标算的绝对值，不收回来就会悬在卡片中间 */
+  _clearBarFollow() {
+    this._barFollow = false;
+    this._barPx = 0;
+    this._barRowBottom = null;
+    this._barOff0 = null;
+    const tabCalc = 'calc(58px + env(safe-area-inset-bottom, 0px))';
+    if (this.data.barFollow || this.data.kbOn || this.data.barBottom !== tabCalc) {
+      this.setData({ barFollow: false, kbOn: false, barBottom: tabCalc });
+    }
+  },
+  /* 失焦：收回操作行。刚聚焦那一两百毫秒里的失焦多为机型噪音（换框、输入法切换），
+     忽略掉——不然操作行会在键盘刚起来时被收回去，看着就是「闪一下又没了」 */
+  onFieldBlur() {
+    if (Date.now() - (this._focusAt || 0) < 220) return;
+    this._focusId = '';
+    this._clearBarFollow();
   },
 
   ensureTheme() {
@@ -232,8 +374,12 @@ Page({
       this.st.abandoning = this.st.abandoning || isAbandon; // 编辑「不做」记录时保持放弃态，保存不改状态/时间
       this.st.doing = this.st.showDoing;
     } else {
+      // 待办 / 随记 等没有 可做 那套流转分支，只认「放弃」一种：
+      // 点「放弃」进来时保持 abandoning —— 保存修改时才落「已放弃」+ 时间（见 doSave）。
+      // 「放弃原因」这一格只在放弃流程里出现，编辑一条已放弃的待办不再多出它；
+      // 可做那边沿用原口径（编辑一条已「不做」的记录会显示，方便回看 / 改）。
       this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
-      this.st.abandoning = false; this.st.showAbandon = false;
+      this.st.showAbandon = false;
     }
     // 编辑时回填时间字段，供「改时间」使用
     // 做了的记录：legacy(m='done') 完成时间=ts、惦记=refTs；新流程(want+status done) 完成时间=doneAt、创建=ts
@@ -241,14 +387,17 @@ Page({
     const isLegacyDone = r.m === 'done';
     const isWantDone = (r.m === 'want') && (r.status === 'done');   // 仅「已做（做了）」记录回显结束时间；点「完成」流转时结束时间在保存时才记，不展示结束时间输入框
     const isDoneView = isLegacyDone || isWantDone;
-    const isWantAbandon = (r.m === 'want') && (r.status === 'abandon' || this.st.abandoning);
+    // 「放弃时间」这一行：可做的「不做」记录、以及**已放弃的待办**都要给出来（能回看、也能改）。
+    // 待办原来只在列表里看到「放弃 · HH:MM」，进记卡反而没有这一行——这里补上
+    const isWantAbandon = ((r.m === 'want') && (r.status === 'abandon' || this.st.abandoning)) ||
+                          (store.isTask(r.m) && r.status === 'abandon');
     const createTs = isLegacyDone ? (r.refTs || r.ts) : r.ts;   // 做了(legacy)：惦记=refTs；want-done/obs：创建=ts
     const startTs = r.startedAt || 0;
     let endTs = 0;
     if (isLegacyDone) endTs = r.ts;                              // legacy：完成=ts
     else if (isWantDone) endTs = r.doneAt || 0;                  // want-done：完成=doneAt
     else if (r.m === 'obs') endTs = r.endTs || 0;                // 觉察：结束=endTs；未结束(首次)不填，由「结束」按钮记录
-    const abandonTs = isWantAbandon ? (r.abandonedAt || Date.now()) : 0;  // 不做：放弃时间=abandonedAt，无则默认现在
+    const abandonTs = isWantAbandon ? (r.abandonedAt || Date.now()) : 0;  // 放弃时间=abandonedAt，无则默认现在
     const c = dtStr(createTs), s = dtStr(startTs), e = dtStr(endTs), ab = dtStr(abandonTs);
     this.setData({
       editing: true,
@@ -353,7 +502,11 @@ Page({
       fitems = fitems.filter(it => {
         if (it.free === 'doingNote') return !!this.st.showDoing;
         if (it.free === 'doneFeel' || it.free === 'doneGain') return !!this.st.showDone;
-        if (it.free === 'abandonWhy') return !!this.st.showAbandon;
+        // 「放弃原因」：待办只在点「放弃」进来时问原因（编辑一条已放弃的待办不再显示这一格）；
+        // 可做沿用原口径——编辑一条已「不做」的记录也显示，方便回看 / 改
+        if (it.free === 'abandonWhy') {
+          return this.st.abandoning || (!store.isTask(tag) && this.st.showAbandon);
+        }
         return true;
       });
     }
@@ -391,16 +544,18 @@ Page({
       }
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
     });
-    // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 为什么不做了；结束(觉察) → 感受
-    const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
-    const focusIdx = focusKey ? items.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
     const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下' };
     // 待办 / 随记：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行（见 index.wxml 的 plain 分支）
     const plain = store.isTask(tag) || tag === 'jot';
     // 待办 / 随记的「类别」（todoKind / jotKind）摆在主输入框**上方**：先定类别，再写内容。
-    // 其余细节行（如待办的「原因」）仍在输入框下方
+    // 其余细节行（如待办的「原因」「放弃原因」）仍在输入框下方
     const catItems = plain ? items.filter(it => it.type === 'g') : [];
     const bodyItems = plain ? items.filter(it => it.type !== 'g') : items;
+    // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 放弃原因；结束(觉察) → 感受。
+    // 索引按**真正渲染的那份**列表算：plain 时类别行不进 composer.items，用 items 会偏一位，
+    // 聚焦与 #fld{idx} 都会落空（「放弃待办」要聚焦的正是这类被挤掉一位的框）
+    const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
+    const focusIdx = focusKey ? bodyItems.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
     // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
     return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', catItems, items: bodyItems, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
       // 「归类」不需要输入框：从选项池点选即可（要靠「✎ 管理」增删），
@@ -411,7 +566,8 @@ Page({
   },
 
   /* 「最近 / 待办 / 已完成」三块列表共用这一段（标题旁的几个词就是开关），都只取 10 条：
-     ・最近：日常记录。已完成的待办、已放弃的待办不在这里出现（去待办清单里看就好）
+     ・最近：日常记录。待办一律不在这里出现——它有自己的「待办 / 已完成」两块，
+       而且随手记的备忘会挤掉真正想回看的觉察 / 此刻 / 可做 / 随记
      ・待办：还没做完的待办（已放弃的不算——那类去清单页看），按记录时间倒序
      ・已完成：最近 10 条「完成」的（待办勾掉的 + 可做「做了」的 + 历史 m='done'），按完成时间倒序 */
   recentVM() {
@@ -431,8 +587,9 @@ Page({
         .slice(0, 10)
         .map(r => this.recVM(r));
     }
+    // 待办一律不进「最近」：没做完的去「待办」，做完 / 放弃的去「已完成」或清单页
     return all
-      .filter(r => !(store.isTask(r.m) && (r.done || r.status === 'abandon')))
+      .filter(r => !store.isTask(r.m))
       .slice(0, 10)
       .map(r => this.recVM(r));
   },
@@ -443,6 +600,7 @@ Page({
      三段的长短差交给列表区自己的 min-height 收住（见 pages/index/index.wxss） */
   onRecentTab(e) { this._goRecent(e.currentTarget.dataset.k); },
   _goRecent(k) {
+    if (this.guardEdit()) return;   // 编辑态：不允许切换这一段（与切维度同一套口径）
     if (!k || k === this.data.recentTab) return;
     this.setData({ recentTab: k, recSel: null, recSelRec: null });
     this.recompute();
@@ -492,10 +650,14 @@ Page({
       if (!willFocus) return;
       setTimeout(() => {
         this.setData({ focusIdx: fi });
+        // 程序化聚焦（开始 / 完成 / 放弃 / 结束）不一定派发 bindfocus：这里直接把目标框记上，
+        // 并按同一条规则补位置——键盘弹起后它同样会被挪到吸底操作行上方
+        this._focusId = 'fld' + fi;
         wx.createSelectorQuery().select('#fld' + fi).context(res => {
           const ctx = res && res.context;
           if (ctx && typeof ctx.focus === 'function') ctx.focus();
         }).exec();
+        this.onFieldFocus();
       }, 300);
     });
   },
@@ -509,8 +671,9 @@ Page({
     this.ensureModuleDefaults();
     this.setData({ tag: this.st.tag });
     this.recompute();
-    // 换维度后把记卡（含问候）对齐到屏幕顶部：内容长短一变就会被浏览器被动拉回，主动对齐更好预期
-    ui.alignTop(this, '#blk-top');
+    // 这里**不主动置顶**：切维度只是换记卡里的内容，页面停在你滑到的位置。
+    // 点标签也一样——标签就在记卡里，能点到它说明记卡本来就在视野里；
+    // 主动对齐会把页面往下推一节，看着像整页在跳（与清单页切段同一个取舍，见 list.js 的 onSeg）
   },
   /* 记卡上左右滑动切维度（未编辑态）：向左滑到下一个维度，向右滑回上一个 */
   onSwipeStart(e) {
@@ -540,7 +703,11 @@ Page({
   onChip(e) {
     const g = e.currentTarget.dataset.g, v = e.currentTarget.dataset.v;
     let arr = this.st.pick[g] || [];
-    if (arr.indexOf(v) >= 0) arr = arr.filter(x => x !== v);
+    if (arr.indexOf(v) >= 0) {
+      // 有默认值的组（类别 / 分类 / 开始方式…）必须留一个：再点已选中的不反选（见 REQUIRED_PICK）
+      if (REQUIRED_PICK[g]) return;
+      arr = arr.filter(x => x !== v);
+    }
     else { if (store.isSingle(g)) arr = []; arr.push(v); }
     this.st.pick[g] = arr;
     // 觉察：档位是情绪的修饰，情绪被取消时把档位一并清掉（否则会存下没头没尾的程度）
@@ -561,13 +728,20 @@ Page({
   /* 「具体的描述」：只存进 st.free，不渲染在细节列表里，所以不用回写 composer.items */
   onDescInput(e) { this.st.free[store.DESC_KEY] = e.detail.value; },
 
-  /* 输入框获得焦点：这里刻意什么都不做。
-     1) 手动滚动会与 adjust-position 的原生键盘避让叠加（先被滚到顶部、又被原生推起一次）；
-     2) 写 scrollTop 会覆盖掉「开始/完成/放弃/结束」流转的自动定位（scroll-into-view）；
-     输入层错位改由 always-embed 强制同层解决（iOS），键盘避让交给 adjust-position 原生处理。 */
-  /* 输入框聚焦：不做任何处理（提示语保持显示）。
-     键盘避让交给 adjust-position 原生处理；手动滚动会与之叠加，导致输入框「飞」到页面顶端。 */
-  onFieldFocus() {},
+  /* 输入框获得焦点：记下是哪一个框（供 _keepFieldAboveBar 定位），并补两次位置
+     （180ms / 460ms：分别赶在键盘刚弹起、以及动画与原生避让结束之后）。
+     键盘避让本身仍交给 adjust-position 原生处理，这里只做「按需、只往下、只滚超出量、
+     还有顶部安全带」的修正，重复调用无副作用——不会像早先那版（无条件写 scrollTop）把输入框推到顶端。 */
+  onFieldFocus(e) {
+    const id = (e && e.currentTarget && e.currentTarget.id) || '';
+    if (id) this._focusId = id;
+    this._focusAt = Date.now();
+    // 补两次：第一次赶在键盘刚开始弹（键盘高度可能还没派发、操作行还没就位），
+    // 第二次等动画与原生避让都结束——两次都只做「往下、有上限」的修正，重复调用无副作用
+    if (this._kbTimer) clearTimeout(this._kbTimer);
+    setTimeout(() => this._keepFieldAboveBar(), 180);
+    this._kbTimer = setTimeout(() => { this._kbTimer = null; this._keepFieldAboveBar(); }, 460);
+  },
 
   /* 维度标签行的「可滚动」渐变提示：只有内容真的超出、且右侧还有内容时才显示。
      量一次缓存起来（滚动时不再重复查询），之后滚动只做比较。 */
@@ -605,6 +779,11 @@ Page({
   onPageScroll(e) {
     this._pageTop = e.scrollTop || 0;
     this.closeRecSel();
+    // 有框聚焦时滚动：操作行跟着输入框的位置要刷新；「会不会被键盘盖住」的判断也随滚动重算
+    //（滑到操作行又露出来时，它会自己收回卡片里）。120ms 节流，没聚焦时不做事
+    if (this._focusId && !this._barTimer) {
+      this._barTimer = setTimeout(() => { this._barTimer = null; this._keepFieldAboveBar(); }, 120);
+    }
   },
 
   /* 页面级下拉刷新入口（原生下拉回弹动画） */
@@ -667,6 +846,7 @@ Page({
 
   // 编辑区之外（最近列表、空白处等）的点击：操作条与撤销条都收起
   onBodyTap() {
+    this._clearBarFollow();   // 点空白处键盘会收起：跟着输入框的操作行先回位（编辑态被拦下也一样）
     if (this.guardEdit()) return;
     this.clearFloats();
   },
@@ -686,7 +866,9 @@ Page({
     const er = this.st.edit || {};
     const erDoneLegacy = er.m === 'done';
     const erWantDone = (er.m === 'want') && (er.status === 'done' || this.st.completing);
-    const erWantAbandon = (er.m === 'want') && (er.status === 'abandon' || this.st.abandoning);
+    // 与 checkEdit 的 isWantAbandon 对齐：可做的「不做」记录 + 已放弃的待办，都用「放弃时间」输入框的值
+    const erWantAbandon = ((er.m === 'want') && (er.status === 'abandon' || this.st.abandoning)) ||
+                          (store.isTask(er.m) && er.status === 'abandon');
     const c = tsFromDate(this.data.editDate, this.data.editTime);
     let startedAt = er.startedAt || 0;
     if (this.data.editHasStart) startedAt = tsFromDate(this.data.editStartDate, this.data.editStartTime).ts;
@@ -827,22 +1009,35 @@ Page({
     this.recompute();
   },
 
-  /* ---------------- 长按记录（与清单 / 看页共用 inline-editor） ----------------
-     待办：就地快捷改（只改事项）；其它维度：与点「改」等价，直接进记卡完整编辑 */
+  /* ---------------- 长按记录：复制这句话 ----------------
+     最近里的三个手势分工：点一下出操作条（改 / 删，见 onRecentTap → onRecAction）、
+     左滑就地改这一条（见 onRowTouchend → swipeEdit）、长按把内容抄走。
+     长按复制是常用动作——最近里记的多是一句话，贴到别处（微信、备忘录）比就地改动更常见。
+     复制后由微信自己弹「内容已复制」（setClipboardData 自带），这里再补一下触感，
+     免得「不知道到底复制上没有」。 */
   onRecentLongPress(e) {
     if (this.guardEdit()) return;   // 正在编辑其它记录：先处理编辑态
     const id = e.currentTarget.dataset.id;
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r) return;
-    this._lpAt = Date.now();   // 长按后紧跟着的那次点击要忽略掉
-    if (store.isTask(r.m)) { this._openQ(id, r.txt || ''); return; }
-    app.globalData.editRec = store.decorate(r);
-    this.checkEdit();   // 进入编辑态后由 checkEdit 统一滚回顶部
-    this.recompute();
+    this._lpAt = Date.now();   // 长按后紧跟的那次点击要忽略掉，否则会顺手弹出操作条
+    this.copyRec(r);
+  },
+  /* 把一条记录放进剪贴板：只复制那一句话本身（最近列表里最显眼的就是它） */
+  copyRec(r) {
+    const txt = r.txt || '';
+    if (!txt) return;
+    wx.setClipboardData({
+      data: txt,
+      success: () => { if (wx.vibrateShort) wx.vibrateShort(); },
+      fail: () => wx.showToast({ title: '没复制上，再试一次', icon: 'none' })
+    });
   },
 
-  /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器（量好再显示，避免闪到上一次的位置） */
-  _openQ(id, txt) {
+  /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器（量好再显示，避免闪到上一次的位置）。
+     gesture=true（左滑触发）时手指正好在抬起，聚焦要隔一拍再做——抬手瞬间聚焦会被微信
+     当成「点到外面」把输入框 blur 掉（与长按那套同一个坑，见 focusQe） */
+  _openQ(id, txt, gesture) {
     const q = wx.createSelectorQuery().in(this);
     q.selectViewport().scrollOffset();
     q.select('#erow-' + id).boundingClientRect();
@@ -860,20 +1055,61 @@ Page({
         recSel: null, recSelRec: null,
         qeId: id, qeTxt: txt, qeOn: true, qeFocus: false
       });
-      // 兜底：万一 touchend 没触发（手势被系统吞掉），500ms 后自己聚焦
+      // 兜底：万一聚焦没成功（手势被系统吞掉），过一会儿自己再试一次
       if (this._focusTimer) clearTimeout(this._focusTimer);
-      this._focusTimer = setTimeout(() => {
-        if (this.data.qeOn && !this.data.qeFocus) this.onRowTouchend();
-      }, 500);
+      this._focusTimer = setTimeout(() => this.focusQe(), gesture ? 60 : 500);
     });
   },
 
-  /* 手指抬起后再聚焦：长按过程中就聚焦的话，抬手瞬间微信的「点到外面」会把输入框 blur 掉，
+  /* 手指抬起后再聚焦：弹出编辑器时就聚焦的话，抬手瞬间微信的「点到外面」会把输入框 blur 掉，
      表现为「一松手输入框就关了」 */
-  onRowTouchend() {
+  focusQe() {
     if (!this.data.qeOn || this.data.qeFocus) return;
     this._focusAt = Date.now();
     this.setData({ qeFocus: true });
+  },
+
+  /* 左滑某一行＝就地改这一条（复用就地编辑器：改文字 + 删除）。
+     上面还开着一条时先收起（_closeQ 会把紧随的那次 save 事件挡掉），隔一拍再弹新的——
+     否则旧输入框的失焦会把内容存到刚滑开的那条上 */
+  swipeEdit(id, txt) {
+    if (this.data.qeOn) {
+      this._closeQ();
+      if (this._openTimer) clearTimeout(this._openTimer);
+      this._openTimer = setTimeout(() => { this._openTimer = null; this._openQ(id, txt, true); }, 170);
+      return;
+    }
+    this._openQ(id, txt, true);
+  },
+
+  /* 最近里的行级手势。**只有「行尾起手 + 向左滑」才算行内动作**（改这一条）：
+     行铺满整个列表区，若把行上所有横滑都收走，「切 最近/待办/已完成」就没法触发了。
+     判成行内时才调 swipe.end 吃掉起点（列表区那次 end 就什么也拿不到）；其余情况原样不动，
+     交给列表区切三段 / 根节点切维度。纵向滑动照旧交给页面滚动（swipe 只认横向明显更大的那下） */
+  onRowTouchStart(e) { this._rowEdge = swipe.atEdge(e); swipe.start(this, e); },
+  onRowTouchCancel() { this._swX = null; this._swY = null; },
+  onRowTouchend(e) {
+    const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
+    const edge = this._rowEdge; this._rowEdge = false;
+    if (edge && ds.id != null && swipe.dir(this, e) === 'left') {
+      swipe.end(this, e);   // 这一下归行内：吃掉起点，上层那两次 end 就什么也拿不到
+      const r = (app.globalData.records || []).find(x => x.id === ds.id);
+      if (r && !this.guardEdit()) {
+        this._lpAt = Date.now();   // 刚滑过：紧跟其后的 tap（若有）不当成点选
+        // 一句话的记录（待办 / 随记）就地改；字段多的维度（觉察 / 此刻 / 可做）就地改不下，进记卡
+        if (store.isTask(r.m) || r.m === 'jot') this.swipeEdit(ds.id, r.txt || '');
+        else this.editInCard(r);
+      }
+      return;
+    }
+    this.focusQe();
+  },
+
+  /* 左滑「字段多的记录」＝进记卡完整编辑（与从操作条点「改」同一条路） */
+  editInCard(r) {
+    app.globalData.editRec = store.decorate(r);
+    this.checkEdit();   // 进入编辑态后由 checkEdit 统一滚回顶部
+    this.recompute();
   },
 
   /* 组件派发 save：失焦 / 键盘「完成」/ 点「保存」都走这里；改空或没改动则不落云 */
@@ -885,7 +1121,7 @@ Page({
     if (!id || !this.data.qeOn) return;
     const txt = ((e.detail && e.detail.value) || '').trim();
     const r = (app.globalData.records || []).find(x => x.id === id);
-    if (!r || !store.isTask(r.m) || !txt || txt === r.txt) { this._closeQ(); return; }
+    if (!r || (!store.isTask(r.m) && r.m !== 'jot') || !txt || txt === r.txt) { this._closeQ(); return; }
     r.txt = txt;
     store.updateRecord(r).catch(() => {});
     this._closeQ();
@@ -910,11 +1146,11 @@ Page({
     });
   },
 
-  /* 就地编辑里的「删除」：删掉这条待办，并给出撤销机会（复用底部撤销条） */
+  /* 就地编辑里的「删除」：删掉这条待办 / 随记，并给出撤销机会（复用底部撤销条） */
   onQDel() {
     const r = (app.globalData.records || []).find(x => x.id === this.data.qeId);
     this._closeQ();
-    if (!r || !store.isTask(r.m)) return;
+    if (!r || (!store.isTask(r.m) && r.m !== 'jot')) return;
     this._delRec(r);
   },
 
@@ -936,15 +1172,22 @@ Page({
     const id = this.data.recSel; if (id == null) return;
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r) return;
-    // 待办（备忘 / 购物）：放弃 / 恢复只动状态与时间，不进编辑态（完成仍走条目上的勾选框）；
+    // 待办（备忘 / 购物）：恢复只动状态与时间；**放弃要填原因**，所以与「改」一样进记卡回显这一条
+    //   （保存修改时才真的落「已放弃」与时间，取消则什么都不变）；完成仍走条目上的勾选框。
     //   改 / 删除照常走下面的统一分支——之前这里把 edit / del 也一并 return 掉了，
     //   于是操作条上的「改」「删除」点了没反应（清单页是好的，只有记页 / 看页这样）
     if (store.isTask(r.m) && (type === 'abandon' || type === 'restore')) {
-      if (type === 'abandon') { r.status = 'abandon'; r.abandonedAt = Date.now(); }
-      else { r.status = ''; r.abandonedAt = 0; }
-      store.updateRecord(r).catch(() => {});
+      if (type === 'restore') {
+        r.status = ''; r.abandonedAt = 0;
+        store.updateRecord(r).catch(() => {});
+        this.setData({ recSel: null, recSelRec: null });
+        this.recompute();
+        return;
+      }
+      app.globalData.editRec = r;
+      app.globalData.editAbandon = true;
       this.setData({ recSel: null, recSelRec: null });
-      this.recompute();
+      this.checkEdit(); this.recompute();
       return;
     }
     if (type === 'start' || type === 'complete' || type === 'abandon') {

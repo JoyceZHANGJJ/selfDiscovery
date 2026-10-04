@@ -4,10 +4,11 @@
    否则 .app 只有固定一屏高，滚出一屏后页面底色露白、背景分层 */
 .app { position: static; min-height: 100vh; display: block; }
 .screen { height: auto; }
-/* 左右滑动切维度时时间线长短会变（全部 / 觉察 / 此刻 / 可做 / 待办 / 随记）：
-   给内容一个最小高度——短的那份也留出可滚动的余量，页面高度差也被收住
-   （不然短维度整页刚好装下就滑不动、停在底部时还会被拉回去，看着像整页在跳） */
-.body { min-height: calc(100vh + 60px); }
+/* 切维度 / 换二级筛（喜恶、类别、状态）时时间线长短会变：给内容一个最小高度，
+   短的那份也留出可滚动的余量，页面高度差被收住（不然停在底部会被拉回去，看着像跳）。
+   余量要盖住「二级筛那一行以上的高度」——换筛时会把它顶到屏幕顶部，
+   页面滚不了那么远就会被夹住、退回显示标题（记录少的筛选项最容易撞上） */
+.body { min-height: calc(100vh + 420px); }
 
 /* 首屏骨架屏占位（动画与尺寸沿用 app.wxss 的 .sk* 系列，这里只压一下搜索框那条的高度） */
 .skpage { padding-top: 2px; }
@@ -21,8 +22,9 @@
 /* 上拉加载更多 */
 .loadmore { text-align: center; color: var(--ink4); font-size: 12px; padding: 14px 0 24px; }
 
-/* 看页待办只作概览：列表下方给一个「去清单页管理」入口 */
-.tolist-link { font-size: 12.5px; color: var(--accent); text-align: right; padding: 8px 2px 2px; }
+/* 看页待办只作概览：标题行右端给一个「去清单页管理」入口（与左边的「待办」标题同一行）。
+   padding-top 16px 是跟着 .sect-t 的上边距走的：这样入口的文字与标题的文字在同一水平线上 */
+.tolist-link { font-size: 12.5px; color: var(--accent); text-align: right; padding: 16px 0 2px 6px; }
 
 /* 在做 / 来自 标签 */
 .tag.doing { font-size: 11px; color: #fff; background: #C0A05A; padding: 1px 7px; border-radius: 999px; margin-right: 6px; line-height: 1.5; }

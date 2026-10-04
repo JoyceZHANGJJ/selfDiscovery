@@ -7,7 +7,10 @@ Component({
       value: null,
       observer() { this.compute(); }
     },
-    visible: { type: Boolean, value: false }
+    visible: { type: Boolean, value: false },
+    // 距底部的距离（可选）：不传就用 wxss 里的默认值（抬到 tab 栏之上）；
+    // 没有 tab 栏的页面（清单页）传一个小值，让条子真正贴底
+    bottom: { type: String, value: '' }
   },
   data: {
     title: '',

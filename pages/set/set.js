@@ -35,7 +35,12 @@ Page({
     quickOpts: [],     // 快捷创建可勾选的类别（待办类别 + 随记类别），每项带 on 标记
     quickCount: 0,     // 已勾选数量（显示成 N/上限）
     quickMax: store.QUICKCATS_MAX,   // 上限（store 里单一来源，不写死）
-    _selKeys: []       // 已勾选的 key 有序列表（todo:<类别> / jot:<类别>）
+    _selKeys: [],      // 已勾选的 key 有序列表（todo:<类别> / jot:<类别>）
+    themeOpts: [],     // 主题表：每项 k / n / c（主色）/ on（当前）/ fav（常用）
+    themeName: '',     // 当前主题的中文名（设置页那一行显示）
+    favCount: 0,       // 常用主题已勾数量
+    favMax: store.FAVTHEMES_MAX,   // 常用主题上限（store 里单一来源）
+    themeOverlay: false
   },
 
   g: null,
@@ -44,6 +49,7 @@ Page({
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, hidden: false, theme: wx.getStorageSync('theme') || 'mint' });
+    this.buildThemeOpts();   // 主题表 / 当前 / 常用：圆点那边改过主题时，切回设置页要能看到最新的
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));
       const O = app.globalData.OPT || {};
@@ -141,6 +147,51 @@ Page({
   },
   _keyToCat(k) { return k.indexOf('jot:') === 0 ? { m: 'jot', cat: k.slice(4) } : { m: 'todo', cat: k.slice(5) }; },
 
+  /* 外观 · 主题：列出主题表，标出当前主题与「常用」（右上圆点只循环常用的那几个） */
+  buildThemeOpts() {
+    const fav = store.getFavThemes();
+    const cur = store.curTheme();
+    const themeOpts = store.themeList().map(t => {
+      const v = (store.themeOf(t.k).vars || {});
+      return { k: t.k, n: t.n, c: v.accent || '', on: t.k === cur, fav: fav.indexOf(t.k) >= 0 };
+    });
+    this.setData({ themeOpts, favCount: fav.length, themeName: store.themeOf(cur).n });
+  },
+  openTheme() { this.buildThemeOpts(); this.setData({ themeOverlay: true }); this.setTabBarHidden(true); },
+  closeTheme() { this.setData({ themeOverlay: false }); this.setTabBarHidden(false); },
+  // 点色点＝切到这个主题：写存储 + 本页变量 + tabBar，其它页下次 onShow 自动跟上
+  onThemePick(e) {
+    const k = e.currentTarget.dataset.k;
+    if (!k || k === store.curTheme()) return;
+    wx.setStorageSync('theme', k);
+    this.setData({
+      theme: k, themeStyle: store.themeStyle(k), themeName: store.themeOf(k).n,
+      themeOpts: this.data.themeOpts.map(o => Object.assign({}, o, { on: o.k === k }))
+    });
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ theme: k });
+    const sw = this.selectComponent('#themeSw');   // 右上圆点的名称也跟着换
+    if (sw && sw.applyTheme) sw.applyTheme();
+    wx.showToast({ title: store.themeOf(k).n, icon: 'none', duration: 600 });
+  },
+  // 勾「常用」＝加入 / 移出右上圆点的循环，最多 FAVTHEMES_MAX 个。
+  // 取消勾选不会改当前主题：就算当前这个不再常用，圆点下次也是从第一个常用主题接着走
+  onFavToggle(e) {
+    const k = e.currentTarget.dataset.k;
+    const fav = store.getFavThemes();
+    const i = fav.indexOf(k);
+    if (i >= 0) fav.splice(i, 1);
+    else {
+      if (fav.length >= store.FAVTHEMES_MAX) { wx.showToast({ title: '最多 ' + store.FAVTHEMES_MAX + ' 个', icon: 'none' }); return; }
+      fav.push(k);
+    }
+    const saved = store.setFavThemes(fav);
+    this.setData({
+      favCount: saved.length,
+      themeOpts: this.data.themeOpts.map(o => Object.assign({}, o, { fav: saved.indexOf(o.k) >= 0 }))
+    });
+    wx.showToast({ title: saved.length ? ('常用 ' + saved.length + ' 个') : '循环全部主题', icon: 'none', duration: 800 });
+  },
+
   /* 数据：导出 / 导入 / 清空 */
   exportText(recs) {
     const head = '# ' + (app.APP_NAME || '识己手札') + ' · 导出\n# 时间：' + fmtDay(Date.now()) + ' · 共 ' + recs.length + ' 条\n# 格式：日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）\n';
@@ -165,8 +216,8 @@ Page({
   closeImport() { this.setData({ importOverlay: false }); this.setTabBarHidden(false); },
   // 系统返回（Android 返回键 / iOS 左滑）：浮层打开时只关浮层，不退出小程序
   onBackPress() {
-    if (this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay) {
-      this.setData({ importOverlay: false, dimOverlay: false, logOverlay: false });
+    if (this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay || this.data.themeOverlay) {
+      this.setData({ importOverlay: false, dimOverlay: false, logOverlay: false, themeOverlay: false });
       this.setTabBarHidden(false);
       return true;
     }

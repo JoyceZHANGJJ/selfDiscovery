@@ -19,13 +19,23 @@ Page({
     theme: store.curTheme(),
     statusH: 20,
     themeStyle: store.themeStyle(store.curTheme()),
-    seg: 'all',            // 'all' | 'jot'（随记整段）| 'k:<待办类别>'（都来自选项池，可增删）
-    segs: [],              // 筛选行：全部 + 各待办类别 + 随记（rebuild 里按选项池生成）
-    jf: 'all',             // 随记段的二级筛选（'all' | <随记类别>），只在「随记」段里出现
-    jotKinds: [],          // 随记类别池（二级筛选行的候选项）
+    // 程序名彩蛋：与记页 / 看页同一套（按胶囊矩形定位 + 下拉逐字浮现）
+    appName: (app && app.APP_NAME) || '',
+    brandTop: 0, brandLeft: 0, brandW: 0, brandH: 0, brandChars: [], brandPlay: false,
+    // seg：'all'（全部：下分待办 / 随记，见 allKind）| 'k:<待办类别>' | 'jot'（随记）——都来自选项池，可增删
+    seg: 'all',            // 默认停在「全部」
+    allKind: 'todo',       // 「全部」下的二级筛选：'todo'（默认）| 'jot'——同一时刻只显示一种，不上下叠着
+    subs: [],              // 上面那行二级筛选的 chips（待办 / 随记）
+    segs: [],              // 一级筛选行（单行横向滚动）：全部 + 各待办类别 + 随记 + 各随记类别
+    segFade: false,        // 筛选行右侧是否还有内容（超出时给一点渐隐提示，与记卡维度行同一套）
+    segFadeL: false,       // 左侧是否有内容没露出来（往回滚过就提示，见 _applySegFade）
+    segInto: '',           // 当前选中的 chip：切段后把它滚进视野（滚出屏外的 tab 也看得见、够得着）
+    jf: 'all',             // 随记的类别筛选（'all' | <随记类别>）：点「j:<类别>」那个 chip 会选中它
+    jotOn: false,          // 这一段是否渲染随记（「随记」段、以及「全部」下的随记二级）
+    showTodo: true,         // 这一段是否渲染待办清单（「全部」下选了待办、或各待办类别段）
     // 本页只做「看与管理」：新增走右下角的「＋」球（快捷记面板）或记页，页面上不再放输入框
     show: false,
-    tit: '待办',
+    tit: '全部',
     sum: '',
     undone: [],
     jotGroups: [],         // 随记：按「随记类别」分段（段头＝类别，组内按时间倒序）
@@ -36,7 +46,7 @@ Page({
     // 各段的「显示更多」：默认只渲染最近一段，避免已完成 / 随记攒长了又长又卡。
     // 待完成 / 随记的窗口按「条」算，已完成 / 已放弃按「天」算（它们本来就按天分段）
     limU: 20, limD: 7, limA: 7, limJ: 20,
-    undoneN: 0, jotN: 0,
+    undoneN: 0,
     undoneHide: 0, doneHide: 0, abandHide: 0, jotHide: 0,
     doneDayAll: {}, abandDayAll: {},   // 某天被「展开全部」了（<天 key>: 1）
     empty: false,
@@ -55,10 +65,31 @@ Page({
 
   onShow() {
     this.ensureTheme();
+    this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 4, theme: wx.getStorageSync('theme') || 'sand' });
     }
     store.ensureAll().then(() => this.rebuild());
+  },
+
+  /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
+     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来（与记页 / 看页同一套）。
+     矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
+     会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
+  layoutBrand() {
+    const mb = ui.capsuleRect();
+    if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
+    this.setData({
+      brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
+      brandChars: String(this.data.appName || '').split('')
+    });
+  },
+
+  /* 名字露出来的这会儿，播一次逐字浮现 */
+  playBrand() {
+    this.setData({ brandPlay: true });
+    if (this._brandTimer) clearTimeout(this._brandTimer);
+    this._brandTimer = setTimeout(() => this.setData({ brandPlay: false }), 900);
   },
 
   ensureTheme() {
@@ -81,62 +112,95 @@ Page({
     const recs = app.globalData.records || [];
     const seg = this.data.seg;
     const isJot = seg === 'jot';
-    // 随记段的二级筛选：'all' 时不筛（按类别分段展示＝全部随记），选了某一类就只看这一类
+    const isAll = seg === 'all';
+    // 「全部」下再分待办 / 随记（默认待办，见 allKind）：同一时刻只渲染一种，不再把两者上下叠成一页；
+    // 「随记」段与各随记类别段同样只渲染随记
+    const showJot = isJot || (isAll && this.data.allKind === 'jot');
+    const showTodo = !showJot;
+    // 随记的类别筛选：'all' 时不筛（按类别分段展示＝全部随记），选了某一类就只看这一类
     const jcat = (isJot && this.data.jf !== 'all') ? this.data.jf : '';
     // 备忘 / 购物 合并成「待办」后，它们是同一个模块（todo）下的「类别」：按类别筛
     const cat = seg.indexOf('k:') === 0 ? seg.slice(2) : '';
     const tasks = recs.filter(r => store.isTask(r.m));
-    const list = isJot ? [] : (cat ? tasks.filter(r => store.taskCat(r) === cat) : tasks);
+    // 这一屏不渲染待办时（随记相关段）不白算待办的那几段窗口
+    const list = showTodo ? (cat ? tasks.filter(r => store.taskCat(r) === cat) : tasks) : [];
     // 注意：recVM 的产物里没有 ts / doneAt，必须在 map 之前对原始记录排序，
-    // 否则 sort 比较的全是 undefined，等于没排（已完成要按完成时间倒序，就是这个坑）
-    const undoneAll = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r));
+    // 否则 sort 比较的全是 undefined，等于没排（已完成要按完成时间倒序，就是这个坑）。
+    // 另外：先排序 → 按「显示更多」的窗口切片 → 最后才 map 成 VM；
+    // 记录多的时候（几百上千条）不要把没渲染的那些也白算一遍（不然「显示更多」会卡）
+    const undoneRaw = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0));
     const doneRecs = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = list.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
     // 已完成 / 已放弃各按「那天」分段（与看页同一套）：段头给日期，行内只写「完成 / 放弃 · HH:MM」
     const doneDays = this.groupByDay(doneRecs, r => r.doneAt || r.ts);
     const abandDays = this.groupByDay(abandRecs, r => r.abandonedAt || r.ts);
     // 随记不是待办：没有 待完成 / 已完成 / 已放弃 那套。展示按「随记类别」分段——
-    // 段头是类别、组内按记录时间倒序。所以「随记」这一段本身就是全部随记（只是分了几组），
-    // 不会漏掉任何一条；组序取选项池顺序（被删掉的老类别排在最后）。
-    // 筛到某个随记类别（j:<类别>）时就只有那一个类别，不再显示段头（标题已写明）
-    const jotRecs = isJot ? recs.filter(r => r.m === 'jot' && (!jcat || store.jotCat(r) === jcat)).sort((a, b) => (b.ts || 0) - (a.ts || 0)) : [];
+    // 段头是类别、组内按记录时间倒序，不会漏掉任何一条；组序取选项池顺序（被删掉的老类别排最后）。
+    // 「全部」下级选了随记、或进「随记」段 / 随记类别段才渲染随记。
+    // 待办与随记**不混排**（不上下叠两层），改成「全部」下的二级筛选二选一；
+    // 筛到某个随记类别时就只有那一个类别，不再显示段头（标题已写明）
+    const jotOn = showJot;
+    const jotRecs = jotOn ? recs.filter(r => r.m === 'jot' && (!jcat || store.jotCat(r) === jcat)).sort((a, b) => (b.ts || 0) - (a.ts || 0)) : [];
     const jotTotal = jotRecs.length;
     // 每段只渲染「最近一段」，其余收在「显示更多」后面（已长了的段不会一上来全铺开）
-    const undone = undoneAll.slice(0, this.data.limU);
-    const jotGroups = isJot ? this.groupJots(jotRecs, this.data.limJ, !jcat) : [];
+    const undone = undoneRaw.slice(0, this.data.limU).map(r => this.recVM(r));
+    const jotGroups = jotOn ? this.groupJots(jotRecs, this.data.limJ, !jcat) : [];
     const jotHide = jotGroups.reduce((s, g) => s + g.hide, 0);
-    const doneGroups = store.winDays(doneDays, this.data.limD, this.data.doneDayAll);
-    const abandGroups = store.winDays(abandDays, this.data.limA, this.data.abandDayAll);
+    const doneGroups = this.winGroups(doneDays, this.data.limD, this.data.doneDayAll);
+    const abandGroups = this.winGroups(abandDays, this.data.limA, this.data.abandDayAll);
 
-    const u = undoneAll.length, dn = doneRecs.length, an = abandRecs.length;
+    const u = undoneRaw.length, dn = doneRecs.length, an = abandRecs.length;
+    // 一条都没有时也给一行数量（「0 项待完成」）：这一行是小节标题下的口径说明，
+    // 空类别突然少一行会让下面几行位置跟着跳（随记那边同理，见下面的 sum）
     const sum = u
       ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
-      : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
-    // 标题：待办按类别筛时显示类别名，否则叫「待办」（不再罗列 备忘与购物——类别是可增删的）；
-    // 随记整段叫「随记」，筛到某一类时也只显示类别名（与待办同一套）
-    const tit = isJot ? (jcat || '随记') : (cat || '待办');
-    // 筛选行：全部 + 各待办类别 + 随记（实时取选项池，「✎ 管理」里加新类别后自动多一项）。
-    // 随记下的「念头 / 灵感」不放这里，而是随记段里单独一行二级筛选（见 jotKinds）
-    const segs = [{ k: 'all', n: '全部', c: '' }]
-      .concat(store.getOPT('todoKind').map(v => ({ k: todoSeg(v), n: v, c: store.catColor(v) })))
-      .concat([{ k: 'jot', n: '随记', c: store.mcolor('jot') }]);
+      : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '0 项待完成');
+    // 标题：「全部」段用页名「待办 · 随记」（这一屏只看其中一种，靠下面的二级筛选换）；
+    // 待办按类别筛时显示类别名，随记段叫「随记」，筛到某一类时只显示类别名（与待办同一套）
+    const tit = isAll ? '待办 · 随记' : (isJot ? (jcat || '随记') : (cat || '待办'));
+    // 「全部」下的二级筛选：待办（默认）/ 随记——只有一级段是「全部」时才出现，
+    // 点一下只换这一屏渲染哪一种，一级段不动
+    const subs = [
+      { k: 'todo', n: '待办', c: store.mcolor('todo'), on: this.data.allKind !== 'jot' },
+      { k: 'jot', n: '随记', c: store.mcolor('jot'), on: this.data.allKind === 'jot' }
+    ];
+    // 一级筛选行（单行横向滚动，超出时给渐隐提示，与记卡维度行同一套）：
+    // 全部 + 各待办类别 + 随记 + 各随记类别——随记的类别直接排在待办类别后面；
+    // 点一个随记类别＝切到「随记」段并只看这一类。实时取选项池，加新类别后自动多一项
+    const segs = [{ k: 'all', n: '全部', c: '', on: isAll }]
+      .concat(store.getOPT('todoKind').map(v => {
+        const k = todoSeg(v);
+        return { k, n: v, c: store.catColor(v), on: seg === k };
+      }))
+      .concat([{ k: 'jot', n: '随记', c: store.mcolor('jot'), on: isJot && this.data.jf === 'all' }])
+      .concat((store.getOPT('jotKind') || []).map(v => ({
+        k: 'j:' + v, n: v, c: store.jotColor(v), on: isJot && this.data.jf === v
+      })));
+    // 切段后把选中的 chip 滚进视野：这一行是横向滚动的，滑到后面的段时
+    // 对应的 chip 可能还在屏外——不滚过去就会「看不见、够不着」，像滑不过去
+    const cur = segs.findIndex(s => s.on);
     this.setData({
-      show: isJot ? jotTotal > 0 : list.length > 0,
-      tit, sum: isJot ? (jotTotal ? jotTotal + ' 条' : '') : sum,
+      // seg / jf / allKind 与数量同一次下发：见 onSeg 的说明
+      seg: this.data.seg, jf: this.data.jf, allKind: this.data.allKind,
+      show: showJot ? jotTotal > 0 : list.length > 0,
+      showTodo, jotOn, subs,
+      tit, sum: showJot ? (jotTotal + ' 条') : sum,   // 空类别也给「0 条」（同上）
       undone, doneGroups, abandGroups, jotGroups, segs,
-      jotKinds: store.getOPT('jotKind') || [],
-      undoneN: u, doneN: dn, abandN: an, jotN: jotTotal,
+      segInto: cur >= 0 ? 'seg' + cur : '',
+      undoneN: u, doneN: dn, abandN: an,
       undoneHide: Math.max(0, u - undone.length),
       doneHide: Math.max(0, doneDays.length - doneGroups.length),
       abandHide: Math.max(0, abandDays.length - abandGroups.length),
       jotHide,
-      empty: isJot ? jotTotal === 0 : list.length === 0,
-      emptyText: isJot ? (jcat ? '这个类别还没有随记' : '还没有随记') : '还没有备忘或购物记录'
-    });
+      empty: showJot ? jotTotal === 0 : list.length === 0,
+      emptyText: showJot ? (jcat ? '这个类别还没有随记' : '还没有随记')
+        : (cat ? '这个类别还没有记录' : '还没有待办记录')
+    }, () => this.checkSegFade());
   },
 
   /* 各段的「显示更多」：u 待完成 / d 已完成（天）/ a 已放弃（天）/ j 随记 */
   onMore(e) {
+    if (this.guardEdit()) return;
     const k = this._detailOr(e, 'k');
     const patch = {};
     if (k === 'u') patch.limU = this.data.limU + 20;
@@ -148,6 +212,7 @@ Page({
   },
   /* 某一天「展开全部 / 收起」（这天超过 20 条时才有入口） */
   onDayMore(e) {
+    if (this.guardEdit()) return;
     const k = String(this._detailOr(e, 'k'));   // 天的 key（0 点时间戳，字符串）
     const w = this._detailOr(e, 'w');   // d 已完成 | a 已放弃
     const which = w === 'a' ? 'abandDayAll' : 'doneDayAll';
@@ -157,15 +222,20 @@ Page({
     this.setData(patch, () => this.rebuild());
   },
 
-  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签
+  // 按「某一天」把记录分段（已完成按完成时间、已放弃按放弃时间）：段头用时间线同款日标签。
+  // 只分组、不 map 成 VM——窗口外那些天不用白算（见 winGroups）
   groupByDay(recs, tsOf) {
     const map = {}, order = [];
     recs.forEach(r => {
       const k = date.dayStart(tsOf(r));
       if (!map[k]) { map[k] = { key: k, day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
-      map[k].recs.push(this.recVM(r));
+      map[k].recs.push(r);
     });
     return order.map(k => map[k]);
+  },
+  /* 「按天分段 + 显示更多窗口」：只把窗口里真正要渲染的那几条 map 成 VM（窗口规则见 store.winDays） */
+  winGroups(days, lim, dayAll) {
+    return store.winDays(days, lim, dayAll).map(g => Object.assign({}, g, { recs: g.recs.map(r => this.recVM(r)) }));
   },
 
   /* 随记按「随记类别」分段：段头用日标签那套（.daylab，时间线轴线因此照常对齐），
@@ -193,30 +263,97 @@ Page({
     });
   },
 
+  /* 筛选行：'all'（待办全部）/ 'k:<待办类别>' / 'jot'（随记全部）/ 'j:<随记类别>'（切到随记段并筛这一类） */
   onSeg(e) {
-    this.data.seg = e.currentTarget.dataset.s;
-    // 换段时随记的二级筛选归零：它只属于「随记」那一段
-    this.data.jf = 'all';
-    this.setData({ seg: this.data.seg, jf: 'all' });
+    if (this.guardEdit()) return;   // 就地编辑中：点 chip 切段也拦下（滑动那条见 stepDim）
+    const k = e.currentTarget.dataset.s || 'all';
+    const isJotCat = k.indexOf('j:') === 0;
+    this.data.seg = isJotCat ? 'jot' : k;
+    this.data.jf = isJotCat ? k.slice(2) : 'all';   // 换段时随记的类别筛选归零（它只属于随记段）
+    // 「全部」每次进来都回到默认的「待办」二级（不记住上次选的）；切段还把待办清单的
+    // 折叠态归位——由 todo-list 的 foldKey 变化触发：第一个「待完成」展开、其余收起
+    this.data.allKind = 'todo';
+    // 这里只清选中态；seg / jf / allKind **不单独下发**——它们要和数量在同一次 setData 里到组件，
+    // 折叠归位才能拿到与这个段一致的数量（分两次下发会先按上一个段的数量归位：比如切到
+    // 「只有已完成」的类别，会先按旧段的「有待完成」展开待完成，而这一段待完成是 0，
+    // 结果三段全收起、什么都不展开，见 todo-list 的 observers）
+    this.setData({ sel: null, selRec: null });
     this.rebuild();
-    // 换段后把这一段标题对齐到屏幕顶部（像切 tab 那样主动滚一下）：
-    // 各段的列表长短差很多，不主动对齐就会被浏览器被动拉回，看着像整页在跳
-    ui.alignTop(this, '#blk-title');
+    // 这里**不主动滚动**：滑动切段只是换这一段的列表，页面停在你滑到的位置。
+    // 之前会对齐到标题，从页顶切段时整块顶部会被往下推约一节（看着像页面自己跳了一下）；
+    // 短段的内容变少时浏览器仍会把滚动位置夹回来，那是内容变短的必然反应（已被 .body 的最小高度收窄）
   },
-  // 随记 · 二级筛选：全部 / 各随记类别（数据都在本地，不用重拉）
-  onJotFilter(e) {
-    this.data.jf = e.currentTarget.dataset.k || 'all';
-    this.setData({ jf: this.data.jf, sel: null, selRec: null });
-    this.rebuild();
-    ui.alignTop(this, '#blk-jotfilters');
+  /* 「全部」下的二级筛选：待办 / 随记（默认待办）。只换这一屏渲染哪一种，
+     一级段仍是「全部」（筛选行里那个 chip 继续亮着） */
+  onAllKind(e) {
+    if (this.guardEdit()) return;
+    const k = e.currentTarget.dataset.k === 'jot' ? 'jot' : 'todo';
+    if (k === this.data.allKind) return;
+    this.data.allKind = k;   // 与 rebuild 的数据一起下发（理由同 onSeg）
+    this.setData({ sel: null, selRec: null });
+    this.rebuild();   // 同样不主动滚动（理由见 onSeg）
   },
-  /* 左右滑动切筛选段（全部 / 各待办类别 / 随记）：向左滑下一个，向右滑上一个 */
+  /* 筛选行「可滚动」渐隐提示：只有 chips 真的超出、且右侧还有内容时才显示（与记卡维度行同一套） */
+  checkSegFade() {
+    const q = wx.createSelectorQuery().in(this);
+    q.select('.tagrow-scroll').boundingClientRect();
+    q.select('.tagrow-scroll').scrollOffset();
+    q.selectAll('.ft').boundingClientRect();
+    q.exec(res => {
+      const box = res[0], off = res[1], items = res[2] || [];
+      if (!box) return;
+      let content = (off && off.scrollWidth) || 0;
+      // 兜底：个别基础库上 scrollWidth 拿不到，就用最后一个 chip 的右边界推算内容宽度
+      if (!content && items.length) {
+        const right = items.reduce((m, it) => Math.max(m, it.right), 0);
+        content = right - box.left;
+      }
+      this._segW = { box: box.width, content };
+      this._applySegFade((off && off.scrollLeft) || 0);
+    });
+  },
+  _applySegFade(left) {
+    // 左侧：只要往回滚过（左边还有没露出来的 chip）就提示。这一条不依赖内容宽度，
+    // 所以放在前面先算，免得首屏还没量完宽度时左侧少了提示
+    const l = left > 1;
+    if (l !== this.data.segFadeL) this.setData({ segFadeL: l });
+    const w = this._segW;
+    if (!w) return;
+    // 右侧：超出 + 右侧还有没露出来的内容 → 才提示；滚到底就收起来
+    const fade = w.content > w.box + 1 && left + w.box < w.content - 1;
+    if (fade !== this.data.segFade) this.setData({ segFade: fade });
+  },
+  onSegScroll(e) { this._applySegFade((e.detail && e.detail.scrollLeft) || 0); },
+  /* 左右滑动切筛选段（全部 / 各待办类别 / 随记）：向右滑上一个、向左滑下一个。
+     例外：**行尾起手的左滑归行内**（＝就地改这一条，见 onRowSwipe / onRowTouchend）——
+     那一下不能再切段，否则「改」和「切段」会一起触发。所以这里延后一拍再切，
+     行内动作一到就把它撤掉（不依赖事件先后：组件派发的事件与根节点原生事件的顺序没法保证） */
   onSwipeStart(e) { swipe.start(this, e); },
-  onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
+  onSwipeEnd(e) {
+    const d = swipe.end(this, e);
+    if (!d) return;
+    // 在筛选行上起手的横滑＝滚 chips（scroll-view 自己处理）：这一下不当切段，
+    // 否则会一边滚 chip 一边换段。按**起点所在节点**判断（id 都以 seg 开头），
+    // 不依赖事件先后：同一手势的 touchstart/touchend 一定落在同一个节点上
+    const tid = (e && e.target && e.target.id) || '';
+    if (tid.indexOf('seg') === 0) { this._rowActAt = 0; return; }
+    // 切段延后一拍再做：行内左滑（组件派发的事件）与这次原生事件的先后没法保证，
+    // 它一到就把这次切段取消掉——这样「改」和「切段」不会同时发生
+    if (this._segTimer) clearTimeout(this._segTimer);
+    this._segTimer = setTimeout(() => {
+      this._segTimer = null;
+      if (this._rowActAt && Date.now() - this._rowActAt < 400) { this._rowActAt = 0; return; }
+      this.stepDim(d);
+    }, 60);
+  },
+  /* 行内动作（左滑就地改）一到就把可能还在排队的「切段」撤掉 */
+  _cancelSeg() { if (this._segTimer) { clearTimeout(this._segTimer); this._segTimer = null; } },
   stepDim(dir) {
     if (this.data.editing) return;   // 就地编辑中不切
     const segs = this.data.segs || [];
-    const i = segs.findIndex(s => s.k === this.data.seg);
+    // 以「当前选中的 chip」为起点（而不是段名）：随记类别选中的是 'j:<类别>'，段名却是 'jot'，
+    // 按段名找会退回到「随记」那一格，滑动时前后就错位了
+    const i = segs.findIndex(s => s.on);
     if (i < 0) return;
     const ni = dir === 'left' ? i + 1 : i - 1;
     if (ni < 0 || ni >= segs.length) return;
@@ -226,6 +363,7 @@ Page({
      勾选框是「完成」（catchtap 单独处理），点条目的其它地方才是次级操作，两者互不干扰 */
   onRecTap(e) {
     if (this._lpAt && Date.now() - this._lpAt < 400) return;   // 长按刚触发过，忽略随之而来的点击
+    if (this.guardEdit()) return;   // 就地编辑中：不选中其它条（不然操作条会跟编辑器叠在一起）
     const id = this._id(e);
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
@@ -235,35 +373,49 @@ Page({
   /* 操作条统一入口（与记 / 看页共用 rec-actions 组件）：待办用 放弃 / 恢复 / 改 / 删；
      随记没有状态与完成，所以只有 改 / 删（那套流转按钮本来也不会渲染） */
   onRecAction(e) {
+    if (this.guardEdit()) return;   // 就地编辑中：不允许对其它条做流转 / 改 / 删
     const type = e.detail.type;
     const id = this.data.sel; if (id == null) return;
     const r = this.findRec(id);
     if (!r) return;
     if (r.m === 'jot') {
-      if (type === 'edit') { this.setData({ sel: null, selRec: null }); this._openEdit(id, r.txt || ''); return; }
+      if (type === 'edit') { this.editInCard(r); return; }
       if (type === 'del') { this.setData({ sel: null, selRec: null }); this._del(r); }
       return;
     }
     if (!store.isTask(r.m)) return;
     if (type === 'abandon') {
-      r.status = 'abandon'; r.abandonedAt = Date.now();
-      store.updateRecord(r).catch(() => {});
-      this.setData({ sel: null, selRec: null });
-      this.rebuild();
+      // 放弃要填原因：走「改」那条路进记卡回显这一条，并聚焦「放弃原因」输入框
+      //（保存修改时才落状态与时间，取消则什么都不变）
+      app.globalData.editAbandon = true;
+      this.editInCard(r);
       return;
     }
     if (type === 'restore') {
       r.status = ''; r.abandonedAt = 0;
+      // 恢复后「放弃原因」不再成立：顺手清掉（与记页同一处理），免得留在记录里
+      const es = r.extSrc || [], ex = r.ext || [], keep = [];
+      for (let i = 0; i < es.length; i++) { if (es[i] === 'free:abandonWhy') continue; keep.push(i); }
+      r.extSrc = keep.map(i => es[i]); r.ext = keep.map(i => ex[i]);
       store.updateRecord(r).catch(() => {});
       this.setData({ sel: null, selRec: null });
       this.rebuild();
       return;
     }
-    if (type === 'edit') { this.setData({ sel: null, selRec: null }); this._openEdit(id, r.txt || ''); return; }
+    if (type === 'edit') { this.editInCard(r); return; }
     if (type === 'del') { this.setData({ sel: null, selRec: null }); this._del(r); }
+  },
+  /* 操作条上的「改」＝进记卡完整编辑（会回显这一条的类别 / 原因 / 类别等，改的是同一条记录）。
+     一句话的快速改写走「行尾左滑」（就地编辑器），两者分工。
+     注意：记页是 tab 页，只能 switchTab 过去——清单页会被关掉，回来时长按「＋」球即可 */
+  editInCard(r) {
+    app.globalData.editRec = store.decorate(r);
+    this.setData({ sel: null, selRec: null });
+    wx.switchTab({ url: '/pages/index/index' });
   },
 
   onCheck(e) {
+    if (this.guardEdit()) return;   // 就地编辑中：不让勾选改写数据（可能与正在编辑的那条重叠）
     const id = this._id(e);
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r || !store.isTask(r.m)) return;
@@ -272,13 +424,32 @@ Page({
     this.rebuild();
   },
 
-  /* 页面级下拉刷新入口（原生下拉回弹，与记页一致） */
-  onPullDownRefresh() { this.onRefresh(); },
+  /* 页面级下拉刷新入口（原生下拉回弹，与记页一致）；
+     下拉时程序名正好从胶囊后露出来，顺手播一次逐字浮现 */
+  onPullDownRefresh() {
+    this.layoutBrand();   // 露出来之前再确认一次位置（万一首次没取到胶囊矩形）
+    this.playBrand();
+    this.onRefresh();
+  },
 
   /* 悬浮球「＋」快捷记下一条（待办 / 随记）后：立刻重排列表 */
   onQuickTodo() { this.rebuild(); },
 
+  /* ---------------- 编辑态锁定 ----------------
+     就地编辑（inline-editor）开着时，只允许：改这一条 / 保存 / 删除。其余入口一律拦下并提示，
+     因为切段、二级筛选、显示更多、展开某天、勾选完成、选中其它条出操作条、撤销删除、下拉刷新、
+     切主题……都会 rebuild 或改写数据：正在编辑的那一行从 DOM 里消失，绝对定位的编辑器变成孤儿；
+     左滑另一条更会直接丢掉未保存的文本。
+     与记页的 guardEdit 同一套口径（见 pages/index/index.js）。 */
+  guardEdit() {
+    if (!this.data.editing) return false;
+    if (wx.hideToast) wx.hideToast();   // 连续点击时先收掉上一条，否则新提示不弹
+    wx.showToast({ title: '请先保存修改或取消', icon: 'none', duration: 800 });
+    return true;
+  },
+
   onRefresh() {
+    if (this.guardEdit()) return;   // 就地编辑中：下拉刷新会整表重建，未保存的文本会丢
     store.loadRecords().then(list => {
       app.globalData.records = list;
       wx.stopPullDownRefresh();
@@ -295,19 +466,30 @@ Page({
   _id(e) { return (e.detail && e.detail.id != null) ? e.detail.id : e.currentTarget.dataset.id; },
   _detailOr(e, key) { return (e.detail && e.detail[key] != null) ? e.detail[key] : e.currentTarget.dataset[key]; },
 
-  /* 长按某条待办 / 随记：先量好位置再显示，避免编辑器先闪一下上一次的位置 */
+  /* 长按某条待办 / 随记＝复制这句话（改 / 删走「点一下出操作条」或「左滑直接改」） */
   onLongPress(e) {
+    if (this.guardEdit()) return;   // 与记页口径一致：编辑态下连复制也先让位
     const id = this._id(e);
     const r = this.findRec(id);
     if (!r || !canList(r.m)) return;
     this._lpAt = Date.now();     // 长按之后紧跟的那次点击要忽略，否则会立刻弹出操作条
-    this.setData({ sel: null, selRec: null });
-    this._openEdit(id, r.txt || '');
+    this.copyRec(r);
+  },
+  /* 把一条记录放进剪贴板：只复制那一句话本身 */
+  copyRec(r) {
+    const txt = r.txt || '';
+    if (!txt) return;
+    wx.setClipboardData({
+      data: txt,
+      success: () => { if (wx.vibrateShort) wx.vibrateShort(); },
+      fail: () => wx.showToast({ title: '没复制上，再试一次', icon: 'none' })
+    });
   },
 
   /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器：
-     编辑器做成和卡片同尺寸盖上去（同内边距/圆角/边框），页面滚动时跟着原行走 */
-  _openEdit(id, txt) {
+     编辑器做成和卡片同尺寸盖上去（同内边距/圆角/边框），页面滚动时跟着原行走。
+     gesture=true（行尾左滑触发）时手指正好在抬起，聚焦隔一拍再做，免得被微信当成「点到外面」 */
+  _openEdit(id, txt, gesture) {
     const comp = this.selectComponent('#todoList');
     const q = wx.createSelectorQuery();
     q.selectViewport().scrollOffset();
@@ -325,20 +507,50 @@ Page({
         },
         edId: id, edTxt: txt, editing: true, edFocus: false
       });
-      // 兜底：万一 touchend 没触发（手势被系统吞掉），500ms 后自己聚焦
+      // 兜底：万一聚焦没成功（手势被系统吞掉），过一会儿自己再试一次
       if (this._focusTimer) clearTimeout(this._focusTimer);
       this._focusTimer = setTimeout(() => {
-        if (this.data.editing && !this.data.edFocus) this.onRowTouchend();
-      }, 500);
+        if (this.data.editing && !this.data.edFocus) this.focusEd();
+      }, gesture ? 60 : 500);
     });
   },
 
-  /* 手指抬起后再聚焦：长按过程中就聚焦的话，抬手瞬间微信的「点到外面」会把输入框 blur 掉，
+  /* 手指抬起后再聚焦：弹出编辑器时就聚焦的话，抬手瞬间微信的「点到外面」会把输入框 blur 掉，
      表现为「一松手输入框就关了」 */
-  onRowTouchend() {
+  focusEd() {
     if (!this.data.editing || this.data.edFocus) return;
     this._focusAt = Date.now();
     this.setData({ edFocus: true });
+  },
+
+  /* 行级手势：随记行在本页，待办行在 todo-list 组件里（组件判完横滑派发 swipeleft）。
+     **只有「行尾起手的左滑」＝就地改这一条**；其它方向、其它位置（含行中间往左）都放过，
+     交给根节点切段——行铺满整屏，不划这条界线上层手势就没法触发。
+     随记行在本页判、判成行内时才吃掉起点；待办行的行尾左滑由组件报回来（见 onRowSwipe） */
+  onRowTouchStart(e) { this._rowEdge = swipe.atEdge(e); swipe.start(this, e); },
+  onRowTouchCancel() { this._swX = null; this._swY = null; },
+  onRowTouchend(e) {
+    const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
+    const edge = this._rowEdge; this._rowEdge = false;
+    if (edge && ds.id != null && swipe.dir(this, e) === 'left') {
+      swipe.end(this, e);   // 这一下归行内：吃掉起点，根节点那一次 end 就什么也拿不到
+      this.onRowSwipe({ detail: { id: ds.id } });
+      return;
+    }
+    this.focusEd();
+  },
+  /* 左滑某一行＝就地改这一条（这里只改「这一句话」；类别 / 原因仍在记页的记卡里改）。
+     上面还开着一条时先收起（_closeEdit 会把紧随的那次 save 事件挡掉），隔一拍再弹新的 */
+  onRowSwipe(e) {
+    if (this.guardEdit()) return;   // 正在编辑另一条：先处理它（原来这里直接收起，未保存的文本就丢了）
+    const id = this._id(e);
+    const r = this.findRec(id);
+    if (!r || !canList(r.m)) return;
+    this._lpAt = Date.now();     // 刚滑过：紧跟其后的 tap（若有）不当成点选
+    this._rowActAt = Date.now(); // 这一次滑动归行内：根节点那次不要再切段（见 onSwipeEnd）
+    this._cancelSeg();           // 已经排队的那次切段也撤掉（事件先后不定，两边都兜住）
+    this.setData({ sel: null, selRec: null });
+    this._openEdit(id, r.txt || '', true);
   },
 
   /* 保存：失焦 / 键盘「完成」/ 点「保存」由组件派发 save；改空或没改动则不落云 */
@@ -394,6 +606,9 @@ Page({
   },
 
   /* 点到页面其它地方：操作条与删除撤销条都收起（与记 / 看页一致：不是浮层本身的点击都收起） */
+  /* 主题切换在编辑态被锁（与记页 onLocked 一致） */
+  onLocked() { this.guardEdit(); },
+
   onBodyTap() {
     const patch = {};
     if (this.data.sel != null) { patch.sel = null; patch.selRec = null; }
@@ -410,6 +625,7 @@ Page({
 
   /* 撤销删除：把记录原样加回来 */
   onUndoDel() {
+    if (this.guardEdit()) return;
     const u = this.data.delUndo; if (!u) return;
     this._stopDelTimer();
     const d = u.dump;
