@@ -5,6 +5,7 @@
 //   （只看 觉察 / 此刻 / 可做；待办 / 随记不算可回看的"内容主题"）
 // · 周 / 月：按自然周 / 自然月出的复盘报告（本期 vs 上期），回答"这段时间怎么样"。
 const store = require('../../utils/store.js');
+const ui = require('../../utils/ui.js');
 const swipe = require('../../utils/swipe.js');
 const date = require('../../utils/date.js');
 const app = getApp();
@@ -65,6 +66,9 @@ Page({
     theme: 'mint',
     statusH: 20,
     themeStyle: store.themeStyle('mint'),
+    // 程序名彩蛋：与记 / 看 / 清单 同一套（按胶囊矩形定位 + 下拉逐字浮现）
+    appName: (app && app.APP_NAME) || '',
+    brandTop: 0, brandLeft: 0, brandW: 0, brandH: 0, brandChars: [], brandPlay: false,
     view: 'week',        // week | month | all（主题档案）
     // —— 周 / 月复盘 ——
     offset: 0,
@@ -75,22 +79,44 @@ Page({
     docLimit: 20,
     docs: [],            // 当前展示的档案
     docTotal: 0,
-    docHead: '',
-    refreshing: false
+    docHead: ''
   },
   _docs: [],             // 全量档案（不塞进 data，避免 setData 过大）
 
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
+    this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(() => this.build());
+  },
+
+  /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
+     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来（与记 / 看 / 清单 同一套）。
+     矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
+     会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
+  layoutBrand() {
+    const mb = ui.capsuleRect();
+    if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
+    this.setData({
+      brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
+      brandChars: String(this.data.appName || '').split('')
+    });
+  },
+
+  /* 名字露出来的这会儿，播一次逐字浮现 */
+  playBrand() {
+    this.setData({ brandPlay: true });
+    if (this._brandTimer) clearTimeout(this._brandTimer);
+    this._brandTimer = setTimeout(() => this.setData({ brandPlay: false }), 900);
   },
 
   /* 切到其它 tab 再切回来（或首次进入）：整页回到顶部 */
   scrollToTop() {
     wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
+  /* 再点一次底部「回看」：整页回到顶部（与记 / 看 同一套） */
+  onTabReselect() { this.scrollToTop(); },
 
   /* 切换 tab 进入本页：恢复初始状态（回到「周」视图、本期、默认排序），并回顶 */
   resetToInitial() {
@@ -242,7 +268,8 @@ Page({
       { n: days, l: '活跃天数', s: '', cls: '' }
     ];
 
-    // 各维度条数 + 与上期的增减（条宽按本期最大值归一）
+    // 各维度条数 + 与上期的增减（条宽按本期最大值归一）：按维度整体统计（待办 / 随记各算一条）；
+    // 要看它们各自的类别分布，看下面的「记得最多的」
     const raw = store.MODULES.map(m => {
       const v = c.filter(r => r.m === m.k).length;
       const p = pv.filter(r => r.m === m.k).length;
@@ -270,9 +297,27 @@ Page({
       list.forEach(r => { const t = r.txt || '（未填）'; acc[t] = (acc[t] || 0) + 1; });
       return Object.keys(acc).sort((a, b) => acc[b] - acc[a]).slice(0, 3).map(t => ({ t, n: acc[t] }));
     };
-    const tops = store.MODULES
-      .map(m => ({ n: m.n, c: m.c, items: topN(c.filter(r => r.m === m.k)) }))
-      .filter(g => g.items.length);
+    // 待办 / 随记展示「类别 + 条数」：它们的主项只是一句话（按内容排没有意义），
+    // 真正想看的是这段时间哪一类记得最多（备忘 5 / 购物 3、念头 4 / 灵感 1）。
+    // 条数从多到少排，没归到任何类别的收在「未分类」，各类别带自己的色点
+    const topCat = (list, catOf, colorOf) => {
+      const acc = {};
+      list.forEach(r => {
+        const k = catOf(r) || '';
+        if (!acc[k]) acc[k] = { t: k || '未分类', n: 0, c: k ? colorOf(k) : '' };
+        acc[k].n++;
+      });
+      return Object.keys(acc).map(k => acc[k]).sort((a, b) => b.n - a.n);
+    };
+    const tops = [];
+    store.MODULES.forEach(m => {
+      const items = store.isTask(m.k)
+        ? topCat(c.filter(r => store.isTask(r.m)), r => store.taskCat(r), store.catColor)
+        : (m.k === 'jot'
+          ? topCat(c.filter(r => r.m === 'jot'), r => store.jotCat(r), store.jotColor)
+          : topN(c.filter(r => r.m === m.k)));
+      if (items.length) tops.push({ k: m.k, n: m.n, c: m.c, items });
+    });
 
     // 本期每天：按天出条小柱（周=7、月=28~31），顺带一句概述
     const dayMap = {};
@@ -292,10 +337,17 @@ Page({
     });
   },
 
+  /* 页面级下拉刷新入口（原生下拉回弹，与记 / 看 / 清单 一致）；
+     下拉时程序名正好从胶囊后露出来，顺手播一次逐字浮现 */
+  onPullDownRefresh() {
+    this.layoutBrand();   // 露出来之前再确认一次位置（万一首次没取到胶囊矩形）
+    this.playBrand();
+    this.onRefresh();
+  },
+
   /* 下拉刷新：从云端重新拉取全部数据 */
   onRefresh() {
-    this.setData({ refreshing: true });
-    store.reload().then(() => { this.build(); this.setData({ refreshing: false }); })
-      .catch(() => this.setData({ refreshing: false }));
+    store.reload().then(() => { this.build(); wx.stopPullDownRefresh(); })
+      .catch(() => wx.stopPullDownRefresh());
   }
 });

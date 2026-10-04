@@ -1,6 +1,8 @@
 <view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
   <view class="statusbar-mask"></view>
-  <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh">
+  <!-- 整页页面级滚动（与记 / 看 / 清单 一致）：不再套 scroll-view。
+       这样 wx.pageScrollTo（回顶、翻期、切视图）才是真的，原生下拉刷新也走同一套 -->
+  <view class="screen">
     <view class="body">
       <view class="sect-t">回看</view>
 
@@ -92,13 +94,13 @@
           </view>
         </view>
 
-        <!-- 记得最多的：各维度 Top 3 -->
+        <!-- 记得最多的：觉察 / 此刻 / 可做 按内容 Top 3；待办 / 随记 按「类别 + 条数」 -->
         <view class="bars">
           <view class="sect-t" style="margin:0 0 8px">记得最多的</view>
           <view wx:if="{{!tops.length}}" class="empty-mini">本期还没有记录</view>
-          <view wx:for="{{tops}}" wx:key="n" wx:for-item="g" class="topg">
+          <view wx:for="{{tops}}" wx:key="k" wx:for-item="g" class="topg">
             <view class="topg-h"><view class="dot" style="background:{{g.c}}"></view>{{g.n}}</view>
-            <view wx:for="{{g.items}}" wx:for-item="it" wx:key="t" class="topi"><text class="tt">{{it.t}}</text><text class="tn">{{it.n}}</text></view>
+            <view wx:for="{{g.items}}" wx:for-item="it" wx:key="t" class="topi"><view wx:if="{{it.c}}" class="dot" style="background:{{it.c}}"></view><text class="tt">{{it.t}}</text><text class="tn">{{it.n}}</text></view>
           </view>
         </view>
 
@@ -110,7 +112,12 @@
         </view>
       </block>
     </view>
-  </scroll-view>
+  </view>
+
+  <!-- 程序名：按胶囊矩形定位，平时被原生胶囊盖住，下拉时随页面下移才露出来（与记 / 看 / 清单 同一套） -->
+  <view wx:if="{{brandH}}" class="brand {{brandPlay?'play':''}}" style="position:fixed;top:{{brandTop}}px;left:{{brandLeft}}px;width:{{brandW}}px;height:{{brandH}}px;">
+    <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
+  </view>
 
   <theme-switcher />
 </view>

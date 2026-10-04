@@ -18,7 +18,10 @@
       </view>
     </view>
     <view class="qa-row" catchtap="onQaNoop">
-      <input class="qa-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
+      <!-- adjust-position 关掉：面板的位置由我们自己按键盘高度给（见 _applyKb），
+           不再让微信去「顶页面」——回看整页是 scroll-view（页面本身不滚），它顶不动，
+           结果就是面板留在原地被键盘盖住；两边的调整叠在一起也会把面板抬过头 -->
+      <input class="qa-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" bindkeyboardheightchange="onQaKb" confirm-type="done" adjust-position="{{false}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
       <view class="qa-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">记下</view>
     </view>
   </view>

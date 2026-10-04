@@ -2,5 +2,6 @@
   "usingComponents": {
     "theme-switcher": "/components/theme-switcher/index"
   },
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "enablePullDownRefresh": true
 }
