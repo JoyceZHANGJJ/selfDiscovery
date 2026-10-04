@@ -5,7 +5,8 @@
     "pages/review/review",
     "pages/set/set",
     "pages/list/list",
-    "pages/options/options"
+    "pages/options/options",
+    "pages/theme/theme"
   ],
   "window": {
     "navigationBarTextStyle": "black",

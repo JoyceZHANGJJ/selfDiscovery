@@ -57,7 +57,7 @@
 
       <!-- 外观 · 主题：点色点即切换（整站立即生效）；勾「常用」＝加入右上圆点的循环，最多 5 个 -->
       <view class="sect-t" style="margin-top:18px">外观</view>
-      <view class="srow" bindtap="openTheme">
+      <view class="srow" bindtap="goTheme">
         <view class="sl">主题</view>
         <view class="sv">{{themeName}} · 常用 {{favCount}}/{{favMax}} ▸</view>
       </view>
@@ -139,24 +139,5 @@
       <view wx:if="{{logs.length===0}}" class="sh-empty">还没有更新记录</view>
     </view>
     <view class="sh-foot"><view class="btn gh" bindtap="closeLog">关闭</view></view>
-  </view>
-
-  <!-- 主题浮层：点色点即切换（整站立即生效）；右侧「常用」勾选＝加入右上圆点的循环，最多 favMax 个 -->
-  <view wx:if="{{themeOverlay}}" class="sheet">
-    <view class="sh-h"><view class="st">主题</view><view class="sx" bindtap="closeTheme" aria-label="关闭">✕</view></view>
-    <view class="sh-sub">点一下即切换；勾「常用」＝加入右上圆点的切换循环，最多 {{favMax}} 个</view>
-    <view class="sh-list">
-      <view wx:for="{{themeOpts}}" wx:key="k" class="th-row">
-        <view class="th-pick" data-k="{{item.k}}" bindtap="onThemePick">
-          <view class="th-swatch" style="background:{{item.c}};{{item.on?'box-shadow:0 0 0 2px '+item.c:''}}">
-            <view wx:if="{{item.on}}" class="th-tick"></view>
-          </view>
-          <view class="th-name {{item.on?'on':''}}">{{item.n}}</view>
-        </view>
-        <view class="th-fav {{item.fav?'on':''}}" data-k="{{item.k}}" bindtap="onFavToggle">{{item.fav?'常用 ✓':'＋ 常用'}}</view>
-      </view>
-      <view class="qc-hint">「常用」决定右上圆点在哪些主题之间循环（按这里的排列顺序）；一个都不勾时回到全部 {{themeOpts.length}} 个。</view>
-    </view>
-    <view class="sh-foot"><view class="btn gh" bindtap="closeTheme">完成</view></view>
   </view>
 </view>

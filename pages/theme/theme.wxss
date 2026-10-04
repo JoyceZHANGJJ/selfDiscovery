@@ -1,0 +1,5 @@
+/* 主题页：走系统导航（自带返回键，Android 返回 = 回设置页），内容区从导航下方开始，
+   顶部留白比自定义导航页小（.body 的默认 padding-top 含状态栏高度，这里压回去） */
+.body { padding-top: 14px; }
+.th-sub { font-size: 12px; color: var(--ink3); margin: 0 0 6px; }
+.th-hint { font-size: 11.5px; color: var(--ink3); margin: 12px 2px 0; line-height: 1.6; }

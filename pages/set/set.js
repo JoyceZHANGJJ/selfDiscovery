@@ -34,11 +34,9 @@ Page(pageBase({
     quickCount: 0,     // 已勾选数量（显示成 N/上限）
     quickMax: store.QUICKCATS_MAX,   // 上限（store 里单一来源，不写死）
     _selKeys: [],      // 已勾选的 key 有序列表（todo:<类别> / jot:<类别>）
-    themeOpts: [],     // 主题表：每项 k / n / c（主色）/ on（当前）/ fav（常用）
     themeName: '',     // 当前主题的中文名（设置页那一行显示）
     favCount: 0,       // 常用主题已勾数量
-    favMax: store.FAVTHEMES_MAX,   // 常用主题上限（store 里单一来源）
-    themeOverlay: false
+    favMax: store.FAVTHEMES_MAX   // 常用主题上限（store 里单一来源）
   },
 
   g: null,
@@ -50,7 +48,7 @@ Page(pageBase({
     const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
     if (tb) tb.setData({ selected: 3, hidden: this._anyOverlay(), theme: wx.getStorageSync('theme') || 'mint' });
     this._rehideTabBar();   // 后台回来那一瞬间 tabBar 有自己的复位时序，过一拍再收一次
-    this.buildThemeOpts();   // 主题表 / 当前 / 常用：圆点那边改过主题时，切回设置页要能看到最新的
+    this.buildThemeInfo();   // 当前主题名 / 常用数：子页面（或右上圆点）改过主题时，切回设置页要能看到最新的
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));
       const O = app.globalData.OPT || {};
@@ -148,51 +146,14 @@ Page(pageBase({
   },
   _keyToCat(k) { return k.indexOf('jot:') === 0 ? { m: 'jot', cat: k.slice(4) } : { m: 'todo', cat: k.slice(5) }; },
 
-  /* 外观 · 主题：列出主题表，标出当前主题与「常用」（右上圆点只循环常用的那几个） */
-  buildThemeOpts() {
+  /* 外观 · 主题：这一行只显示当前主题与常用数；选择与「常用」勾选在独立子页面
+     pages/theme/theme（Android 返回键 = 回到设置页，不会退出小程序——
+     全屏浮层做不到这一点：微信没有拦截系统返回键的 API，tab 页按返回就是退出） */
+  buildThemeInfo() {
     const fav = store.getFavThemes();
-    const cur = store.curTheme();
-    const themeOpts = store.themeList().map(t => {
-      const v = (store.themeOf(t.k).vars || {});
-      return { k: t.k, n: t.n, c: v.accent || '', on: t.k === cur, fav: fav.indexOf(t.k) >= 0 };
-    });
-    this.setData({ themeOpts, favCount: fav.length, themeName: store.themeOf(cur).n });
+    this.setData({ favCount: fav.length, themeName: store.themeOf(store.curTheme()).n });
   },
-  openTheme() { this.buildThemeOpts(); this.setData({ themeOverlay: true }); this.setTabBarHidden(true); },
-  closeTheme() { this.setData({ themeOverlay: false }); this.setTabBarHidden(false); },
-  // 点色点＝切到这个主题：写存储 + 本页变量 + tabBar，其它页下次 onShow 自动跟上
-  onThemePick(e) {
-    const k = e.currentTarget.dataset.k;
-    if (!k || k === store.curTheme()) return;
-    wx.setStorageSync('theme', k);
-    this.setData({
-      theme: k, themeStyle: store.themeStyle(k), themeName: store.themeOf(k).n,
-      themeOpts: this.data.themeOpts.map(o => Object.assign({}, o, { on: o.k === k }))
-    });
-    store.syncWindowBg(k);   // 切主题的当下就换窗口底色，别等下次 onShow
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ theme: k });
-    const sw = this.selectComponent('#themeSw');   // 右上圆点的名称也跟着换
-    if (sw && sw.applyTheme) sw.applyTheme();
-    wx.showToast({ title: store.themeOf(k).n, icon: 'none', duration: 600 });
-  },
-  // 勾「常用」＝加入 / 移出右上圆点的循环，最多 FAVTHEMES_MAX 个。
-  // 取消勾选不会改当前主题：就算当前这个不再常用，圆点下次也是从第一个常用主题接着走
-  onFavToggle(e) {
-    const k = e.currentTarget.dataset.k;
-    const fav = store.getFavThemes();
-    const i = fav.indexOf(k);
-    if (i >= 0) fav.splice(i, 1);
-    else {
-      if (fav.length >= store.FAVTHEMES_MAX) { wx.showToast({ title: '最多 ' + store.FAVTHEMES_MAX + ' 个', icon: 'none' }); return; }
-      fav.push(k);
-    }
-    const saved = store.setFavThemes(fav);
-    this.setData({
-      favCount: saved.length,
-      themeOpts: this.data.themeOpts.map(o => Object.assign({}, o, { fav: saved.indexOf(o.k) >= 0 }))
-    });
-    wx.showToast({ title: saved.length ? ('常用 ' + saved.length + ' 个') : '循环全部主题', icon: 'none', duration: 800 });
-  },
+  goTheme() { wx.navigateTo({ url: '/pages/theme/theme' }); },
 
   /* 数据：导出 / 导入 / 清空 */
   exportText(recs) {
@@ -218,7 +179,7 @@ Page(pageBase({
   closeImport() { this.setData({ importOverlay: false }); this.setTabBarHidden(false); },
   /* 有没有浮层开着：开着时底部 tab 栏要收起来（否则压住浮层底部的按钮） */
   _anyOverlay() {
-    return !!(this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay || this.data.themeOverlay);
+    return !!(this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay);
   },
   /* 浮层开着时，过一拍再把 tabBar 收一次：从后台切回来（或切 tab 回来）的那一瞬间，
      tabBar 有自己的重建 / 复位时序，只在 onShow 里设一次可能被它盖回来——
@@ -231,15 +192,9 @@ Page(pageBase({
       if (this._anyOverlay()) this.setTabBarHidden(true);
     }, 300);
   },
-  // 系统返回（Android 返回键 / iOS 左滑）：浮层打开时只关浮层，不退出小程序
-  onBackPress() {
-    if (this._anyOverlay()) {
-      this.setData({ importOverlay: false, dimOverlay: false, logOverlay: false, themeOverlay: false });
-      this.setTabBarHidden(false);
-      return true;
-    }
-    return false;
-  },
+  // 注：原来这里有个 onBackPress（「Android 返回键先关浮层」）——微信小程序没有这个回调，
+  // 它从未生效过（那是 uni-app 的 API）。tab 页按系统返回 = 退出小程序，无法拦截；
+  // 需要返回键友好的交互（如主题选择）要走 navigateTo 子页面（见 pages/theme/theme）
 
   /* 更新日志 */
   openLog() { this.setData({ logOverlay: true }); this.setTabBarHidden(true); },

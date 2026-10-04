@@ -162,13 +162,12 @@ const themeOf = themes.themeOf;
 // 各主题 bg 都不相同（#FFFFFF / #F8FAF2 / #FFF8F2 / #F7F5FC …），所以必须跟着主题走。
 // tabBar 是 custom，底色由 .tabbar 用 var(--bg) 画，不受这里影响，无需处理。
 function syncWindowBg(k) {
-  const key = k || curTheme();
-  const bg = (themeOf(key).vars || {}).bg;
-  if (!bg || bg === _lastWindowBg) return;
-  _lastWindowBg = bg;
+  const bg = (themeOf(k || curTheme()).vars || {}).bg;
+  // 不做「同值去重」：wx.setBackgroundColor 是**页面级**的，navigate 到新页面后
+  // 底色会回到 app.json 的默认值，每个页面 onShow 都要重设一次（开销可忽略）
+  if (!bg) return;
   wx.setBackgroundColor({ backgroundColor: bg, backgroundColorTop: bg, backgroundColorBottom: bg });
 }
-let _lastWindowBg = '';
 
 // 读取当前主题；若 storage 里是已被删除的废弃主题，回落切换列表第一个，
 // 避免冷启动套上不存在的主题、CSS 变量全空（输入框/按钮背景透明）
