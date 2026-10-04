@@ -61,6 +61,14 @@ function periodOf(unit, offset) {
   return { start, end, label, rel, unit, offset };
 }
 
+// 电量趋势的一句话概述：平均档位 + 记了几天
+function batTrendSum(vals, totalDays, unit) {
+  if (!vals.length) return '';
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const scope = unit === 'month' ? '本月' : '本周';
+  return scope + '记了 ' + vals.length + ' 天 · 平均 ' + (Math.round(avg * 10) / 10) + ' 格';
+}
+
 Page(pageBase({
   data: {
     view: 'week',        // week | month | all（主题档案）
@@ -68,6 +76,8 @@ Page(pageBase({
     offset: 0,
     curLabel: '', curRel: '', preText: '',
     kpis: [], dims: [], flow: [], tops: [], trend: [], trendSum: '',
+    // 剩余电量趋势（周 / 月）：has=本期有没有记过「今日」；pts=有值的点（n 档位、pct 横坐标%）
+    batTrend: { has: false, pts: [], avg: 0, sum: '' },
     // —— 全部：主题档案 ——
     docSort: 'n',        // n（最常出现）| recent（最近出现）
     docLimit: 20,
@@ -160,8 +170,9 @@ Page(pageBase({
 
   buildDocs() {
     // 主题档案只回看「觉察 / 此刻 / 可做」：待办是"要做的事"（流转在周 / 月复盘里看），
-    // 随记是流水式的一句话——都算不上可回看的"内容主题"
-    const all = (app.globalData.records || []).filter(r => !store.isTask(r.m) && r.m !== 'jot');
+    // 随记是流水式的一句话——都算不上可回看的"内容主题"。
+    // 「睡」也不进（isQuiet）：它没有内容可回看，统计在「睡」tab 里
+    const all = (app.globalData.records || []).filter(r => !store.isTask(r.m) && r.m !== 'jot' && !store.isQuiet(r.m));
     // 记住已展开的，重建（换排序 / 显示更多）时不收起来
     const openMap = {};
     (this.data.docs || []).forEach(d => { if (d.open) openMap[d.txt] = 1; });
@@ -239,7 +250,10 @@ Page(pageBase({
 
   /* ---------------- 周 / 月复盘 ---------------- */
   buildPeriod() {
-    const all = app.globalData.records || [];
+    // 「睡」整类不进复盘（isQuiet）：它是每天一个时刻的记录，不参与「记录条数 / 活跃天数 /
+    // 本期每天」这些内容口径的统计——那些数字是给"这段时间记了什么"用的。
+    // 入睡自己的统计在「睡」tab（平均入睡时间、0 点前后天数）。这里挡住一处，下面全干净
+    const all = (app.globalData.records || []).filter(r => !store.isQuiet(r.m));
     const unit = this.data.view;                          // week | month
     const cur = periodOf(unit, this.data.offset);
     const pre = periodOf(unit, this.data.offset - 1);
@@ -247,6 +261,9 @@ Page(pageBase({
 
     const c = all.filter(r => inR(r.ts || 0, cur));      // 本期记下的（按创建时间归属）
     const pv = all.filter(r => inR(r.ts || 0, pre));     // 上期，用来算增减
+
+    // 「今日」是��日一记，一天最多一条：按天取当天那条（没有就 null）
+    const dayFirst = (t0) => c.find(r => r.m === 'today' && date.dayStart(r.ts) === t0) || null;
 
     const days = new Set(c.map(r => date.dayStart(r.ts))).size;
     const delta = c.length - pv.length;
@@ -257,7 +274,7 @@ Page(pageBase({
 
     // 各维度条数 + 与上期的增减（条宽按本期最大值归一）：按维度整体统计（待办 / 随记各算一条）；
     // 要看它们各自的类别分布，看下面的「记得最多的」
-    const raw = store.MODULES.map(m => {
+    const raw = store.MODULES.filter(m => !m.quiet).map(m => {
       const v = c.filter(r => r.m === m.k).length;
       const p = pv.filter(r => r.m === m.k).length;
       const d = v - p;
@@ -297,7 +314,7 @@ Page(pageBase({
       return Object.keys(acc).map(k => acc[k]).sort((a, b) => b.n - a.n);
     };
     const tops = [];
-    store.MODULES.forEach(m => {
+    store.MODULES.filter(m => !m.quiet).forEach(m => {
       const items = store.isTask(m.k)
         ? topCat(c.filter(r => store.isTask(r.m)), r => store.taskCat(r), store.catColor)
         : (m.k === 'jot'
@@ -316,11 +333,51 @@ Page(pageBase({
     const act = arr.filter(n => n).length;
     const trendSum = act ? ('有记录 ' + act + ' 天 · 最多一天 ' + dmx + ' 条') : '本期还没有记录';
 
+    /* 剩余电量趋势：本期每天一条「今日」记录的电量（1..5），画成折线看走势。
+       没有的��子不补0、也不连线——断开更诚实（补0会画出「电量掉到 0」的假象）。
+       单位与上面「本期每天」一致（周=7 天，月=28~31 天），x 轴按 index等分。 */
+    const batOf = (r) => {
+      if (!r || r.m !== 'today') return 0;
+      const bi = (r.extSrc || []).indexOf('todayBat');
+      return bi >= 0 ? store.batLevel((r.ext || [])[bi]) : 0;
+    };
+    const batArr = [];
+    for (let t = date.dayStart(cur.start); t < cur.end; t += DAY) batArr.push(batOf(dayFirst(t)));
+    const batVals = batArr.filter(n => n > 0);
+    // 折线几何：只连相邻的两个有值的点（中间缺的日子不补，直线跨过去），
+    // 用 CSS rotate 画线段——小程序没有 svg polyline，这样最省。
+    // pct = 横坐标%，pct2 = 纵坐标%（1..5 映射到 0..100），rot = 线段倾角，w = 长度(rpx)
+    const H = 72;   // 图区高度（px），与 wxss 的 .btrend 高度一致
+    const W = 600;  // 图区宽度（rpx）：容器用 100% 撑开，按 750rpx 屏宽近似换算线长
+    const pts = batArr.map((n, i) => ({ n, i, ts: date.dayStart(cur.start) + i * DAY, pct: batArr.length > 1 ? (i / (batArr.length - 1)) * 100 : 0 }))
+      .filter(p => p.n > 0)
+      .map(p => ({ ...p, pct2: (p.n / 5) * 100 }));
+    const seg = [];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const dx = (b.pct - a.pct) / 100 * W;            // 横向 px
+      const dy = (b.pct2 - a.pct2) / 100 * H;          // 纵向 px（向上为正）
+      const wid = Math.sqrt(dx * dx + dy * dy);
+      // 线的起点在 a 点，rotate 后绕左端旋转 → transform-origin 用 left center
+      seg.push({
+        k: 's' + i, x0: a.pct, y0: a.pct2, w: wid,
+        rot: -Math.atan2(dy, dx) * 180 / Math.PI       // CSS y 轴向下，取负
+      });
+    }
+    const batTrend = {
+      has: batVals.length > 0,
+      pts, seg,
+      first: pts.length ? (store.datePrefix(pts[0].ts) || '本期').trim() : '',
+      last: pts.length ? (store.datePrefix(pts[pts.length - 1].ts) || '').trim() : '',
+      avg: batVals.length ? (batVals.reduce((a, b) => a + b, 0) / batVals.length) : 0,
+      sum: batTrendSum(batVals, batArr.length, unit)
+    };
+
     this.setData({
       curLabel: cur.label,
       curRel: cur.rel,
       preText: '上期 ' + pre.label,
-      kpis, dims, flow, tops, trend, trendSum
+      kpis, dims, flow, tops, trend, trendSum, batTrend
     });
   },
 

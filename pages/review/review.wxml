@@ -103,6 +103,33 @@
           </view>
         </view>
 
+        <!-- 剩余电量趋势：本期每天一条「今日」的电量（1..5）画折线。没记过的日子断开不补0 -->
+        <view wx:if="{{batTrend.has}}" class="bars">
+          <view class="sect-t" style="margin:0 0 4px">剩余电量</view>
+          <view class="btrend">
+            <!-- 横向参考线：1 / 3 / 5 档（0.2 / 0.6 / 1.0） -->
+            <view class="bt-g"><view class="bt-gline" style="bottom:20%"></view><view class="bt-gline" style="bottom:60%"></view><view class="bt-gline bt-gtop" style="bottom:100%"></view></view>
+            <!-- 折线：相邻有值的点之间画一段（几何在 js 里算好：x0/y0 起点、w 长度、rot 倾角） -->
+            <block wx:for="{{batTrend.seg}}" wx:key="k">
+              <view class="bt-seg" style="left:{{item.x0}}%;bottom:{{item.y0}}%;width:{{item.w}}rpx;transform:rotate({{item.rot}}deg)"></view>
+            </block>
+            <!-- 数据点 -->
+            <view wx:for="{{batTrend.pts}}" wx:key="i" class="bt-pt" style="left:{{item.pct}}%;bottom:{{item.pct2}}%"></view>
+          </view>
+          <view class="bt-axis">
+            <text>{{batTrend.first}}</text>
+            <text>{{batTrend.last}}</text>
+          </view>
+          <view class="heat-sum">{{batTrend.sum}}</view>
+        </view>
+
+        <!-- 本期每天：条数分布 -->
+        <view class="bars">
+          <view class="sect-t" style="margin:0 0 8px">本期每天</view>
+          <view class="heat"><i wx:for="{{trend}}" wx:key="index" class="l{{item.lv}}"></i></view>
+          <view class="heat-sum">{{trendSum}}</view>
+        </view>
+
         <!-- 流转：可做（新增 / 做了 / 放弃）、待办（记了 / 完成） -->
         <view class="bars">
           <view class="sect-t" style="margin:0 0 10px">流转</view>
@@ -120,13 +147,6 @@
             <view class="topg-h"><view class="dot" style="background:{{g.c}}"></view>{{g.n}}</view>
             <view wx:for="{{g.items}}" wx:for-item="it" wx:key="t" class="topi"><view wx:if="{{it.c}}" class="dot" style="background:{{it.c}}"></view><text class="tt">{{it.t}}</text><text class="tn">{{it.n}}</text></view>
           </view>
-        </view>
-
-        <!-- 本期每天：条数分布 -->
-        <view class="bars">
-          <view class="sect-t" style="margin:0 0 0">本期每天</view>
-          <view class="heat"><i wx:for="{{trend}}" wx:key="index" class="l{{item.lv}}"></i></view>
-          <view class="heat-sum">{{trendSum}}</view>
         </view>
       </block>
       </block>

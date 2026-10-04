@@ -8,7 +8,7 @@ const app = getApp();
 
 // 「有默认值」的选项组：见 ensureModuleDefaults——这几个组进入对应维度时会自动补一个默认值，
 // 既然有默认值就不该被点空（再点已选中的那一个＝什么也没发生，保持必选）
-const REQUIRED_PICK = { wantKind: 1, todoKind: 1, jotKind: 1, obsStart: 1 };
+const REQUIRED_PICK = { wantKind: 1, todoKind: 1, jotKind: 1, obsStart: 1, todayBat: 1 };
 
 function nowStr() {
   const d = new Date();
@@ -67,6 +67,7 @@ Page(pageBase({
     editDate: '',
     editTime: '',
     editCreateLabel: '创建时间',
+    todayMaxDate: '',     // 「今日」编辑时 date picker 的日期上限（今天），见 _todayMaxDate
     editHasStart: false,
     editStartDate: '',
     editStartTime: '',
@@ -82,7 +83,8 @@ Page(pageBase({
     tag: 'obs', main: '', mainPick: null, pick: {}, typed: {}, free: {},
     edit: null, ren: null, optUndo: null,
     startMode: false, completing: false, doing: false, showDoing: false, showDone: false,
-    abandoning: false, showAbandon: false, ending: false, focusFree: ''
+    abandoning: false, showAbandon: false, ending: false, focusFree: '',
+    todayLocked: null   // 「今日」一日一记：当天已记过时存当天那条（只读锁定态），点「修改」才进编辑
   },
 
   onLoad() {
@@ -90,6 +92,20 @@ Page(pageBase({
     // 所以直接把键盘高度当 bottom，操作行始终落在键盘上方
     this._kbHandler = (res) => this._applyKb((res && res.height) || 0);
     if (wx.onKeyboardHeightChange) wx.onKeyboardHeightChange(this._kbHandler);
+    this.setData({ todayMaxDate: this._todayMaxDate() });
+  },
+
+  // 「今日」编辑时 date picker 的上限＝今天（不能把一日一记记到未来）。
+  // 每次进入页面重算：小程序可能长时间挂在后台，跨天了上限要跟着变。
+  _todayMaxDate() {
+    const d = new Date();
+    const p = (n) => (n < 10 ? '0' + n : '' + n);
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  },
+  // 只在值真的变了才 setData（避免每次 onShow 都触发一次渲染）
+  _refreshTodayMax() {
+    const v = this._todayMaxDate();
+    if (v !== this.data.todayMaxDate) this.setData({ todayMaxDate: v });
   },
 
   onUnload() {
@@ -104,6 +120,7 @@ Page(pageBase({
     this.layoutBrand();
     this._kbH = 0;
     this._clearBarFollow();   // 键盘状态从零开始（上一次离开时的跟随位置不能留）
+    this._refreshTodayMax();  // 跨天回来时，「今日」的日期上限要跟着今天走
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 0, theme: store.curTheme() });
     store.ensureAll().then(ok => {
       // 没拉到：撤掉骨架屏、显示可点的重试（以前这里什么都不做，页面会永远停在骨架屏）
@@ -299,7 +316,8 @@ Page(pageBase({
   },
 
   modulesVM() {
-    return store.MODULES;
+    // 静默维度（睡）不出现在记页的维度标签里：它不在这一页记，只有顶部那个「睡」按钮和「睡」tab
+    return store.MODULES.filter(m => !m.quiet);
   },
 
   checkEdit() {
@@ -317,6 +335,8 @@ Page(pageBase({
     this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     (r.ext || []).forEach((v, i) => {
       let src = (r.extSrc || [])[i] || '', val = v;
+      // 「今日」电池：纯图示档位，把任意值（档位 '0'..'4' 或旧 emoji）归一化成档位 v
+      if (src === 'todayBat') { (this.st.pick['todayBat'] = this.st.pick['todayBat'] || []).push(store.batValOf(v)); return; }
       if (src.indexOf('free:') === 0) { this.st.free[src.slice(5)] = val; return; }
       // 老数据的「程度+情绪」合并值（如「微微抵触」）已由 migrateNopeLikeIntoObs 一次性拆开，这里不再处理
       const O = store.getOPT(src);
@@ -328,6 +348,15 @@ Page(pageBase({
       if (isFixed || O.indexOf(val) >= 0 || store.isNoInput(src)) (this.st.pick[src] = this.st.pick[src] || []).push(val);
       else this.st.typed[src] = val;
     });
+    // 旧此刻记录的「情绪（genFeel）/ 感受（free:nownote）」映射到觉察同款（obsMood / free:obsfeel）：
+    // FIELDS.now 已不再定义这两组，不映射的话编辑保存会把旧值悄悄丢掉——编辑一次就完成这一条迁移
+    if (r.m === 'now') {
+      if ((this.st.pick['genFeel'] || []).length) {
+        this.st.pick['obsMood'] = (this.st.pick['obsMood'] || []).concat(this.st.pick['genFeel']);
+        delete this.st.pick['genFeel'];
+      }
+      if (this.st.free['nownote'] && !this.st.free['obsfeel']) this.st.free['obsfeel'] = this.st.free['nownote'];
+    }
     // 记录本身没有分类（历史数据）时才补默认分类；有则只回显记录自己的值，避免默认+记录值同时选中
     this.ensureModuleDefaults(r.m);
     // 「开始」流转进入：稍后在「保存修改」时才记录开始时间（这里只标记 startMode）
@@ -490,9 +519,11 @@ Page(pageBase({
         return true;
       });
     }
-    // 档位（obsDeg）是情绪的修饰：没选情绪、也没有历史档位时整行不展示
-    const showDeg = tag === 'obs' &&
-      ((this.st.pick['obsMood'] || []).length > 0 || (this.st.pick['obsDeg'] || []).length > 0);
+    // 档位（obsDeg）是情绪的修饰：没选情绪、也没有历史档位时整行不展示。
+    // 觉察与此刻的情绪都是 obsMood（此刻整块复用觉察的「感受」），程度副行同一套
+    const moodG = (tag === 'obs' || tag === 'now') ? 'obsMood' : '';
+    const showDeg = !!moodG &&
+      ((this.st.pick[moodG] || []).length > 0 || (this.st.pick['obsDeg'] || []).length > 0);
     // 展示顺序与存储顺序解耦：觉察的细节在编辑器里排成
     // 「喜恶 → 感受（情绪 chips + 档位副行 + 自由输入框）→ 怎么开始的 → 沉浸 → 精力」，
     // 但保存仍按 f.items 的原顺序写 ext/extSrc，导出/导入的按顺序对齐因此不受影响
@@ -505,6 +536,20 @@ Page(pageBase({
     }
     const items = fitems.map((it, idx) => {
       if (it.g) {
+        // 「今日」能量：5 段能量条（不再用电池图形）。n=档位名（段内小字），
+        // lv=格数（wxml 画 5 格、点亮前 lv 格）。lv 跟着选中档走，
+        // 所以从低档改到高档时是「一格一格亮起来」，和只读态那条一致。
+        // 未选时 lv=0：新建今日记录一进来 5 格全灭（不能借 store.batLevel('') 的兜底值 1
+        // 把第 1 格点亮——那会看起来像已经选了「很低」，用户就少点了一下、存下错档）。
+        if (it.g === 'todayBat') {
+          const cur = (this.st.pick['todayBat'] || [])[0] || '';
+          const lv = cur ? store.batLevel(cur) : 0;
+          const opts = store.BATTERIES.map((b, i) => ({
+            v: b.v, n: b.name, lv: i,
+            on: (this.st.pick['todayBat'] || []).indexOf(b.v) >= 0
+          }));
+          return { type: 'g', first: idx === 0, group: it.g, label: store.GLABEL[it.g], single: true, noInput: true, opts, lv, cur, sub: false, hide: false };
+        }
         const opts = store.getOPT(it.g).map(v => ({ v, on: (this.st.pick[it.g] || []).indexOf(v) >= 0 }));
         // 历史手填值不在选项池里（这个组后来取消了手填）：作为临时 chip 排在最前，
         // 保证看得见、点一下能取消，不会在保存时被悄悄丢掉
@@ -524,9 +569,10 @@ Page(pageBase({
       }
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
     });
-    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下' };
-    // 待办 / 随记：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行（见 index.wxml 的 plain 分支）
-    const plain = store.isTask(tag) || tag === 'jot';
+    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '今日印象最想说的事 · 可不写' };
+    // 待办 / 随记 / 今日：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行。
+    // 今日：电池（类别）摆在主输入框上方、印象（主输入框）在下方，无细节分割线（见 index.wxml 的 plain 分支）
+    const plain = store.isTask(tag) || tag === 'jot' || tag === 'today';
     // 待办 / 随记的「类别」（todoKind / jotKind）摆在主输入框**上方**：先定类别，再写内容。
     // 其余细节行（如待办的「原因」「放弃原因」）仍在输入框下方
     const catItems = plain ? items.filter(it => it.type === 'g') : [];
@@ -567,9 +613,10 @@ Page(pageBase({
         .slice(0, 10)
         .map(r => this.recVM(r));
     }
-    // 待办一律不进「最近」：没做完的去「待办」，做完 / 放弃的去「已完成」或清单页
+    // 待办一律不进「最近」：没做完的去「待办」，做完 / 放弃的去「已完成」或清单页。
+    // 「睡」也不进（isQuiet）：它没有内容可展示，只记一个时刻，去「睡」tab 看
     return all
-      .filter(r => !store.isTask(r.m))
+      .filter(r => !store.isTask(r.m) && !store.isQuiet(r.m))
       .slice(0, 10)
       .map(r => this.recVM(r));
   },
@@ -645,11 +692,26 @@ Page(pageBase({
   /* -------- 交互 -------- */
   onTag(e) {
     if (this.guardEdit()) return;   // 编辑态：不允许切换维度
-    this.st.tag = e.currentTarget.dataset.k;
+    const k = e.currentTarget.dataset.k;
+    // 「今日」一日一记：当天已记过 → 进「只读锁定」态（顶部显示摘要 + 修改入口），不进编辑态。
+    // 内容禁填，点「修改」才回填进编辑态；保存＝更新当天那条，取消＝回到锁定态（见 onTodayEdit / onEditCancel）
+    if (k === 'today' && !this.st.edit) {
+      const start = date.dayStart(Date.now());
+      const dup = (app.globalData.records || []).find(r => r.m === 'today' && r.ts >= start && r.ts < start + date.DAY);
+      if (dup) {
+        this.st.todayLocked = this._todayLockedOf(dup);
+        this.st.tag = 'today';
+        this.setData({ tag: 'today', editing: false, todayLocked: this.st.todayLocked });
+        this.recompute();
+        return;
+      }
+    }
+    this.st.tag = k;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
+    this.st.todayLocked = null;
     this.ensureModuleDefaults();
-    this.setData({ tag: this.st.tag });
+    this.setData({ tag: this.st.tag, todayLocked: null });
     this.recompute();
     // 这里**不主动置顶**：切维度只是换记卡里的内容，页面停在你滑到的位置。
     // 点标签也一样——标签就在记卡里，能点到它说明记卡本来就在视野里；
@@ -681,6 +743,8 @@ Page(pageBase({
     this.recompute();
   },
   onChip(e) {
+    // 「今日」已填且只读锁定态：内容禁填（点「修改」才解锁），这里直接拦下
+    if (this.data.todayLocked && !this.data.editing) return;
     const g = e.currentTarget.dataset.g, v = e.currentTarget.dataset.v;
     let arr = this.st.pick[g] || [];
     if (arr.indexOf(v) >= 0) {
@@ -690,7 +754,8 @@ Page(pageBase({
     }
     else { if (store.isSingle(g)) arr = []; arr.push(v); }
     this.st.pick[g] = arr;
-    // 觉察：档位是情绪的修饰，情绪被取消时把档位一并清掉（否则会存下没头没尾的程度）
+    // 档位是情绪的修饰，情绪被取消时把档位一并清掉（否则会存下没头没尾的程度）。
+    // 觉察与此刻的情绪都是 obsMood，联动同一套；取值行见 buildComposer 的 showDeg
     if (g === 'obsMood' && !arr.length) this.st.pick['obsDeg'] = [];
     this.recompute();
   },
@@ -790,8 +855,9 @@ Page(pageBase({
     this.st.startMode = false; this.st.doing = false; this.st.completing = false;
     this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
+    this.st.todayLocked = null;   // 回初始态：清掉「今日」只读锁定（若停在今日维度再回来会重新判定）
     this.ensureModuleDefaults(def);
-    this.setData({ editing: false, tag: def, focusIdx: -1, saveUndo: null, recentTab: 'recent' });
+    this.setData({ editing: false, tag: def, focusIdx: -1, saveUndo: null, recentTab: 'recent', todayLocked: null });
     this.recompute();
     wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
@@ -913,7 +979,33 @@ Page(pageBase({
         this.st.free[store.DESC_KEY] = '';    // 它已经作为「事」了，别再存一份描述
       }
     }
-    if (!rec.txt) { wx.showToast({ title: this.st.tag === 'obs' ? '先选一个「归类」' : '先写点什么', icon: 'none' }); return; }
+    // 今日：可以只选电量不写字（时间线日期旁的「剩余🔋」不依赖文字）
+    if (!rec.txt && this.st.tag !== 'today') { wx.showToast({ title: this.st.tag === 'obs' ? '先选一个「归类」' : '先写点什么', icon: 'none' }); return; }
+    // 今日：电量为必选
+    if (this.st.tag === 'today' && (!this.st.pick['todayBat'] || !this.st.pick['todayBat'].length)) {
+      wx.showToast({ title: '先选一下今天的电量', icon: 'none' });
+      return;
+    }
+    // 今日一日一记：同一天只允许一条。
+    // ① 新建：要查当天有没有（正常流切到「今日」时当天已有记录会直接载入编辑，见 onTag；
+    //    这里防的是「本会话中途才从云端同步进来」的记录）；
+    // ② 编辑：把创建时间改到别的日子时，那天若已有今日记录就不许存——否则会出现两条。
+    //    判断按**改后的创建时间**（rec.ts）走，并排除自己这条，否则改个时刻也会误报。
+    if (this.st.tag === 'today') {
+      const selfId = editing ? ((this.st.edit || {}).id || (this.st.edit || {})._rid) : null;
+      const target = editing ? rec.ts : Date.now();
+      const start = date.dayStart(target);
+      const dup = (app.globalData.records || []).find(r =>
+        r.m === 'today' && r.id !== selfId && r.ts >= start && r.ts < start + date.DAY);
+      if (dup) {
+        // datePrefix 对「今天」返回空串，所以先自己判一次，提示里才带得清是哪天
+        const dl = store.datePrefix(dup.ts).trim();
+        const dayName = dl || '今天';
+        wx.showToast({ title: dayName + '已经记过了', icon: 'none', duration: 1600 });
+        if (!editing) { app.globalData.editRec = store.decorate(dup); this.checkEdit(); }
+        return;
+      }
+    }
     // 想做模块：分类为必选（默认已选「想做」）
     if (this.st.tag === 'want' && (!this.st.pick['wantKind'] || !this.st.pick['wantKind'].length)) {
       wx.showToast({ title: '请选择分类（想要/可做/喜欢）', icon: 'none' });
@@ -977,15 +1069,41 @@ Page(pageBase({
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.ensureModuleDefaults();   // 记下后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
-    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
+    // 锁定态只对**今天**成立：把这条改到昨天 / 前几天后，今天并没有记录，
+    // 不能进锁定态（否则用户以为今天记过了、结果再也记不了今天）。
+    // 那种情况直接回到可编辑的新建态，今天想记还能记。
+    if (rec && rec.m === 'today') {
+      const st0 = date.dayStart(Date.now());
+      const isToday = rec.ts >= st0 && rec.ts < st0 + date.DAY;
+      this.st.todayLocked = isToday ? this._todayLockedOf(rec) : null;
+    }
+    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', todayLocked: this.st.todayLocked });
     this.recompute();
     if (isEdit) { wx.showToast({ title: '已更新', icon: 'none', duration: 800 }); return; }
     this._showSavedBar(rec);
   },
+  // 把一条「今日」记录包成只读锁定态视图对象（算好能量条格数，供记卡顶部摘要块用）
+  _todayLockedOf(rec) {
+    const r = store.decorate(rec);
+    const bi = (r.extSrc || []).indexOf('todayBat');
+    const bv = bi >= 0 ? (r.ext || [])[bi] : '';
+    r.lv = store.batLevel(bv);      // 能量条点亮几格（1..5）
+    r.d = store.datePrefix(r.ts);  // 右起显示创建时间用的日期前缀（与时间线行同一口径）
+    r.batName = store.batName(bv);
+    return r;
+  },
+  /* 今日已填：点「修改」→ 把当天那条载入编辑态（回填电池 + 印象），可改可保存 */
+  onTodayEdit() {
+    if (!this.st.todayLocked) return;
+    app.globalData.editRec = this.st.todayLocked;
+    this.checkEdit();
+    this.recompute();
+  },
   onEditCancel() {
+    const locked = this.st.todayLocked;   // 编辑的是「今日已填」记录：取消回到锁定态，不丢当天那条
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.ensureModuleDefaults();   // 取消编辑后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
-    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
+    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', todayLocked: locked });
     this.recompute();
   },
 

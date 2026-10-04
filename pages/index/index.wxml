@@ -52,23 +52,61 @@
           <view wx:if="{{tagFade}}" class="tagrow-fade"></view>
         </view>
 
+        <!-- 「今日」已填：顶部只读摘要（内容禁填，点整块进编辑）。编辑态不显示。
+             用 5 格能量条代替电池图形：一眼看出能量高低，也比小图更好点。
+             下方两组表单（plain 分支的剩余电量选择器、else 分支的今日印象+细节）都已隐藏，
+             内容由这一块全权代表，不重复占位 -->
+        <view wx:if="{{tag==='today' && todayLocked && !editing}}" class="today-locked" bindtap="onTodayEdit">
+          <view class="tl-row">
+            <text class="tl-lab">剩余电量</text>
+            <view class="tl-bar">
+              <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-cell {{index<todayLocked.lv?'on':''}}"></view>
+            </view>
+            <!-- 右起显示创建时间：与时间线行同一口径（datePrefix + t），不另造格式 -->
+            <text class="tl-when">{{todayLocked.d}}{{todayLocked.t}}</text>
+          </view>
+          <text wx:if="{{todayLocked.txt}}" class="tl-txt">{{todayLocked.txt}}</text>
+          <text wx:else class="tl-txt tl-none">今天还没写印象</text>
+        </view>
+
         <!-- 待办 / 随记：纯主输入框（不要主项标题）。
              类别（待办类别 todoKind / 随记类别 jotKind，可从 ✎ 管理 加新类别）摆在输入框**上方**：
              先定类别，再写内容；其余细节行（如待办的「原因」）仍在输入框下方 -->
-        <block wx:if="{{composer.plain}}">
+        <!-- 待办 / 随记 / 今日已填的只读态：都不渲染下方表单。
+             「今日」已记过时，内容由上面那块只读摘要（能量条 + 印象）全权代表，
+             这里再显示一遍「剩余电量」选择器和禁用的输入框就是纯重复、还让人以为能改 -->
+        <block wx:if="{{composer.plain && !(tag==='today' && todayLocked && !editing)}}">
           <view wx:for="{{composer.catItems}}" wx:key="index" wx:for-item="it" class="extra cattop">
-            <view class="qrow"><view class="ql">{{it.label}}</view><view class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
+            <view class="qrow"><view class="ql">{{it.label}}</view><view wx:if="{{it.group!=='todayBat'}}" class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
             <view class="chips">
-              <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
+              <!-- 「今日」能量：与只读摘要同一套 5 格条（同一个 .tl-bar/.tl-cell 的视觉），只是这里可点。
+                   点第 N 格＝选 N 格电量（1 很低 / 2 低 / 3 一般 / 4 较高 / 5 满）。
+                   未选时（新建）一格都不亮，必须自己点一下才算选过。
+                   cur==当前档位，用 .cur 标出来，方便看清落在哪一格 -->
+              <block wx:if="{{it.group==='todayBat'}}">
+                <view class="tl-bar ebar">
+                  <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this"
+                        class="tl-cell ebar-cell {{index<it.lv?'on':''}} {{it.cur===o.v?'cur':''}}"
+                        data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip"
+                        hover-class="ebar-cell-hover" hover-stay-time="80"></view>
+                </view>
+              </block>
+              <block wx:else>
+                <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">
+                  <text>{{o.v}}</text>
+                </view>
+              </block>
             </view>
           </view>
-          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
+          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{tag==='today' && todayLocked && !editing}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
             <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
           </view>
         </block>
-        <block wx:else>
+        <!-- 今日已填且只读：这个分支（今日印象 / 细节·都可跳过）也一并藏掉。
+             内容和上方只读摘要完全重复，留着只是让人以为还能改 -->
+        <block wx:elif="{{!(tag==='today' && todayLocked && !editing)}}">
         <view class="ehead"><view class="et">{{composer.mainLabel}}</view><view class="mg" data-g="{{composer.main}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
         <view wx:if="{{composer.mainOpts.length}}" class="chips">
           <view wx:for="{{composer.mainOpts}}" wx:key="*this" class="chip {{item.on?'on':''}}" data-v="{{item.v}}" bindtap="onMainChip">{{item.v}}</view>
@@ -107,7 +145,10 @@
         <!-- 编辑时：可修改时间（创建 / 开始 / 结束），默认回填原时间，改了才生效 -->
         <view wx:if="{{editing}}" class="etime">
           <view class="ql">{{editCreateLabel}}</view>
-          <picker class="ev" mode="date" value="{{editDate}}" bindchange="onEditDate"><view class="evv">{{editDate}}</view></picker>
+          <!-- 「今日」一日一记：日期上限锁在今天（不能记到未来）；
+               改成昨天 / 前几天都允许，只要那天还没记过（保存时校验，见 doSave） -->
+          <picker wx:if="{{tag==='today'}}" class="ev" mode="date" value="{{editDate}}" end="{{todayMaxDate}}" bindchange="onEditDate"><view class="evv">{{editDate}}</view></picker>
+          <picker wx:else class="ev" mode="date" value="{{editDate}}" bindchange="onEditDate"><view class="evv">{{editDate}}</view></picker>
           <picker class="ev" mode="time" value="{{editTime}}" bindchange="onEditTime"><view class="evv">{{editTime}}</view></picker>
         </view>
         <view wx:if="{{editing && editHasStart}}" class="etime">
@@ -131,8 +172,10 @@
              bottom 由页面按键盘高度/底部 tab 栏算好传进来；
              键盘弹着（kbOn）或「跟着输入框」（barFollow）时再加 .kb，改成真 fixed；
              记下后的提示条是这个吸底块的最后一行（就在按钮下方），
-             所以它出现时记卡跟着撑开、消失后收回 -->
-        <view class="savebar sticky {{(kbOn||barFollow)?'kb':''}}" id="savebar" style="bottom:{{barBottom}}">
+             所以它出现时记卡跟着撑开、消失后收回。
+             「今日」已填且只读时整条不渲染：上方摘要块已经写清内容、点它就能进编辑，
+             这里再挂一个占满宽度的「修改」既重复又抢眼 -->
+        <view wx:if="{{!(tag==='today' && todayLocked && !editing)}}" class="savebar sticky {{(kbOn||barFollow)?'kb':''}}" id="savebar" style="bottom:{{barBottom}}">
           <view class="sbbtns">
             <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
             <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>

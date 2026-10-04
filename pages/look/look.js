@@ -79,8 +79,10 @@ Page(pageBase({
   /* 主题 / 程序名（ensureTheme / layoutBrand / playBrand）已收敛到 utils/pageBase.js */
 
   modulesVM() {
-    // 维度筛选不单列「做了」：它与「可做 → 做了」状态筛选重复，避免入口歧义
-    return store.MODULES.filter(m => m.k !== 'done');
+    // 维度筛选里不列「做了」——它与「可做 → 做了」状态筛选重复，列出来入口歧义。
+    // 「今日」要列：一日一记，筛它就能只翻自己那些天（统计只报总数、时间线与「全部」同样式）。
+    // 「睡」不列（isQuiet）：它不进记录流，只在「睡」tab 里看（见 store.MODULES 的注释）
+    return store.MODULES.filter(m => m.k !== 'done' && !m.quiet);
   },
 
   recVM(r) {
@@ -145,6 +147,9 @@ Page(pageBase({
   buildStats(filter, list, useClient) {
     // 待办（备忘 / 购物）不展示统计，只在下面清单里看
     if (filter === 'todo') return { hide: true };
+    // 「今日」一日一记：只报总数，不画条形/占比——一条维度线、分不出「构成」，
+    // 硬凑一张图反而是噪音。onlySum 让 wxml 藏掉「统计 · 今日」标题，只留「共 N 条」
+    if (filter === 'today') return { all: true, onlySum: true, total: list.length, bars: [], pads: [] };
     if (useClient) return this.buildStatsFromList(filter, list);
     const stat = this.data.stat || {};
     // 「可做」维度：统计各流转状态（未做 / 在做 / 做了 / 不做）
@@ -167,7 +172,7 @@ Page(pageBase({
       return this.jotStatsVM(stat.byCat || {}, stat.total || 0);
     }
     // 「全部」：各觉察维度条数（不含备忘/购物，与下面清单口径区分开）
-    const allMods = store.MODULES.filter(m => !store.isTask(m.k));
+    const allMods = store.MODULES.filter(m => !store.isTask(m.k) && !m.quiet);
     if (filter === 'all') {
       const byMod = stat.byMod || {};
       const counts = allMods.map(m => ({ n: m.n, c: m.c, n2: byMod[m.k] || 0 }));
@@ -218,9 +223,9 @@ Page(pageBase({
       list.forEach(r => { const c = store.jotCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
       return this.jotStatsVM(byCat, list.length);
     }
-    // 「全部」统计不计备忘/购物
-    const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m)) : list;
-    const allMods = store.MODULES.filter(m => !store.isTask(m.k));
+    // 「全部」统计不计备忘/购物、也不计「睡」（静默维度，只有它的 tab 里统计）
+    const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m) && !store.isQuiet(r.m)) : list;
+    const allMods = store.MODULES.filter(m => !store.isTask(m.k) && !m.quiet);
     if (filter === 'all') {
       const counts = allMods.map(m => ({ n: m.n, c: m.c, n2: awareList.filter(r => r.m === m.k).length }));
       const mx = Math.max(1, ...counts.map(c => c.n2));
@@ -302,12 +307,38 @@ Page(pageBase({
       const f2 = !q || (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q) >= 0;
       return f1 && f1b && f2;
     });
-    // 备忘 / 购物是待办，不进时间流：抽出来平铺成清单；觉察记录才按天分组
+    // 备忘 / 购物是待办，不进时间流：抽出来平铺成清单；觉察记录才按天分组。
+    // 「今日」一日一记：不单独占行、内容拼在所在日期旁边（grp.today → wxml 的 todaycard），
+    // 无论看的是「全部」还是单独筛「今日」，都用同一套展示（筛「今日」时 aware 里没有别的记录，
+    // 日期行就只剩这一天，但今日块照样在）
     const tasks = list.filter(r => store.isTask(r.m));
-    const aware = list.filter(r => !store.isTask(r.m));
-    const map = {}, days = [];
-    aware.forEach(r => { if (!map[r.day]) { map[r.day] = []; days.push(r.day); } map[r.day].push(this.recVM(r)); });
-    const groups = days.map(d => ({ day: d, recs: map[d] }));
+    const todays = list.filter(r => r.m === 'today');
+    // 「睡」不进时间线（isQuiet）：取数时已经排掉了，这里再挡一道——
+    // 内存全量 / 搜索态等别的入口也可能把记录送进来，漏一道就会冒出一行没有内容的记录
+    const aware = list.filter(r => !store.isTask(r.m) && r.m !== 'today' && !store.isQuiet(r.m));
+    const map = {};
+    // 日期行的来源：aware 里的记录 + 「今日」记录。后者即使当天没有任何 aware 记录，
+    // 也要单独占一行——否则「今天只记了今日」这天整行不出现，电池和印象都看不见。
+    // 顺序沿用 list（云端按 ts 倒序），所以日期自然是新的在前。
+    const dayKeys = aware.concat(todays).map(r => r.day).filter((d, i, a) => d && a.indexOf(d) === i);
+    dayKeys.forEach(d => { if (!map[d]) map[d] = []; });
+    aware.forEach(r => { if (!map[r.day]) { map[r.day] = []; } map[r.day].push(this.recVM(r)); });
+    const groups = dayKeys.map(d => {
+      const g = { day: d, recs: map[d] || [] };
+      const tr = todays.find(x => x.day === d);
+      if (tr) {
+        const bi = (tr.extSrc || []).indexOf('todayBat');
+        const bv = bi >= 0 ? (tr.ext || [])[bi] || '' : '';
+        // 「今日」电量：与记页同一套能量条（wxml 的 .tl-bar/.tl-cell），lv=点亮几格（1..5）
+        // id/m 一并带上：今日块也要能左滑进记页改、能点出操作条（靠 id 查回记录）
+        g.today = {
+          id: tr.id != null ? tr.id : tr._rid, m: tr.m,
+          d: store.datePrefix(tr.ts), t: tr.t,     // 右起显示创建时间，与时间线行同一口径
+          lv: store.batLevel(bv), batName: store.batName(bv), txt: tr.txt || ''
+        };
+      }
+      return g;
+    });
     const stats = this._padStats(this.buildStats(effM, list, !!q), effM);
     // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别时，标题也带上它——
     // 避免列表筛过了、标题却说整个模块
@@ -376,10 +407,10 @@ Page(pageBase({
     // 页数与「已经到底了」都会不准）
     const subF = this.data.filter === 'obs' || this.data.filter === 'todo' || this.data.filter === 'jot';
     const extTags = (subF && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
-    // 「全部」的时间线不看待办，所以查询里就把它们排掉：
+    // 「全部」的时间线不看待办、也不看「睡」，所以查询里就把它们排掉：
     // 否则一页 20 条被待办占满，时间线只显示几条、页面短到滚不动，上拉加载更多点了没反应
     // （memo / buy 是合并前的老数据，一并排掉，避免迁移没跑完时混进时间线）
-    const mNot = (this.data.filter === 'all') ? ['todo', 'memo', 'buy'] : null;
+    const mNot = (this.data.filter === 'all') ? ['todo', 'memo', 'buy', 'sleep'] : null;
     return { m, state, extTags, mNot };
   },
   // 重置并加载第一页 + 统计总数
@@ -401,6 +432,9 @@ Page(pageBase({
   loadMore(first) {
     // 待办视图不分页：直接取本地全量（见 loadAllTasks）
     if (this.data.filter === 'todo') { if (first) this.loadAllTasks(); return; }
+    // 「今日」同理：一天一条，分页毫无意义；而总数要的是全历史条数，分页会只数到已加载那几页。
+    // 走 loadAllTodays——按时间倒序取全部「今日」记录（每页 20，串行翻完），一次性给准总数
+    if (this.data.filter === 'today') { if (first) this.loadAllTodays(); return; }
     if (this._loading) return;
     if (!first && !this.data.hasMore) return;
     if (this.data.q.trim()) { this.fullSearch(); return; }
@@ -447,6 +481,20 @@ Page(pageBase({
     const all = app.globalData.records || [];
     const cat = this.data.kindFilter !== 'all' ? this.data.kindFilter : '';
     const list = all.filter(r => store.isTask(r.m) && (!cat || store.taskCat(r) === cat));
+    this._loading = false;
+    this._everLoaded = true;
+    this.setData({ recs: list, hasMore: false, loading: false, ready: true }, () => {
+      this.rebuild();
+      wx.stopPullDownRefresh();
+    });
+  },
+
+  /* 「今日」视图不分页：一天一条，分页没意义，且总数必须是全历史条数（分页只数得到已加载那几页）。
+     与待办同源——直接用内存全量（app.globalData.records，各页取数后都在里面），
+     按创建时间倒序；「显示更多」窗口在 rebuild 的分组里收口，攒多了也不会卡。 */
+  loadAllTodays() {
+    const all = app.globalData.records || [];
+    const list = all.filter(r => r.m === 'today').slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
     this._loading = false;
     this._everLoaded = true;
     this.setData({ recs: list, hasMore: false, loading: false, ready: true }, () => {
@@ -731,6 +779,17 @@ Page(pageBase({
       const r = this.findRec(ds.id);
       if (r && !store.isTask(r.m)) this.rowAct(r);
     }
+  },
+  /* 「今日」块：点一下出操作条（改 / 删与时间线行同一套）。
+     它不在 this.data.recs 里（被 rebuild 排除在时间线外），但 findRec 先查
+     app.globalData.records（内存全量），所以照样查得到。 */
+  onTodayTap(e) {
+    if (this._lpAt && Date.now() - this._lpAt < 400) return;   // 刚左滑过，忽略随之而来的点击
+    const id = this._id(e);
+    if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
+    const r = this.findRec(id);
+    if (!r) return;
+    this.setData({ sel: id, selRec: { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } });
   },
   /* 行内动作（左滑「改这一条」）：跳记页完整编辑（与操作条里的「改」同一条路）。
      顺手记时间戳并撤掉排队中的「切维度」——这次滑动不该再被当成切维度 */

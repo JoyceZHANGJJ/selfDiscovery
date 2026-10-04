@@ -1,0 +1,128 @@
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
+  <view class="statusbar-mask"></view>
+  <!-- 整页页面级滚动（与记 / 看 / 回看 一致）：原生下拉刷新、回顶都走同一套 -->
+  <view class="screen">
+    <view class="body">
+      <!-- 取数失败：给一句说明 + 一个能点的重试 -->
+      <block wx:if="{{loadFail}}">
+        <view class="loadfail">
+          <view class="lft">没加载出来</view>
+          <view class="lfr" bindtap="onRetry">点击重试</view>
+        </view>
+      </block>
+      <!-- 骨架屏：首屏数据未就绪时占位（与记 / 看 / 回看 同一套 .sk 样式） -->
+      <block wx:elif="{{!ready}}">
+        <view class="sk skpage">
+          <view class="sk-line sk-w30 sk-sm"></view>
+          <view class="sk-hr"></view>
+          <view class="sk-box"></view>
+          <view class="sk-hr"></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w60"></view></view>
+          <view class="sk-row"><view class="sk-dot"></view><view class="sk-line sk-w40"></view></view>
+        </view>
+      </block>
+      <block wx:else>
+      <view class="sect-t">睡</view>
+
+      <!-- 还没记过：整页换成一句指引（这里没有记录按钮，得告诉人去点右上角那个「睡」） -->
+      <block wx:if="{{!hasAny}}">
+        <view class="sl-empty">还没有入睡记录</view>
+        <view class="sl-empty-s">睡前点一下右上角的「睡」，就记下那一刻</view>
+      </block>
+
+      <block wx:else>
+      <!-- ============ 入睡统计 ============ -->
+      <view class="sect-t">入睡统计</view>
+      <view class="filters">
+        <view class="ft {{range==='30'?'on':''}}" data-r="30" bindtap="onRange">近 30 天</view>
+        <view class="ft {{range==='all'?'on':''}}" data-r="all" bindtap="onRange">全部</view>
+      </view>
+
+      <block wx:if="{{stats.days}}">
+        <!-- 统计块不用 .bars 白卡：这一页的时间线是扁平的，套一张白卡反而突兀
+             （项目最近的方向也是去卡片，见 changelog 的「今日摘要改扁平」）。
+             结构：平均入睡（大字 + 结论）→ 0 点前/后两栏 → 占比条 → 明细 → 趋势图 -->
+        <view class="stc">
+          <!-- 平均入睡时间：口径见 sleep.js 顶部（跨 0 点在「从中午 12:00 起算」的轴上求平均） -->
+          <view class="stc-lab">平均入睡</view>
+          <view class="stc-row">
+            <text class="stc-n">{{stats.avgTxt}}</text>
+            <text class="stc-c">{{stats.gapTxt}}</text>
+          </view>
+          <!-- 0 点前 / 后：两栏并排（原来的竖排小字把右边全空着了） -->
+          <view class="stc-cols">
+            <view class="stc-col">
+              <view class="stc-cv">{{stats.before}}<text class="stc-u">天</text></view>
+              <view class="stc-ck"><view class="stc-dot b"></view><text>0 点前睡</text></view>
+            </view>
+            <view class="stc-col">
+              <view class="stc-cv">{{stats.after}}<text class="stc-u">天</text></view>
+              <view class="stc-ck"><view class="stc-dot a"></view><text>0 点后睡</text></view>
+            </view>
+          </view>
+          <view class="stc-split">
+            <view wx:if="{{stats.beforePct>0}}" class="stc-sb" style="width:{{stats.beforePct}}%"></view>
+            <view wx:if="{{stats.beforePct<100}}" class="stc-sa" style="width:{{100-stats.beforePct}}%"></view>
+          </view>
+          <view class="stc-meta">记了 {{stats.days}} 夜 · 最早 {{stats.earlyTxt}} · 最晚 {{stats.lateTxt}}</view>
+
+          <!-- ============ 入睡趋势（只看近 30 天）============
+               每晚一个点连成折线。纵轴固定 21:00 → 03:00，**0 点线正好在中间**：
+               中线以下 = 0 点前（主题色点）、以上 = 0 点后（深灰点），与时间线胶囊同一套颜色。
+               没记的夜断开不连线（补值会画出「睡得极早 / 极晚」的假象，与电量趋势同一口径）。
+               「全部」的夜数太长画不成线，切到「全部」时这块收起来 -->
+          <block wx:if="{{trend.has}}">
+            <view class="stc-hr"></view>
+            <view class="sect-t stc-tt">入睡趋势</view>
+            <view class="str">
+              <view class="str-y"><text>03:00</text><text class="str-y0">00:00</text><text>21:00</text></view>
+              <view class="str-g">
+                <view class="str-gl" style="bottom:16.7%"></view>
+                <view class="str-gl str-gl0" style="bottom:50%"></view>
+                <view class="str-gl" style="bottom:83.3%"></view>
+              </view>
+              <view class="str-plot">
+                <view wx:for="{{trend.seg}}" wx:key="k" class="str-seg"
+                      style="left:{{item.x0}}%;bottom:{{item.y0}}%;width:{{item.w}}rpx;transform:rotate({{item.rot}}deg)"></view>
+                <view wx:for="{{trend.pts}}" wx:key="i" class="str-pt {{item.after?'a':''}}"
+                      style="left:{{item.pct}}%;bottom:{{item.pct2}}%"></view>
+              </view>
+            </view>
+            <view class="str-axis"><text>{{trend.first}}</text><text>今夜</text></view>
+            <view class="str-sum">{{trend.sum}} · 越靠上睡得越晚（0 点线在中间）</view>
+          </block>
+        </view>
+      </block>
+      <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有入睡记录' : '还没有入睡记录'}}</view>
+
+      <!-- ============ 入睡时间线 ============
+           一行一夜（夜倒序）。不沿用 .rec.tl：那一套是为「一段文字内容」设计的（标题 13.5px），
+           这里每行唯一的内容就是一个时刻——时刻才是主角，单独一套行（.slt/.sli，见 sleep.wxss）：
+           左侧仍是轴线 + 圆点（与全站时间线同一视觉语言），行内改成
+           「大时刻 + 夜标签 …… 右侧一个胶囊（0 点前/后 + 离 0 点多远，一句话说完）」，
+           胶囊右对齐成一列，顺着往下扫就是「这几天睡得越来越晚还是越来越早」。
+           长按某一夜可以删掉（误点记错的那天不用一直挂在统计里） -->
+      <view class="sect-t">入睡时间线</view>
+      <block wx:if="{{list.length}}">
+        <view class="slt">
+          <view wx:for="{{list}}" wx:key="key" class="sli" data-id="{{item.id}}" bindlongpress="onNightLongPress">
+            <text class="sli-t">{{item.t}}</text>
+            <text class="sli-d">{{item.d}}</text>
+            <view class="sli-x"><text class="sl-tag {{item.after ? 'a' : ''}}">{{item.rel}}</text></view>
+          </view>
+        </view>
+        <view wx:if="{{moreN}}" class="loadmore" bindtap="onMore"><text>显示更早的 {{moreN}} 夜</text></view>
+      </block>
+      <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有记过' : '还没有记过'}}</view>
+      </block>
+      </block>
+    </view>
+  </view>
+
+  <!-- 程序名：按胶囊矩形定位，平时被原生胶囊盖住，下拉时随页面下移才露出来（与记 / 看 同一套） -->
+  <view wx:if="{{brandH}}" class="brand {{brandPlay?'play':''}}" style="position:fixed;top:{{brandTop}}px;left:{{brandLeft}}px;width:{{brandW}}px;height:{{brandH}}px;">
+    <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
+  </view>
+
+  <theme-switcher />
+</view>

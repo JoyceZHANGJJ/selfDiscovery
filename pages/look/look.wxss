@@ -34,3 +34,9 @@
 .rec .tvw { flex: 1; min-width: 0; display: flex; align-items: baseline; }
 .rec .tvw .tv { flex: 0 1 auto; }
 .rec .tdur { flex-shrink: 0; font-size: 11.5px; color: var(--ink3); margin-left: 8px; }
+
+/* 「今日」维度的总数行：只有「共 N 条」一个数字，不值得占一张白卡
+   （一个数字撑满16px 内边距的卡片，下面还留大片空白）。改成一行轻量文字，
+   与上方的筛选栏拉开一点距离即可。 */
+.sumline { margin: 14px 2px 2px; font-size: 12.5px; color: var(--ink3); }
+.sumline b { color: var(--ink); font-weight: 800; }

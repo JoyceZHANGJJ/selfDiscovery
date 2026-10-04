@@ -52,6 +52,8 @@ Component({
       { pagePath: '/pages/index/index', text: '记', icon: '✎' },
       { pagePath: '/pages/look/look', text: '看', icon: '☰' },
       { pagePath: '/pages/review/review', text: '回看', icon: '◎' },
+      // 「睡」排在回看与设置之间（与 app.json 的 tabBar.list 同序，selected 索引不能错位）
+      { pagePath: '/pages/sleep/sleep', text: '睡', icon: '☾' },
       { pagePath: '/pages/set/set', text: '设置', icon: '⚙' }
     ],
     // 快捷记（「＋」球）：点球就在原地弹条，不跳页；长按球才进清单页

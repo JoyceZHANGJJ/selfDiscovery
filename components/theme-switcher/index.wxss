@@ -6,7 +6,9 @@
 }
 /* 命中区补齐：圆点只有 22px → 撑到约 41px。
    **只向上 / 左右扩**（向下只扩 2px）：它在页面 DOM 的最后、绘制在最上层，
-   向下多扩会把页面顶部第一行的点击抢走（比如设置页的「问候语轮换」） */
+   向下多扩会把页面顶部第一行的点击抢走（比如设置页的「问候语轮换」）。
+   注：这块透明层盖住了整个控件（含左边的「睡」），所以「睡」必须靠 z-index 抬到它上面
+   （见 .tss），否则它的点击全被这层吃掉、落到切主题那件事上 */
 .tsw::after {
   content: '';
   position: absolute;
@@ -18,6 +20,41 @@
   margin-right: 8px;
   letter-spacing: .04em;
   white-space: nowrap;
+}
+/* 「睡」：圆点左边的胶囊，睡前点一下记入睡时刻。
+   字一直是「睡」（它是个按钮，不该变成数字——见图 wxml 的说明）；
+   未记＝空心（描边 + 主题色字）；今夜已记＝实底主题色 + 白字，不用去「睡」tab 就能确认。
+   z-index: 2 → 压在 .tsw::after 那层命中扩展之上（见上），否则收不到点击 */
+.tss {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 22px;
+  min-width: 28px;
+  padding: 0 6px;
+  margin-right: 8px;
+  border: 1.2px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: .02em;
+}
+.tss.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.tss:active { opacity: .62; }
+/* 它自己的命中区：22px 高太小 → 上下各扩到约 40px（与圆点那块各管各的，互不重叠） */
+.tss::after {
+  content: '';
+  position: absolute;
+  left: -2px; right: -2px; top: -9px; bottom: -9px;
 }
 .tsdot {
   width: 22px;

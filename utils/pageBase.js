@@ -66,9 +66,42 @@ function pageBase(extra) {
     },
     onTabReselect() { this.scrollToTop(); },
 
-    /* 长按复制：把一条记录放进剪贴板，只复制那一句话本身（记 / 看 / 清单 三页逐字相同） */
+    /* 长按复制：把一条记录放进剪贴板（记 / 看 / 清单 三页逐字相同）。
+       待办 / 随记本身就只有一句话，只复制那句话；
+       其余维度按**记录的展示顺序**（store.buildExt，与看页时间线细节行同一份）复制全部内容：
+         【是什么事的选项·描述】字段：值；字段：值…
+       · 头部取主项：主项值在选项池里 → 它是「选项」；「具体的描述」（free:desc）是「描述」。
+         主项是手填（不在池里，如只写一句话当「事」）时它本身就是描述
+       · 字段名用 buildExt 给的 lbl（与编辑器/时间线同一套叫法）；可做补「状态」
+       （觉察/此刻的「感受」在 buildExt 里已合成一组：程度+情绪·自由感受） */
     copyRec(r) {
-      const txt = r.txt || '';
+      if (!r) return;
+      let txt = '';
+      if (r.m === 'today') {
+        // 「今日」一日一记：与时间线日期旁同一文案——剩余<档位名>·今日印象
+        // 剪贴板放不了图片，电池用档位文字名（空/低/中/高/满）
+        const bi = (r.extSrc || []).indexOf('todayBat');
+        const bat = bi >= 0 ? store.batName((r.ext || [])[bi] || '') : '';
+        txt = ('剩余·' + bat + (r.txt ? '·' + r.txt : '')) || '';
+      } else if (r.m === 'sleep') {
+        // 「睡」只有时间、没有内容：复制成一句能读的话（剪贴板里光一个 23:47 没头没尾）
+        txt = '睡了 ' + (r.txt || date.hhmm(r.ts));
+      } else if (r.m === 'todo' || r.m === 'jot') {
+        txt = r.txt || '';
+      } else {
+        const f = store.FIELDS[r.m];
+        const pool = store.getOPT(f ? f.main : ('m_' + r.m));   // 自定义维度主项组名 m_<维度>
+        const isPick = pool.indexOf(r.txt) >= 0;
+        const di = (r.extSrc || []).indexOf('free:desc');
+        const desc = di >= 0 ? (r.ext || [])[di] || '' : '';
+        const head = [isPick ? r.txt : '', desc || (isPick ? '' : (r.txt || ''))].filter(Boolean).join('·');
+        const parts = store.buildExt(r.m, r.ext, r.extSrc).map(d => (d.lbl ? d.lbl + '：' : '') + d.v);
+        if (r.m === 'want' && r.status) {   // 可做的流转状态不在细节里，单独补一项
+          const st = r.status === 'doing' ? '在做' : (r.status === 'done' ? '做了' : (r.status === 'abandon' ? '不做' : '未做'));
+          parts.push('状态：' + st);
+        }
+        txt = (head ? '【' + head + '】' : '') + parts.join('；');
+      }
       if (!txt) return;
       wx.setClipboardData({
         data: txt,

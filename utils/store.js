@@ -12,14 +12,27 @@ const datePrefix = date.datePrefix;
 // 可选维度。无感 / 悦己已并入觉察（见 migrateNopeLikeIntoObs），不再是可选维度，
 // 只会在迁移完成前短暂地存在于历史数据里
 const MODULES = [
+  // 「今日」：一日一记，记当天剩余电量（5 格能量条，1 很低 … 5 满）+ 今日印象最想说的一句话。
+  // 放在第一个（用户一进记页最先看到），但默认选中维度仍是「觉察」（见 index 的 resetToInitial）；
+  // 不进时间线行——内容显示在所在日期行的旁边（见 look 的 groupByDay / grp.today）
+  { k: 'today', n: '今日', c: '#B08968' },
   { k: 'obs', n: '觉察', c: '#7C9A86' },
   { k: 'now', n: '此刻', c: '#5E9A94' },
   { k: 'want', n: '可做', c: '#C0A05A' },
   // 待办：备忘 / 购物 合并而来。一条待办的 m 都是 todo，
   // 「是备忘还是购物」看 ext 里的「类别」（todoKind），颜色也按类别给（见 catColor / taskColor）
   { k: 'todo', n: '待办', c: '#9A8C7A' },
-  { k: 'jot', n: '随记', c: '#948AA8' }
+  { k: 'jot', n: '随记', c: '#948AA8' },
+  // 「睡」：睡前点一下，只记一个入睡时刻（入口在顶部圆点左边，见 components/theme-switcher；
+  // 「睡」tab 里看统计与时间线）。
+  // quiet：它确实是一条记录，但**不进记录流**——不出现在维度栏、时间线、复盘各维度、
+  // 记页「最近」里，只在自己的页面里出现。一天只有一条时间点的记录，混进内容流只会干扰回看
+  // （凡是要"列维度 / 列记录"的地方都得先过 isQuiet，见该函数说明）。
+  { k: 'sleep', n: '睡', c: '#6E8CB0', quiet: true }
 ];
+// 「静默」维度：有记录、能统计，但不参与任何"记录流"展示（维度栏 / 时间线 / 复盘各维度 /
+// 记页最近 / 待办清单）。新增展示入口时记得用它过滤，否则它会被当成普通内容维度露出来
+function isQuiet(k) { const m = MODULES.find(x => x.k === k); return !!(m && m.quiet); }
 
 const OPT = {
   // 觉察：归类 / 喜恶 / 程度 / 感受 里带「无感 · 悦己」味道的词，是 2026-10 合并维度时
@@ -43,7 +56,10 @@ const OPT = {
   // 随记：类别（念头 / 灵感，可在「✎ 管理」里加新类别）。默认「念头」，
   // 与待办类别同一套：只从选项池点选、摆在主输入框上方
   jotKind: ['念头', '灵感'],
-  todoItem: [], jotItem: []
+  // 今日：电池档位（一日一记，必选其一）是**纯图示**——不进选项池、不在「✎ 管理」里增删，
+  // 档位与图片见下方 BATTERIES；这里只留空占位，避免旧代码把 emoji 当选项残留
+  todayBat: [],
+  todoItem: [], jotItem: [], todayItem: []
   // 注：原先还有 doneFeel / doneGain 两组默认词，但可做里「做了的感受 / 收获」是自由文本框、
   // 没有 chips 入口，那两组池子永远不会被用到（选项池界面里也看不到），已删掉
 };
@@ -55,7 +71,8 @@ const OPT = {
 const GLABEL = {
   obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
   genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶',
-  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么'
+  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
+  todayItem: '今日印象', todayBat: '剩余电量'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
@@ -64,11 +81,217 @@ const DEAD_OPT_GROUPS = ['nopeThing', 'nopeDeg', 'nopeMood', 'nopeKind', 'likeIt
 
 const OPTGROUPS = [
   { m: 'obs', gs: ['obsWhat', 'obsKind', 'obsDeg', 'obsStart', 'obsMood'] },
-  { m: 'now', gs: ['genDoing', 'genFeel', 'genWant'] },
+  // 此刻不再列 genFeel：情绪 / 程度整块复用觉察的 obsMood / obsDeg，选项在觉察的「✎ 管理」里维护
+  { m: 'now', gs: ['genDoing', 'genWant'] },
   { m: 'want', gs: ['wantItem', 'wantKind'] },
   { m: 'todo', gs: ['todoKind'] },
   { m: 'jot', gs: ['jotKind'] }
 ];
+
+/* 「今日」电池：纯图示档位（一日一记，必选其一）。
+   值存档位 v（'0'..'4'），渲染时用内嵌 SVG（base64 data URI）现画——不依赖任何外部图片文件，
+   颜色取**当前主题**（外壳/空槽用文字色系、电量用 accent），所以切主题自动跟随。
+   这组档位不进选项池、不在「✎ 管理」里增删（FIELDS.today 直接引用 todayBat，存到 ext），
+   所以编辑/展示都只认 BATTERIES，不认 OPT.todayBat（已留空）。
+   BAT_EMOJI 是旧数据兼容：早期档位存的是 emoji，按同序映射回档位。 */
+const BAT_EMOJI = ['🪫', '¼🔋', '½🔋', '¾🔋', '🔋'];
+// 档位改成 **1..5**（'1' 最少→ '5' 满）。原来有 '0' 空电这一档，能量条上点第 1 格
+// 结果一格都不亮、看着像没点上，而且最后一格永远填不满——5 格 5 档才一一对应。
+// 老记录里存的仍是 '0'..'4'：直接进「今日」编辑态重新点一次能量条覆盖保存即可，
+// 详见下面 batValOf 上方的说明（不做自动迁移）。
+const BATTERIES = [
+  { v: '1', name: '很低' },
+  { v: '2', name: '低' },
+  { v: '3', name: '一般' },
+  { v: '4', name: '较高' },
+  { v: '5', name: '满' }
+];
+// 把任意值归一化成档位 v；认不出返回 ''。
+// 「运行时不做老值 +1」——老值 '1'..'4' 和新值域完全重叠，运行时无法区分新老，硬转会二次错位
+// （老「满」被当成新「较高」）。数据量小，手动改一次即可（见上方注释）。
+// 这里只处理两种无歧义的情况：
+// ① '0'：只存在于老值域（老「空电」），新档位没有 0 → 读成新 '1'（最低档）；
+// ② emoji：更早的旧数据，同序映射 +1。
+// 其余（'1'..'5'）按新档位原样返回。
+function batValOf(v) {
+  if (v == null) return '';
+  if (BATTERIES.some(b => b.v === v)) return v;
+  if (v === '0') return '1';
+  const i = BAT_EMOJI.indexOf(v);
+  if (i >= 0) return String(i + 1);
+  return '';
+}
+/* 注：原先这里有「电池图形」的 SVG 渲染（batSvg/_b64/batSrc，viewBox 76x132 竖版）。
+   「今日」现已统一改成**能量条**（5 格横条，见 batLevel），记页与看页都不用图形了，
+   这套渲染链连同 base64 编码一并移除。 */
+// 档位 -> 文字名（复制文本里用，剪贴板放不了图片）；认不出返回 ''
+function batName(v) { const b = BATTERIES.find(x => x.v === batValOf(v)); return b ? b.name : ''; }
+// 档位 -> 能量条用的格数 **1..5**（认不出按 1，最少一格）。
+// 「今日」用能量条展示，替代电池图形：5 格横条一眼看出高低，比小电池图更省纵向空间、
+// 也更好点（命中区大）。1..5 而不是 0..4：5 格 5 档一一对应，点满第 5 格就真的是满，
+// 不留一个「怎么点都不亮」的空档。
+function batLevel(v) {
+  const n = parseInt(batValOf(v), 10);
+  return isNaN(n) ? 1 : Math.max(1, Math.min(5, n));
+}
+
+/* ---------------- 「睡」：记一个入睡时刻 ---------------- */
+/* 只存 ts（点的那一下就是入睡时刻），txt 放一份 'HH:MM' ——
+   一是导出/导入时主项不为空（导入按「维度 | 内容」解析，空主项会被当成坏行丢掉），
+   二是复制/展示时不用再算一遍。ext 为空。 */
+/* 一夜的定义：**以中午 12:00 为分界**。12:00–23:59 点的算「今夜」，00:00–11:59 点的算「昨夜」
+   （熬到凌晨才睡 / 半夜补记）。这样 23:47 与次日 00:20 落在同一夜，统计「多少天」不会
+   一天既算 0 点前又算 0 点后。一夜最多一条：重复点＝覆盖（见 sleepRecOf 与 sleepNow）。 */
+const SLEEP_CUT_MS = 12 * 3600000;
+const SLEEP_EDGE = 1440;   // 0 点在「入睡轴」上的位置（见 sleepMin）
+// 这条入睡属于哪一夜 → 返回那一夜「白天」那天的 0 点（当唯一键用）
+function sleepNightKey(ts) { return date.dayStart((ts || Date.now()) - SLEEP_CUT_MS); }
+/* 入睡时刻 → 「从中午 12:00 起算」的分钟数：12:00=720 / 23:59=1439 / 0:00=1440 / 6:00=1800。
+   跨 0 点直接接在后面，**求平均才不会被 0 点截断**——23:30 与 0:30 的平均是 0:00（1440），
+   若按 0..1439 直接平均会得到一个荒谬的 12:00。 */
+function sleepMin(ts) {
+  const d = new Date(ts || Date.now());
+  const h = d.getHours();
+  return (h >= 12 ? h : h + 24) * 60 + d.getMinutes();
+}
+// 入睡轴上的分钟数 → 'HH:MM'（超过 24:00 的部分折回，1440 → '00:00'）
+function minTxt(m) {
+  const n = ((Math.round(m) % 1440) + 1440) % 1440;
+  return ('0' + Math.floor(n / 60)).slice(-2) + ':' + ('0' + (n % 60)).slice(-2);
+}
+/* 那一夜叫什么：今夜 / 昨夜 / 10月2日夜。
+   必须按「差几夜」算（用此刻所在的那一夜做基准，见 sleepNightKey），
+   不能按自然日（agoOf）：凌晨 0 点看的时候，正在过的那一夜（键＝昨天）才是「今夜」，
+   按自然日会把它算成「昨夜」——与页面上「今夜已记 23:47」自相矛盾。
+   隔得远就直接报日期（不给「前天夜」这种拼法，不会有歧义）。 */
+function sleepNightLabel(key) {
+  const n = Math.round((sleepNightKey(Date.now()) - (key || 0)) / 86400000);
+  if (n <= 0) return '今夜';
+  if (n === 1) return '昨夜';
+  const d = new Date(key || 0);
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日夜';
+}
+// 某个时刻所在的那一夜，已有的记录（覆盖用）；list 传内存全量。
+// 万一一夜有多条（老数据 / 多端各记了一次），取**最新那条**去覆盖——
+// 与 sleepStats 的「一夜只留最后一次」同一口径，两处结论必须一致
+function sleepRecOf(list, ts) {
+  const k = sleepNightKey(ts);
+  let hit = null;
+  (list || []).forEach(r => {
+    if (!r || r.m !== 'sleep' || sleepNightKey(r.ts) !== k) return;
+    if (!hit || r.ts > hit.ts) hit = r;
+  });
+  return hit;
+}
+// 「比 0 点早/晚多久」的口语说法
+function gapTxt(min) {
+  const m = Math.round(Math.abs(min));
+  if (m === 0) return '正好 0 点';
+  if (m < 60) return m + ' 分钟';
+  const h = Math.floor(m / 60), r = m % 60;
+  return h + ' 小时' + (r ? ' ' + r + ' 分钟' : '');
+}
+/* 记下「现在」这一下入睡。全项目只有一处入口（顶部圆点左边的「睡」胶囊，见 components/theme-switcher），
+   写入规则也就只此一份——「睡」tab 自己不摆记录按钮，只读这份数据出统计。
+   规则只有一处：同一夜已有记录就**改它**（不新增，否则一天两条、统计口径打架），
+   没有就新建。成功返回 { kind:'new'|'over', rec, back }——back 是覆盖前的时间，供撤销改回去。
+   直接维护 G.records（页面读的就是它），省得每个调用方各写一遍 unshift / 改内存 */
+function sleepNow(ts) {
+  const now = ts || Date.now();
+  const t = date.hhmm(now);
+  const list = G.records || [];
+  const old = sleepRecOf(list, now);
+  if (old) {
+    const back = { ts: old.ts, t: old.txt || date.hhmm(old.ts) };
+    return updateRecord(Object.assign({}, old, { txt: t, t, ts: now })).then(() => {
+      Object.assign(old, { txt: t, t, ts: now });
+      return { kind: 'over', rec: old, back };
+    });
+  }
+  const rec = { m: 'sleep', txt: t, ts: now, t, ext: [], extSrc: [], done: false, doneAt: 0, status: '' };
+  return addRecord(rec).then(rid => {
+    rec._rid = rid; rec.id = rid;
+    const d = decorate(rec);
+    list.unshift(d);
+    return { kind: 'new', rec: d, back: null };
+  });
+}
+// 撤销一次 sleepNow：新建的那条删掉；覆盖过的那次把时间改回去
+function sleepUndo(res) {
+  if (!res || !res.rec) return Promise.resolve();
+  const r = res.rec;
+  if (res.kind === 'new') {
+    const list = G.records || [];
+    const i = list.indexOf(r);
+    if (i >= 0) list.splice(i, 1);
+    return deleteRecord(r).catch(() => {});
+  }
+  const b = res.back || {};
+  Object.assign(r, { ts: b.ts, t: b.t, txt: b.t });
+  return updateRecord(Object.assign({}, r, { ts: b.ts, t: b.t, txt: b.t })).catch(() => {});
+}
+// 删掉某一夜的入睡记录（时间线里的长按删除）；返回删除前的副本，便于需要时撤销
+function sleepRemove(rec) {
+  if (!rec) return Promise.resolve(null);
+  const list = G.records || [];
+  const i = list.indexOf(rec);
+  const copy = Object.assign({}, rec);
+  if (i >= 0) list.splice(i, 1);
+  return deleteRecord(rec).then(() => copy).catch(() => { if (i >= 0) list.splice(i, 0, rec); return null; });
+}
+
+/* 入睡统计：把一批 sleep 记录收成一份可渲染的统计
+   · 同一夜多条只留最后一次（与写入的覆盖口径一致，历史脏数据也能收敛）
+   · 只统计 startTs（含）之后的那几夜，null = 全部
+   返回：nights 逐夜明细（夜倒序）/ days 记了多少夜 / before·after 0 点前后天数 /
+        beforePct 占比 / avgTxt 平均入睡时刻 / avgAfter 平均是否落在 0 点后 /
+        gap 平均比 0 点早·晚多久 / first·last 那一夜里最早·最晚的一次 */
+function sleepStats(recs, opts) {
+  const o = opts || {};
+  const startTs = o.startTs != null ? o.startTs : null;
+  const byKey = {};
+  (recs || []).forEach(r => {
+    if (!r || r.m !== 'sleep' || !r.ts) return;
+    const k = sleepNightKey(r.ts);
+    if (startTs != null && k < startTs) return;
+    const old = byKey[k];
+    if (!old || r.ts > old.ts) byKey[k] = r;
+  });
+  const keys = Object.keys(byKey).map(Number).sort((a, b) => b - a);   // 夜倒序
+  const nights = keys.map(k => {
+    const r = byKey[k], off = sleepMin(r.ts);
+    // 离 0 点多远（含方向）：时间线每一行右侧的胶囊文案「0 点前 19 分钟 / 0 点后 1 小时 20 分钟」。
+    // 正好 0 点那一分单独给一句（不写成「0 点后 0 分钟」）
+    const df = off - SLEEP_EDGE;
+    return {
+      key: k, id: r.id, ts: r.ts, off,
+      t: minTxt(off),
+      after: off >= SLEEP_EDGE,          // 0 点后（含正好 0 点那一分）
+      d: sleepNightLabel(k),
+      rel: df === 0 ? '正好 0 点' : (df > 0 ? '0 点后 ' : '0 点前 ') + gapTxt(Math.abs(df))
+    };
+  });
+  const nums = nights.map(n => n.off);
+  const before = nums.filter(v => v < SLEEP_EDGE).length;
+  const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+  const avgMin = Math.round(avg);
+  return {
+    nights,
+    days: nights.length,
+    before, after: nights.length - before,
+    beforePct: nights.length ? Math.round(before / nights.length * 100) : 0,
+    avgTxt: nums.length ? minTxt(avgMin) : '',
+    avgAfter: avg >= SLEEP_EDGE,
+    /* 「比 0 点早/晚多久」的结论。不带「平均」二字——页面上它摆在大数字旁边，
+       上方已有「平均入睡」的小标签，再写一遍「平均」就重复了 */
+    gapTxt: nums.length
+      ? (avgMin === SLEEP_EDGE ? '正好 0 点入睡'
+        : (avgMin >= SLEEP_EDGE ? '比 0 点晚 ' : '比 0 点早 ') + gapTxt(avgMin - SLEEP_EDGE))
+      : '',
+    earlyTxt: nums.length ? minTxt(Math.min.apply(null, nums)) : '',
+    lateTxt: nums.length ? minTxt(Math.max.apply(null, nums)) : ''
+  };
+}
 
 // 固定选项组（写死，不给“管理”入口）
 const FIXED = {
@@ -105,8 +328,13 @@ const FIELDS = {
     { g: 'obsDeg', single: true, noInput: true, sub: true }
   ] },
   now: { main: 'genDoing', items: [
-    { g: 'genFeel', single: false, noInput: true },
-    { free: 'nownote', label: '感受', ph: '这一刻心里的感觉，随便写', ta: true },
+    // 「感受」完全复用觉察那套：情绪 chips（obsMood，标题「感受」）+ 程度副行（obsDeg，小一号、
+    // 没选情绪不出现）+ 感受输入框（free:obsfeel）——记卡里只有「感受」一个标题；
+    // 展示与复制时三个也合成一组「感受」（见 buildExt 的 obs/now 合写）。
+    // 旧此刻记录的 genFeel / free:nownote：编辑载入时映射过来（index 的 checkEdit），展示也兼容
+    { g: 'obsMood', single: true, noInput: true },
+    { g: 'obsDeg', single: true, noInput: true, sub: true },
+    { free: 'obsfeel', label: '', ph: '有什么想抒发的？', ta: true },
     { g: 'genWant', single: true },
     // 「具体的描述」：与「想记的是」解耦，逻辑与可做那套一致（只填它时它本身就是「事」）。
     // 固定放最后一位，导出/导入的按顺序对齐不受影响
@@ -146,6 +374,12 @@ const FIELDS = {
      与待办的类别一样摆在主输入框上方；内容本身就是主项，直接写 */
   jot:  { main: 'jotItem',  items: [
     { g: 'jotKind', single: true, noInput: true, required: true }
+  ] },
+  /* 今日：主项=手填「今日印象」（todayItem 池为空，纯手填），细节只有一个电池档位（必选）。
+     一日一记的行为（当天已记 → 直接载入编辑）在 index 的 onTag / doSave 里做，
+     展示不走细节行——看页把它拼在日期行旁（look 的 grp.today），复制在 pageBase.copyRec 特判 */
+  today: { main: 'todayItem', items: [
+    { g: 'todayBat', single: true, noInput: true }
   ] }
 };
 
@@ -231,7 +465,8 @@ const COLMAP = {
   'free:trigger': '诱因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受',
-  'free:howto': '怎么做'
+  'free:howto': '怎么做',
+  todayBat: '剩余电量'
 };
 const FALLBACK = { obs: '感受', want: '诱因', nope: '感受', now: '感受', like: '当时感受' };
 
@@ -244,9 +479,11 @@ function mcolor(k) {
   if (k === 'done') return '#6E8CB0';
   const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n, c: d.c }))).find(x => x.k === k); return m ? m.c : '#7C9A86';
 }
-function isSingle(g) { for (const m of OPTGROUPS) { if (m.gs.indexOf(g) >= 0) { const f = FIELDS[m.m]; return !!(f.items.find(it => it.g === g && it.single)); } } return false; }
+// 该选项组是否单选（点新项替换旧项）。遍历所有维度的字段定义（不依赖 OPTGROUPS——
+// 「今日」电池 todayBat 已不进 OPTGROUPS，但仍要被认成单选，否则会多选）
+function isSingle(g) { for (const k in FIELDS) { const f = FIELDS[k]; if (f.items && f.items.find(it => it.g === g && it.single)) return true; } return false; }
 // 该选项组是否隐藏手填输入框（这类组不能手填，编辑时不留残值）
-function isNoInput(g) { for (const m of OPTGROUPS) { if (m.gs.indexOf(g) >= 0) { const f = FIELDS[m.m]; return !!(f.items.find(it => it.g === g && it.noInput)); } } return false; }
+function isNoInput(g) { for (const k in FIELDS) { const f = FIELDS[k]; if (f.items && f.items.find(it => it.g === g && it.noInput)) return true; } return false; }
 function getOPT(g) { const O = G.OPT || OPT; return O[g] || []; }
 // 快捷创建（「＋」球面板）里平铺哪些类别：待办类别（todoKind 池）+ 随记类别（jotKind 池）。
 // 由用户在「设置」里勾选，最多 QUICKCATS_MAX 个；没勾过时给默认（全部待办类别 + 随记类别，截断到上限）。
@@ -331,22 +568,26 @@ function buildExt(m, ext, extSrc) {
   // 这里排掉，避免同一句话在标题行和细节行各出现一次；
   // 随记的「类别」同理——行首显示的模块名就是类别本身（念头 / 灵感），不再重复成一行
   }).filter(d => hideSrc.indexOf(d.src) < 0 && d.src !== DESC_SRC && d.src !== 'jotKind');
-  // 觉察：详情按「喜恶 → 感受 → 怎么开始的 → 沉浸 → 精力」展示，与编辑器里的顺序一致。
-  // 「感受」是一组：程度（obsDeg）与情绪（obsMood）连写成「有点焦虑」，再和自由感受（obsfeel）
-  // 用 · 连成一行 —— 与编辑器里「档位 + 情绪 + 自由输入框」合成一块的口径一致；
-  // 只影响回读展示，ext/extSrc 里三者仍是各自独立的字段
-  if (m === 'obs') {
-    const pick = (src) => (list.find(d => d.src === src) || {}).v || '';
+  // 觉察 / 此刻：详情按「喜恶 → 感受 → …」展示，与编辑器里的顺序一致。
+  // 「感受」是一组：程度（obsDeg）与情绪（obsMood）连写成「有点焦虑」，再和自由感受用 · 连成一行
+  // —— 与编辑器里「档位 + 情绪 + 自由输入框」合成一块的口径一致（此刻整块复用觉察，见 FIELDS.now）；
+  // 旧此刻记录的情绪（genFeel）/ 感受（free:nownote）也并进这一组，展示不丢内容。
+  // 只影响回读展示，ext/extSrc 里各字段仍独立
+  if (m === 'obs' || m === 'now') {
+    const picks = (src) => list.filter(d => d.src === src).map(d => d.v).filter(Boolean);
     const out = [];
-    const kind = pick('obsKind'); if (kind) out.push({ lbl: COLMAP.obsKind, v: kind });
-    const feel = [pick('obsDeg') + pick('obsMood'), pick('free:obsfeel')].filter(Boolean).join(' · ');
+    const kind = picks('obsKind')[0] || '';
+    if (kind) out.push({ lbl: COLMAP.obsKind, v: kind });
+    const feel = [
+      (picks('obsDeg')[0] || '') + (picks('obsMood').join('')),   // 程度+情绪连写：有点焦虑
+      picks('genFeel').join('、'),                                 // 旧此刻：情绪多选
+      picks('free:obsfeel').join(' '),                             // 自由感受
+      picks('free:nownote').join(' ')                              // 旧此刻：感受输入框
+    ].filter(Boolean).join(' · ');
     if (feel) out.push({ lbl: GLABEL.obsMood, v: feel });   // 组名跟随编辑器里的「感受」
-    ['obsStart', 'fx:forgot', 'fx:nrg'].forEach(s => {
-      const d = list.find(x => x.src === s); if (d) out.push(d);
-    });
-    // 兜底：没在上述来源里的（历史遗留脏数据）照原样附在后面，不丢信息
-    const shown = ['obsKind', 'obsDeg', 'obsMood', 'free:obsfeel', 'obsStart', 'fx:forgot', 'fx:nrg'];
-    list.forEach(d => { if (shown.indexOf(d.src) < 0) out.push(d); });
+    // 其余细节（觉察：怎么开始的 → 沉浸 → 精力；此刻：想做的事）按原顺序附后
+    const used = ['obsKind', 'obsDeg', 'obsMood', 'genFeel', 'free:obsfeel', 'free:nownote'];
+    list.forEach(d => { if (used.indexOf(d.src) < 0) out.push(d); });
     return out;
   }
   if (m === 'nope') {
@@ -702,8 +943,9 @@ function countRecords({ m = null, startTs = null, state = null, extTag = null, e
   });
 }
 // 统计：各觉察维度（不含备忘/购物）的条数 → { obs: 12, now: 3, want: 5 }
+// 静默维度（睡）不算在内：它不进记录流，多查一次也只是白跑一趟云
 function countByModule({ startTs = null } = {}) {
-  const mods = MODULES.filter(m => !isTask(m.k));
+  const mods = MODULES.filter(m => !isTask(m.k) && !m.quiet);
   return Promise.all(mods.map(m => countRecords({ m: m.k, startTs }))).then(arr => {
     const out = {};
     mods.forEach((m, i) => { out[m.k] = arr[i] || 0; });
@@ -1176,6 +1418,8 @@ function migrateJotKind() {
    ・目标类别「识己」不在池子里时不动记录（免得记录挂在不存在的类别上），只打日志 */
 const MIG_TODOREC_KEY = 'self_mig_todorec_202610';
 const TODOREC_OV = '备忘', TODOREC_NV = '识己';
+/* 注：档位从 0..4 改成 1..5 后，老记录里 todayBat 存的仍是 0..4。数据量小，进「今日」的编辑态重新点一次能量条即可覆盖保存（走的还是原来那条 update），所以这里**不做一次性迁移**——老值1..4 与新值域完全重叠、运行时无法区分新老，任何自动换算都会把已经记对的记录也搞错。 */
+
 function migrateTodoRecords() {
   return new Promise((resolve) => {
     if (wx.getStorageSync(MIG_TODOREC_KEY)) { resolve(true); return; }
@@ -1525,6 +1769,8 @@ function reload(opts) {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, syncWindowBg,
+  BATTERIES, batName, batValOf, batLevel,
+  isQuiet, sleepNightKey, sleepMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove, SLEEP_EDGE,
   dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, migrateTodoRecords, takeRenameMap,

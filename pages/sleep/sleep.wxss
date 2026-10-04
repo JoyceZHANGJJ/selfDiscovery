@@ -1,0 +1,93 @@
+/* pages/sleep/sleep.wxss —— 睡（睡前记一下 / 入睡统计 / 入睡时间线）
+   基础块（.sect-t / .filters / .ft / .bars / .empty-mini / .sk / .loadfail / .btn / .undo-bar）
+   都来自 app.wxss，这里只补本页特有的。颜色一律走主题变量，切主题自动跟随。 */
+
+/* 整页页面级滚动：与记 / 看 / 回看 一致，.app 还原为普通文档流
+   （否则 .app 只有固定一屏高，滚出一屏后页面底色露白、背景分层） */
+.app { position: static; min-height: 100vh; display: block; }
+.screen { height: auto; }
+/* 内容留一个最小高度：还没记过时整页很短，留白太多也不至于滑不动 */
+.body { min-height: calc(100vh + 60px); }
+
+/* 一条都没有时整页的指引（这一页没有记录按钮，得指向右上角那个「睡」） */
+.sl-empty { font-size: 13.5px; color: var(--ink2); font-weight: 700; padding: 18px 0 0; }
+.sl-empty-s { font-size: 12.5px; color: var(--ink4); margin-top: 6px; line-height: 1.6; }
+
+/* ================= 入睡统计（扁平，不用 .bars 白卡） =================
+   这一页的时间线是扁平的，统计再套一张白卡就突兀了（项目最近的方向也是去卡片）。
+   结构：平均入睡（大字 + 结论同行）→ 0 点前/后两栏 → 占比条 → 明细 → 趋势图，
+   区块之间用发丝线分隔，不再用底色块 */
+.stc { margin-top: 14px; }
+.stc-lab { font-size: 11.5px; color: var(--ink4); letter-spacing: .04em; }
+/* 平均入睡 + 结论同一行：结论不再单独占一行（原来竖排三行小字，右边全空着） */
+.stc-row { display: flex; align-items: baseline; gap: 9px; margin-top: 2px; flex-wrap: wrap; }
+.stc-n { font-size: 36px; font-weight: 800; line-height: 1.05; color: var(--ink); letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+.stc-c { font-size: 12px; font-weight: 700; color: var(--accent); }
+/* 0 点前 / 后：两栏并排（左边一个数右边一个数，一眼对比） */
+.stc-cols { display: flex; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }
+.stc-col { flex: 1; min-width: 0; }
+.stc-col + .stc-col { border-left: 1px solid var(--line); padding-left: 14px; }
+.stc-cv { font-size: 21px; font-weight: 800; color: var(--ink); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stc-u { font-size: 11.5px; font-weight: 400; color: var(--ink4); margin-left: 3px; }
+.stc-ck { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink3); margin-top: 3px; }
+/* 两个小圆点的颜色 = 时间线胶囊的两色（0 点前主题色 / 0 点后深灰），整页只有一套颜色语言 */
+.stc-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.stc-dot.b { background: var(--accent); }
+.stc-dot.a { background: var(--ink3); }
+.stc-split { display: flex; height: 6px; margin-top: 14px; border-radius: 99px; overflow: hidden; background: var(--soft); }
+.stc-sb { background: var(--accent); }
+.stc-sa { background: var(--ink3); }
+.stc-meta { font-size: 11.5px; color: var(--ink4); margin-top: 9px; }
+.stc-hr { height: 1px; background: var(--line); margin: 16px 0 0; }
+/* 「入睡趋势」小节标题：在发丝线下面，压缩上边距（.sect-t 默认 16px 顶距太空） */
+.stc-tt { margin-top: 12px; }
+
+/* ---- 入睡趋势：纯 CSS 折线（与回看的剩余电量趋势同一套画法，不引 canvas） ----
+   纵轴固定 21:00（下）→ 03:00（上），**0 点线正好落在 50%**：
+   中线以下 = 0 点前（主题色点）、以上 = 0 点后（深灰点），与时间线胶囊同一套颜色 */
+.str { position: relative; margin-top: 10px; }
+/* 左侧三个纵轴刻度（上 03:00 / 中 00:00 / 下 21:00），与图区之间留 34px */
+.str-y { position: absolute; left: 0; top: 0; bottom: 0; width: 30px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; font-size: 9.5px; color: var(--ink4); line-height: 1; }
+.str-y0 { color: var(--ink3); }
+.str-g { position: absolute; left: 34px; right: 0; top: 0; bottom: 0; }
+.str-gl { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
+.str-gl0 { background: var(--line2); }   /* 0 点线略重：它是这张图的分界 */
+.str-plot { position: relative; height: 84px; margin-left: 34px; }
+/* 线段：几何（起点 / 长度 / 倾角）在 js 里算好，rotate 画——小程序没有 svg polyline */
+.str-seg { position: absolute; height: 2px; border-radius: 1px; background: var(--accent); opacity: .5; transform-origin: left center; }
+/* 点：颜色跟胶囊一致（0 点前主题色 / 0 点后深灰），外圈一圈背景色描边压住参考线 */
+.str-pt { position: absolute; width: 8px; height: 8px; margin-left: -4px; margin-bottom: -4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
+.str-pt.a { background: var(--ink3); }
+.str-axis { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--ink4); margin: 5px 0 0 34px; }
+.str-sum { font-size: 11px; color: var(--ink4); margin: 6px 0 0 34px; line-height: 1.6; }
+
+/* ================= 入睡时间线 =================
+   不沿用 .rec.tl：那一套为「一段文字内容」设计（标题 13.5px，右侧挤一个元信息），
+   而且它把「时刻 / 夜标签 / 前后」全堆在左边，右边一大片空白——所以单独一套行：
+   左侧仍是轴线 + 圆点（与全站时间线同一视觉语言），行内重排成
+   「大时刻 + 夜标签 …… 右对齐的胶囊」，行与行之间一条发丝线，扫起来有节奏 */
+.slt { position: relative; padding: 4px 0 8px 24px; }
+/* 轴线画在每一行上（首行从圆点起、末行到圆点止、只有一行时不画），随行高自适应不会断 */
+.sli { position: relative; display: flex; align-items: center; gap: 9px; padding: 9px 0; }
+.sli + .sli { border-top: 1px solid var(--line); }
+.sli::before { content: ''; position: absolute; left: -19px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.sli:first-child::before { top: 15px; }                 /* 首行：从圆点开始 */
+.sli:last-child::before { bottom: auto; height: 15px; } /* 末行：到圆点为止 */
+.sli:only-child::before { display: none; }              /* 只有一夜：不画线 */
+/* 圆点：与 .rec.tl 同一画法（内容盒 + 2px 背景色描边，正好压住轴线）。
+   left -24px → 圆点中心（5.5px）与轴线中心对齐 */
+.sli::after { content: ''; position: absolute; left: -24px; top: 15px; width: 7px; height: 7px; box-sizing: content-box; border: 2px solid var(--bg); border-radius: 50%; background: var(--accent); }
+/* 时刻：这一行的主角，19px / 700（内容型时间线的标题只有 13.5px） */
+.sli-t { flex: none; font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1.15; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+/* 夜标签（今夜 / 昨夜 / 10月2日夜）：退到次要位，不再用主题色抢时刻的注意力 */
+.sli-d { flex: 1; min-width: 0; font-size: 11.5px; color: var(--ink4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 右侧胶囊：0 点前/后 + 离 0 点多远，一句话说完（原先「0 点前」chip 与「早 19 分钟」是两处重复表达）。
+   前后用**底色深浅**区分，不靠字色——有的主题主色本身就很淡（如暖沙的灰绿），
+   浅底 + 换个字色根本看不出差别，底色一深一浅才是在任何主题下都分得开的：
+   0 点前 = 主题色浅底 + 主题色字（与统计块「0 点前」的圆点 / 占比条同一组颜色）；
+   0 点后 = 中性深灰实底 + 白字（深浅对比，不依赖色相，色弱也分得清）。
+   两个都是中性描述（不评哪天更好，早晚本身已经说明了一切） */
+.sli-x { flex: none; }
+.sl-tag { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-variant-numeric: tabular-nums; background: var(--accent-soft); color: var(--accent); }
+.sl-tag.a { background: var(--ink3); color: #fff; }   /* 0 点后 */
+.loadmore { text-align: center; color: var(--ink4); font-size: 12px; padding: 14px 0 24px; }

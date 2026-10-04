@@ -133,7 +133,45 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .ft .fd { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); margin-right: 5px; vertical-align: middle; }
 /* 选中项的小圆点保留自己的类别色：筛选行是「下划线 tab」而不是填充药丸，
    原来的「选中变白」（给填充式设计的）会让圆点在浅底上直接看不见 */
-.daylab { font-size: 11.5px; color: var(--ink3); margin: 15px 0 2px; letter-spacing: .06em; }
+/* 日期行：只放日期本身（小号灰）。「今日」的电池 + 印象另起一块，见下面 .todaycard */
+.daylab { font-size: 11px; color: var(--ink4); margin: 15px 0 2px; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 「今日」一日一记：与记页 .today-locked 同一套视觉——左侧主题色细竖线 + 能量条 + 印象。
+   不给底色卡：它和下面的时间线记录是同一层内容，加底色会多出一块视觉重量 */
+.todaycard { display: block; margin: 4px 0 8px; padding: 2px 0 2px 12px; border-left: 2px solid var(--accent); }
+.todaycard-txt { display: block; font-size: 12.5px; line-height: 1.6; color: var(--ink2); }
+.todaycard-txt.is-none { color: var(--ink4); }
+/* 今日块现在也能点（左滑进记页改 / 点一下出操作条），给按压反馈与选中态，
+   跟下面的时间线行 .rec 同一种手感 */
+.todaycard:active { opacity: .6; }
+.todaycard.sel { background: var(--soft); border-radius: 0 var(--r-card) var(--r-card) 0; }
+/* 记页电池 chip：只放图片 */
+.chip.disabled { opacity: .5; }
+/* ===== 「今日」能量条 =====
+   一套视觉两处用：只读摘要（.tl-bar，5 格纯色块）与编辑态选择（.ebar，5 段可点），
+   两态看起来是同一件事。不用电池图形：5 格一眼看出高低，也比小图好点。 */
+
+/* 记页顶部「今日已填」只读摘要：点整块进编辑。
+   刻意不给底色块——它和下面「最近」列表是同一层内容，加背景反而多出一块视觉重量。
+   改用左侧一条主题色细竖线做锚点（与 .rec.tl 时间线同一套视觉语言），底色透明，更扁平更轻 */
+.today-locked { display: block; margin: 10px 0 4px; padding: 2px 0 2px 12px; border-left: 2px solid var(--accent); }
+.tl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tl-lab { font-size: 11.5px; color: var(--ink4); flex: none; }
+/* 右起的创建时间：与时间线行 .tw 同一口径与观感（小号、更淡、右对齐） */
+.tl-when { margin-left: auto; flex: none; font-size: 11px; color: var(--ink4); }
+/* 只读能量条：5 个小方格，前 lv 格点亮成主题色。未点亮格用浅 line2，不再是灰块 */
+.tl-bar { display: flex; gap: 4px; flex: 1; max-width: 160px; }
+.tl-cell { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+.tl-cell.on { background: var(--accent); }
+.tl-txt { display: block; font-size: 13.5px; line-height: 1.6; color: var(--ink2); }
+/* 没写印象时的占位：淡化（不用括号，原「（今天还没写印象）」太重） */
+.tl-txt.tl-none { color: var(--ink4); }
+
+/* 编辑态能量条：直接复用只读 .tl-bar / .tl-cell 的样式（同视觉），只加高到 20px 方便点。
+   .cur＝当前选中的那一档，加一圈描边——否则选「空」时 0 格点亮，和没点过一样看不出选中。
+   hover 只加浅底、不改颜色，避免和「已点亮」混淆 */
+.ebar-cell { height: 20px; border-radius: 6px; }
+.ebar-cell.cur { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.ebar-cell-hover { background: var(--line2); }
 .st-sum { font-size: 12.5px; color: var(--ink2); margin-bottom: 11px; }
 .st-sum b { color: var(--ink); font-weight: 800; }
 .st-ex { font-size: 12px; color: var(--ink3); margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--line); }
@@ -193,9 +231,17 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .it { margin-right: 14px; }
 .it:last-child { margin-right: 0; }
 .k { color: var(--ink3); margin-right: 5px; font-size: 11.5px; }
-/* 备忘 / 购物：输入区只留一个输入框，一行高度、文字垂直居中 */
-.plain-in { margin-top: 4px; height: 34px; min-height: 34px; line-height: 34px; padding: 0 12px; }
+/* 备忘 / 购物 / 随记 / 今日：主输入框。
+   34px 太扁，写「今日印象」这类稍长的话就一行到底、看着挤——加高到 44px，
+   文字仍垂直居中，多出来的空间让人知道这里能写点东西 */
+.plain-in { margin-top: 4px; height: 44px; min-height: 44px; line-height: 44px; padding: 0 12px; font-size: 14.5px; }
 .plain-in:first-child { margin-top: 0; }
+
+/* 自由文本框（感受 / 原因 / 补充…）：从 34px 加高到 44px。
+   这些框 auto-height，写多了会自己变高，起步高度只影响「空着时」的那一瞥。
+   只作用于 textarea（.mini-in 另有 input 用法），且放在 textarea.mini-in 之后覆盖它；
+   「选项管理」里的 .opt-row .mini-in 是另一种用法（flex 撑开），不在此处影响 */
+textarea.mini-in { height: auto; min-height: 44px; line-height: 21px; padding: 11px; }
 
 /* ================= 骨架屏（首屏加载占位） ================= */
 .sk-line, .sk-box, .sk-btn, .sk-rec, .sk-dot, .sk-hr {

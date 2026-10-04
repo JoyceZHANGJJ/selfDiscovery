@@ -47,7 +47,8 @@ Page(pageBase({
     // tabBar 的 hidden 跟着「有没有浮层」走，不能写死 false：
     // 从后台切回来也会走一次 onShow，写死就会把 tab 栏放出来、压住浮层底部的按钮（主题面板的「完成」）
     const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
-    if (tb) tb.setData({ selected: 3, hidden: this._anyOverlay(), theme: wx.getStorageSync('theme') || 'mint' });
+    // selected 按 app.json 的 tabBar.list 下标：记0 / 看1 / 回看2 / 睡3 / 设置4
+    if (tb) tb.setData({ selected: 4, hidden: this._anyOverlay(), theme: wx.getStorageSync('theme') || 'mint' });
     this._rehideTabBar();   // 后台回来那一瞬间 tabBar 有自己的复位时序，过一拍再收一次
     this.buildThemeOpts();   // 主题表 / 当前 / 常用：右上圆点那边改过主题时，切回设置页要能看到最新的
     store.ensureAll().then(() => {
@@ -298,6 +299,9 @@ Page(pageBase({
   parseImport(txt) {
     const lines = String(txt || '').split(/\r?\n/);
     const out = []; let bad = 0;
+    // 「睡」也在 MODULES 里（只是标了 quiet），所以这里天然认识它；
+    // 下面 known 的白名单要额外放行 isQuiet —— 它没有 FIELDS（不在记页手记），
+    // 不放行的话导出的「睡」会被当成坏行丢掉，导入一条都回不来
     const N2K = {}; store.MODULES.forEach(m => N2K[m.n] = m.k);
     // 备忘 / 购物 已并入「待办」：老导出文件里的维度名映射成 todo，并把类别补进细节最前
     // （合并后的新导出维度写「待办」，类别本就在细节里，不需要这一步）
@@ -311,7 +315,7 @@ Page(pageBase({
       let ext = p.length > 3 ? p.slice(3).join(' | ').split(/[、,，]/).map(x => x.trim()).filter(x => x) : [];
       const aliasCat = LEGACY_TASK[mk];
       const k = aliasCat ? 'todo' : (N2K[mk] || mk);
-      const known = store.FIELDS[k] || (app.globalData.dims || []).some(d => d.k === k);
+      const known = store.FIELDS[k] || (app.globalData.dims || []).some(d => d.k === k) || store.isQuiet(k);
       if (!known) { bad++; return; }
       if (aliasCat) ext = [aliasCat].concat(ext);   // 类别与 srcList('todo') 的首位对齐
       const { ts, t } = this.parseHeadLine(head);
