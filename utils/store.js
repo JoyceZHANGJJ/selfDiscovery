@@ -139,6 +139,10 @@ const FIELDS = {
 // 主题配色统一在 utils/themes.js 维护（单一来源），这里只做读取与转发
 const themes = require('./themes.js');
 const THEMES = themes.THEMES;
+const themeList = themes.themeList;
+const themeStyle = themes.themeStyle;
+const themeOf = themes.themeOf;
+const themeAccent = themes.themeAccent;
 
 // 读取当前主题；若 storage 里是已被删除的废弃主题，回落切换列表第一个，
 // 避免冷启动套上不存在的主题、CSS 变量全空（输入框/按钮背景透明）
