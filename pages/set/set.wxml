@@ -55,12 +55,21 @@
         </view>
       </view>
 
-      <!-- 外观 · 主题：点色点即切换（整站立即生效）；勾「常用」＝加入右上圆点的循环，最多 5 个 -->
+      <!-- 外观 · 主题：像「快捷创建」一样直接铺在设置页里（不用浮层 / 子页面——
+           tab 页无法拦截系统返回键，浮层与子页面各有各的别扭）。点色点即切换，整站立即生效；
+           勾「常用」＝加入右上圆点的循环，最多 5 个 -->
       <view class="sect-t" style="margin-top:18px">外观</view>
-      <view class="srow" bindtap="goTheme">
-        <view class="sl">主题</view>
-        <view class="sv">{{themeName}} · 常用 {{favCount}}/{{favMax}} ▸</view>
+      <view class="srow"><view class="sl">主题</view><view class="sv">{{themeName}} · 常用 {{favCount}}/{{favMax}}</view></view>
+      <view wx:for="{{themeOpts}}" wx:key="k" class="th-row">
+        <view class="th-pick" data-k="{{item.k}}" bindtap="onThemePick">
+          <view class="th-swatch" style="background:{{item.c}};{{item.on?'box-shadow:0 0 0 2px '+item.c:''}}">
+            <view wx:if="{{item.on}}" class="th-tick"></view>
+          </view>
+          <view class="th-name {{item.on?'on':''}}">{{item.n}}</view>
+        </view>
+        <view class="th-fav {{item.fav?'on':''}}" data-k="{{item.k}}" bindtap="onFavToggle">{{item.fav?'常用 ✓':'＋ 常用'}}</view>
       </view>
+      <view class="qc-hint">「常用」决定右上圆点在哪些主题之间循环（按这里的排列顺序）；一个都不勾时回到全部 {{themeOpts.length}} 个。</view>
 
       <!-- 快捷创建：点「＋」球时平铺哪些类别（待办类别 + 随记类别），上限见 store.QUICKCATS_MAX -->
       <view class="sect-t" style="margin-top:18px">快捷创建</view>
