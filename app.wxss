@@ -303,12 +303,13 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rec.done .ck { background: var(--accent); border-color: var(--accent); }
 .rec.done .ck::after { content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 5px; height: 9px; border: 1.7px solid #fff; border-top: 0; border-left: 0; transform: rotate(42deg); }
 .rec.done .tv { color: var(--ink3); text-decoration: line-through; }
-/* 已放弃：圈里画个 ×、文字做弱化（不划线——划线是「完成」的语言；这里也没给点击，完成要走「恢复」）
+/* 已放弃：与「完成」统一为「实心圆 + 白色标记」语言——只是颜色用中性灰、标记用 ×，表示不再进行（这里也没给点击，完成要走「恢复」）
    × 用 left/top 50% + translate 居中：圆圈有 1.5px 边框，按 padding 盒硬折算容易偏出去 */
-.rec.ab .ck::before, .rec.ab .ck::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 1.5px; border-radius: 2px; background: var(--ink3); }
+.rec.ab .ck { background: var(--ink3); border-color: var(--ink3); }
+.rec.ab .ck::before, .rec.ab .ck::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 1.5px; border-radius: 2px; background: #fff; }
 .rec.ab .ck::before { transform: translate(-50%, -50%) rotate(45deg); }
 .rec.ab .ck::after { transform: translate(-50%, -50%) rotate(-45deg); }
-.rec.ab .tv { color: var(--ink3); }
+.rec.ab .tv { color: var(--ink3); text-decoration: line-through; }
 .rec.done .edge { opacity: .35; }
 .rec.done .tw, .rec.done .dm { opacity: .6; }
 .rec .done-at { font-size: 11.5px; color: var(--accent); margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: .01em; }

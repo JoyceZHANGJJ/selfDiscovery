@@ -54,6 +54,16 @@
         </view>
       </view>
 
+      <!-- 快捷创建：点「＋」球时平铺哪些类别（待办类别 + 随记），最多 5 个，在「设置」里勾选 -->
+      <view class="sect-t" style="margin-top:18px">快捷创建</view>
+      <view class="srow"><view class="sl">点「＋」球时显示的类别</view><view class="sv">{{quickCount}}/5</view></view>
+      <view class="qcpick">
+        <view wx:for="{{quickOpts}}" wx:key="key" class="qctag {{item.on?'on':''}}" data-k="{{item.key}}" bindtap="onQuickToggle">
+          <view class="qa-dot" style="background:{{item.c}}"></view>{{item.n}}
+        </view>
+      </view>
+      <view class="qc-hint">从「待办类别 + 随记」里选，最多 5 个。新增类别去记页「✎ 管理」。</view>
+
       <!-- 数据 -->
       <view class="sect-t" style="margin-top:18px">数据</view>
       <view class="srow"><view class="sl">导出全部记录</view><view class="sr" bindtap="onExport">复制</view></view>

@@ -1,5 +1,6 @@
 // pages/list/list.js —— 清单：备忘 / 购物（待办）+ 随记（平铺列表）快捷查看
 const store = require('../../utils/store.js');
+const swipe = require('../../utils/swipe.js');
 const app = getApp();
 
 // 待办的时间只存 HH:MM（与 store.normTime 的输出一致；「今天 / 非今天」的显示交给 taskTime）
@@ -30,7 +31,9 @@ Page({
     segs: [],              // 筛选行：全部 + 各待办类别 + 随记（rebuild 里按选项池生成）
     // 顶部快捷新增：输入 → 回车 → 立刻出现在列表顶部，可连着加（目标跟筛选走）
     qaTxt: '',
-    qaM: 'k:备忘',         // seg='all' 时的目标：'k:<类别>' | 'jot'（点「切换」轮换）
+    qaM: 'k:备忘',         // seg='all' 时的目标：'k:<类别>' | 'jot'
+    qaCats: [],            // 全部模式下平铺的可勾选类别（来自「设置」里的快捷创建勾选，最多 5 个）
+    qaKey: 'k:备忘',       // 当前快捷新增目标（用于高亮 chips）
     qaC: store.catColor('备忘'),
     qaName: '备忘',
     qaPh: '要记住什么',
@@ -49,11 +52,6 @@ Page({
     undoneN: 0, jotN: 0,
     undoneHide: 0, doneHide: 0, abandHide: 0, jotHide: 0,
     doneDayAll: {}, abandDayAll: {},   // 某天被「展开全部」了（<天 key>: 1）
-    // 收起态：只默认展开「待完成」——清单页一进来先看要干什么；
-    // 已完成 / 已放弃都收起，条数在各自的标题上看得见，想看再点开
-    openU: true,
-    openD: false,
-    openA: false,
     empty: false,
     // 点条目出的记录操作条（放弃 / 恢复 / 改 / 删除；完成永远走条目上的勾选框）
     sel: null,
@@ -129,8 +127,17 @@ Page({
     const segs = [{ k: 'all', n: '全部', c: '' }]
       .concat(store.getOPT('todoKind').map(v => ({ k: todoSeg(v), n: v, c: store.catColor(v) })))
       .concat([{ k: 'jot', n: '随记', c: store.mcolor('jot') }]);
-    // 快捷新增的目标：筛了具体项就跟筛走（筛「全部」时用「切换」选的那个）
-    const qm = (isJot || cat) ? seg : this.data.qaM;
+    // 全部模式下平铺的可勾选类别（来自「设置」里的快捷创建勾选，最多 5 个）；筛了具体项时目标跟筛走
+    const pool = store.getOPT('todoKind') || [];
+    const qaCats = (store.getQuickCats() || []).map(qc => {
+      const key = qc.m === 'jot' ? 'jot' : ('k:' + (qc.cat || ''));
+      const T = this.qaDesc(key);
+      return { key, m: T.m, cat: T.cat, n: T.n, c: T.c };
+    }).filter(o => o.m !== 'todo' || pool.indexOf(o.cat) >= 0);
+    const qaKeys = qaCats.map(o => o.key);
+    let qaM = this.data.qaM;
+    if (qaKeys.indexOf(qaM) < 0) qaM = qaKeys[0] || 'jot';
+    const qm = (isJot || cat) ? seg : qaM;
     const T = this.qaDesc(qm);
     this.setData({
       show: isJot ? jotsAll.length > 0 : list.length > 0,
@@ -142,13 +149,13 @@ Page({
       abandHide: Math.max(0, abandDays.length - abandGroups.length),
       jotHide: Math.max(0, jotsAll.length - jots.length),
       empty: isJot ? jotsAll.length === 0 : list.length === 0,
-      qaM: qm, qaName: T.n, qaPh: T.ph, qaC: T.c
+      qaCats, qaM: qaM, qaKey: qm, qaName: T.n, qaPh: T.ph, qaC: T.c
     });
   },
 
   /* 各段的「显示更多」：u 待完成 / d 已完成（天）/ a 已放弃（天）/ j 随记 */
   onMore(e) {
-    const k = e.currentTarget.dataset.k;
+    const k = this._detailOr(e, 'k');
     const patch = {};
     if (k === 'u') patch.limU = this.data.limU + 20;
     else if (k === 'j') patch.limJ = this.data.limJ + 20;
@@ -159,8 +166,8 @@ Page({
   },
   /* 某一天「展开全部 / 收起」（这天超过 20 条时才有入口） */
   onDayMore(e) {
-    const k = String(e.currentTarget.dataset.k);   // 天的 key（0 点时间戳，字符串）
-    const w = e.currentTarget.dataset.w;   // d 已完成 | a 已放弃
+    const k = String(this._detailOr(e, 'k'));   // 天的 key（0 点时间戳，字符串）
+    const w = this._detailOr(e, 'w');   // d 已完成 | a 已放弃
     const which = w === 'a' ? 'abandDayAll' : 'doneDayAll';
     const map = Object.assign({}, this.data[which]);
     if (map[k]) delete map[k]; else map[k] = 1;
@@ -184,20 +191,29 @@ Page({
     this.setData({ seg: this.data.seg });
     this.rebuild();
   },
-
-  /* 待完成 / 已完成 / 已放弃 三段的收起（与看页同一套带线标题 + ▸ 箭头） */
-  onFold(e) {
-    const k = e.currentTarget.dataset.k;
-    if (k === 'undone') this.setData({ openU: !this.data.openU });
-    else if (k === 'aband') this.setData({ openA: !this.data.openA });
-    else this.setData({ openD: !this.data.openD });
+  /* 左右滑动切筛选段（全部 / 各待办类别 / 随记）：向左滑下一个，向右滑上一个 */
+  onSwipeStart(e) {
+    if (this._noSwipe) { this._noSwipe = false; this._swX = null; return; }   // 起点在类别 chips：只滚 chips，不切段
+    swipe.start(this, e);
   },
+  onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
+  stepDim(dir) {
+    if (this.data.editing) return;   // 就地编辑中不切
+    const segs = this.data.segs || [];
+    const i = segs.findIndex(s => s.k === this.data.seg);
+    if (i < 0) return;
+    const ni = dir === 'left' ? i + 1 : i - 1;
+    if (ni < 0 || ni >= segs.length) return;
+    this.onSeg({ currentTarget: { dataset: { s: segs[ni].k } } });
+  },
+  // 快捷新增的类别 chips 是横向 scroll-view：在它上面按下时打个标记，横滑它只滚 chips，不切筛选段
+  onChipsTouch() { this._noSwipe = true; },
 
   /* ---------------- 点条目：记录操作条（放弃 / 恢复 / 改 / 删除） ----------------
      勾选框是「完成」（catchtap 单独处理），点条目的其它地方才是次级操作，两者互不干扰 */
   onRecTap(e) {
     if (this._lpAt && Date.now() - this._lpAt < 400) return;   // 长按刚触发过，忽略随之而来的点击
-    const id = e.currentTarget.dataset.id;
+    const id = this._id(e);
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
     this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
@@ -246,13 +262,13 @@ Page({
     const s = this.data.seg;
     return (s === 'jot' || s.indexOf('k:') === 0) ? s : this.data.qaM;
   },
-  // 只有「全部」时目标才可切（筛了某类别 / 随记时，目标就是筛选本身）；顺序 = 各待办类别 → 随记
-  onQaSwitch() {
+  // 只有「全部」时目标才可切（筛了某类别 / 随记时，目标就是筛选本身）；点 chips 即在类别间平铺切换
+  onQaChip(e) {
     if (this.data.seg !== 'all') return;
-    const order = store.getOPT('todoKind').map(todoSeg).concat(['jot']);
-    const i = order.indexOf(this.data.qaM);
-    this.data.qaM = order[(i + 1) % order.length] || order[0];
-    this.rebuild();
+    const k = e.currentTarget.dataset.k;
+    if (k === this.data.qaM) return;
+    const T = this.qaDesc(k);
+    this.setData({ qaM: k, qaKey: k, qaName: T.n, qaPh: T.ph, qaC: T.c });
   },
   onQaInput(e) { this.setData({ qaTxt: e.detail.value }); },
   /* 回车（或点「记下」）即落库：输入框清空、列表顶部立刻多一条，可继续输下一条 */
@@ -274,7 +290,7 @@ Page({
   },
 
   onCheck(e) {
-    const id = e.currentTarget.dataset.id;
+    const id = this._id(e);
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r || !store.isTask(r.m)) return;
     r.done = !r.done; r.doneAt = r.done ? Date.now() : 0;
@@ -301,9 +317,13 @@ Page({
     return (app.globalData.records || []).find(x => x.id === id) || null;
   },
 
+  // 待办行现在可能在 todo-list 组件里：交互事件要么来自本页（dataset），要么来自组件（detail），统一取 id / 字段
+  _id(e) { return (e.detail && e.detail.id != null) ? e.detail.id : e.currentTarget.dataset.id; },
+  _detailOr(e, key) { return (e.detail && e.detail[key] != null) ? e.detail[key] : e.currentTarget.dataset[key]; },
+
   /* 长按某条待办 / 随记：先量好位置再显示，避免编辑器先闪一下上一次的位置 */
   onLongPress(e) {
-    const id = e.currentTarget.dataset.id;
+    const id = this._id(e);
     const r = this.findRec(id);
     if (!r || !canList(r.m)) return;
     this._lpAt = Date.now();     // 长按之后紧跟的那次点击要忽略，否则会立刻弹出操作条
@@ -314,9 +334,10 @@ Page({
   /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器：
      编辑器做成和卡片同尺寸盖上去（同内边距/圆角/边框），页面滚动时跟着原行走 */
   _openEdit(id, txt) {
-    const q = wx.createSelectorQuery().in(this);
+    const comp = this.selectComponent('#todoList');
+    const q = wx.createSelectorQuery();
     q.selectViewport().scrollOffset();
-    q.select('#erow-' + id).boundingClientRect();
+    (comp ? q.in(comp) : q).select('#erow-' + id).boundingClientRect();
     q.exec(res => {
       const scrollTop = (res[0] && res[0].scrollTop) || 0;
       const rect = res[1];

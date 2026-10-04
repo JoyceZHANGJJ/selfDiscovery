@@ -1,0 +1,82 @@
+<!-- 待办清单：待完成 / 已完成 / 已放弃 三段（与看页、清单页同一套样式，样式在 app.wxss）。
+     这里只负责渲染与折叠态，勾选/选中/长按/展开等交互都通过事件交给页面处理，
+     这样清单页与看页可以各自接同一份渲染，行为口径保持一致。 -->
+<view class="todo-list">
+  <view wx:if="{{tit}}" class="sect-t">{{tit}}</view>
+  <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
+  <!-- 标题下方插槽：使用方（如看页）可放「去清单页管理」入口 -->
+  <slot></slot>
+
+  <!-- 待完成 -->
+  <view wx:if="{{undoneN}}">
+    <view class="tfhd" bindtap="onFold" data-k="undone">
+      <view class="tt">待完成 · {{undoneN}}</view>
+      <view class="tl"></view>
+      <view class="tc {{openU?'open':''}}">▸</view>
+    </view>
+    <block wx:if="{{openU}}">
+      <view wx:for="{{undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{sel===item.id?'sel':''}} {{item.done?'done':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+        <view class="edge" style="background:{{item.c}}"></view>
+        <view class="hd">
+          <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck"></view>
+          <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
+          <text class="tv">{{item.txt}}</text>
+          <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+        </view>
+        <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
+      </view>
+      <view wx:if="{{undoneHide}}" class="moreline" data-k="u" bindtap="onMore">显示更多（还有 {{undoneHide}} 条）</view>
+    </block>
+  </view>
+
+  <!-- 已完成：按完成那天分段（与看页同一套日标签），段内按完成时间倒序 -->
+  <view wx:if="{{doneN}}">
+    <view class="tfhd" bindtap="onFold" data-k="done">
+      <view class="tt">已完成 · {{doneN}}</view>
+      <view class="tl"></view>
+      <view class="tc {{openD?'open':''}}">▸</view>
+    </view>
+    <block wx:if="{{openD}}">
+      <view wx:for="{{doneGroups}}" wx:key="key" wx:for-item="g">
+        <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="d" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
+        <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+          <view class="edge" style="background:{{item.c}}"></view>
+          <view class="hd">
+            <view class="ck on" data-id="{{item.id}}" catchtap="onCheck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          </view>
+          <view class="done-at">{{item.doneAtText}}</view>
+        </view>
+      </view>
+      <view wx:if="{{doneHide}}" class="moreline" data-k="d" bindtap="onMore">显示更早（还有 {{doneHide}} 天）</view>
+    </block>
+  </view>
+
+  <!-- 已放弃：与已完成同构（按放弃那天分段）；点条目出操作条可「恢复」 -->
+  <view wx:if="{{abandN}}">
+    <view class="tfhd" bindtap="onFold" data-k="aband">
+      <view class="tt">已放弃 · {{abandN}}</view>
+      <view class="tl"></view>
+      <view class="tc {{openA?'open':''}}">▸</view>
+    </view>
+    <block wx:if="{{openA}}">
+      <view wx:for="{{abandGroups}}" wx:key="key" wx:for-item="g">
+        <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="a" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
+        <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onTapRow" bindlongpress="onLongPress" bindtouchend="onTouchEnd" bindtouchcancel="onTouchEnd">
+          <view class="edge" style="background:{{item.c}}"></view>
+          <view class="hd">
+            <!-- 圈里画 × 且不可点：完成要走操作条里的「恢复」，不是直接勾掉 -->
+            <view class="ck"></view>
+            <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
+            <text class="tv">{{item.txt}}</text>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          </view>
+          <view class="done-at">{{item.abandAtText}}</view>
+        </view>
+      </view>
+      <view wx:if="{{abandHide}}" class="moreline" data-k="a" bindtap="onMore">显示更早（还有 {{abandHide}} 天）</view>
+    </block>
+  </view>
+</view>

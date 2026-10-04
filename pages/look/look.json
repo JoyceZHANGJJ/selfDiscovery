@@ -2,7 +2,7 @@
   "usingComponents": {
     "theme-switcher": "/components/theme-switcher/index",
     "rec-actions": "/components/rec-actions/rec-actions",
-    "inline-editor": "/components/inline-editor/inline-editor"
+    "todo-list": "/components/todo-list/todo-list"
   },
   "navigationStyle": "custom",
   "enablePullDownRefresh": true

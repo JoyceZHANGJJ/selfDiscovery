@@ -44,10 +44,10 @@
 
 /* ===== 快捷记待办：点「＋」球在原地弹出的输入条 =====
    位置固定在球的正上方（球 bottom 116 + 球高 52 + 10 间隙），不占页面空间、不推挤列表 */
-/* 遮罩：盖住「除 tab 栏以外」的所有地方（与记录操作条同一套心智——点浮层以外的任何地方都收起）。
-   底部留出 tab 栏的高度，所以点 tab 仍是一次到位；z-index 取在操作条(50) / 标题条(45) 之上、
-   面板与撤销条之下，这样点操作条、点球、点页面空白都会先把面板收掉。 */
-.qa-mask { position: fixed; left: 0; right: 0; top: 0; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); z-index: 61; }
+/* 遮罩：盖住整屏（含底部 tab 栏与它的安全区留白）。
+   面板是「跟着键盘的输入条」：只要输入框失焦，点到面板以外的任何地方（页面空白 / 记录 /
+   操作条 / tab 栏 / 球）都收起。z-index 取在操作条(50) / 标题条(45) 之上、面板与撤销条(62) 之下。 */
+.qa-mask { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 61; }
 .qa {
   position: fixed; left: 16px; right: 16px; bottom: calc(178px + env(safe-area-inset-bottom, 0px));
   max-width: 608px; margin: 0 auto; z-index: 62;
@@ -55,11 +55,13 @@
   padding: 11px 12px 12px; box-sizing: border-box;
   box-shadow: 0 14px 30px rgba(35,35,31,.20), 0 4px 10px rgba(35,35,31,.12);
 }
-.qa-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
-.qa-m { display: flex; align-items: center; font-size: 12.5px; color: var(--ink2, #55524A); }
-.qa-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
-.qa-swap { font-size: 11px; color: var(--ink3, #8B8779); text-decoration: underline; margin-left: 6px; }
+.qa-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.qa-title { font-size: 12.5px; color: var(--ink2, #55524A); font-weight: 600; }
 .qa-list { font-size: 12.5px; color: var(--accent, #7C9A86); text-decoration: underline; padding: 2px 0 2px 8px; }
+.qa-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
+.qa-chips { white-space: nowrap; margin-bottom: 9px; }
+.qa-chip { display: inline-flex; align-items: center; font-size: 12.5px; color: var(--ink2, #55524A); padding: 5px 11px; border: 1px solid var(--line2, #E2DCD1); border-radius: 99px; margin-right: 8px; background: #fff; box-sizing: border-box; }
+.qa-chip.on { color: #fff; background: var(--accent, #7C9A86); border-color: var(--accent, #7C9A86); }
 .qa-row { display: flex; align-items: center; }
 .qa-in {
   flex: 1; min-width: 0; height: 38px; line-height: 38px; border: 1px solid var(--line2, #E2DCD1);

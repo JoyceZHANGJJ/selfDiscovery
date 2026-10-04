@@ -1,6 +1,7 @@
 // pages/index/index.js —— 记
 const store = require('../../utils/store.js');
 const ui = require('../../utils/ui.js');
+const swipe = require('../../utils/swipe.js');
 const app = getApp();
 
 function nowStr() {
@@ -418,9 +419,12 @@ Page({
       hasDesc: !!descItem, descPh: descItem ? descItem.ph : '', descVal: (this.st.free && this.st.free[store.DESC_KEY]) || '' };
   },
 
-  /* 最近记录条数：固定 10 条 */
+  /* 最近记录条数：固定 10 条；已完成的待办、已放弃的待办都不在这里出现（去待办清单里看就好） */
   recentVM() {
-    return (app.globalData.records || []).slice(0, 10).map(r => this.recVM(r));
+    return (app.globalData.records || [])
+      .filter(r => !(store.isTask(r.m) && (r.done || r.status === 'abandon')))
+      .slice(0, 10)
+      .map(r => this.recVM(r));
   },
 
   recompute() {
@@ -467,6 +471,23 @@ Page({
     this.setData({ tag: this.st.tag });
     this.recompute();
   },
+  /* 记卡上左右滑动切维度（未编辑态）：向左滑到下一个维度，向右滑回上一个 */
+  onSwipeStart(e) {
+    if (this._noSwipe) { this._noSwipe = false; this._swX = null; return; }   // 起点在标签行：只滚标签，不切维度
+    swipe.start(this, e);
+  },
+  onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
+  stepDim(dir) {
+    if (this.data.editing) return;   // 编辑态不切维度（与 onTag 的守卫一致）
+    const mods = this.data.modules || this.modulesVM();
+    const i = mods.findIndex(m => m.k === this.st.tag);
+    if (i < 0) return;
+    const ni = dir === 'left' ? i + 1 : i - 1;
+    if (ni < 0 || ni >= mods.length) return;
+    this.onTag({ currentTarget: { dataset: { k: mods[ni].k } } });
+  },
+  // 标签行是横向 scroll-view：在它上面按下时打个标记，避免横滑标签误切维度
+  onTagTouch() { this._noSwipe = true; },
   onMainInput(e) { this.st.main = e.detail.value; this.setData({ 'composer.mainVal': e.detail.value }); if (e.detail.value.trim()) this.st.mainPick = null; },
   onMainChip(e) {
     const v = e.currentTarget.dataset.v;
@@ -550,6 +571,29 @@ Page({
   /* 再点一次底部「记」：整页回到顶部 */
   onTabReselect() {
     wx.pageScrollTo({ scrollTop: 0, duration: 300 });
+  },
+
+  /* 切到其它 tab 再切回来（或首次进入）：整页回到顶部 */
+  scrollToTop() {
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+  },
+
+  /* 切换 tab 进入本页：恢复初始状态（回到默认维度、清空记卡草稿与浮层），并回顶 */
+  resetToInitial() {
+    this.clearFloats();
+    const mods = this.modulesVM();
+    const def = mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k);
+    this.st.edit = null;
+    this.st.tag = def;
+    this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.st.startMode = false; this.st.doing = false; this.st.completing = false;
+    this.st.showDoing = false; this.st.showDone = false;
+    this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
+    if (def === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+    if (def === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+    this.setData({ editing: false, tag: def, focusIdx: -1, saveUndo: null });
+    this.recompute();
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
 
   /* 滚到底部：让底部「记」图标跳一下，提示可以点它回顶 */

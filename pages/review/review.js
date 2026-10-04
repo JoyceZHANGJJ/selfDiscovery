@@ -5,6 +5,7 @@
 //   （只看 觉察 / 此刻 / 可做；待办 / 随记不算可回看的"内容主题"）
 // · 周 / 月：按自然周 / 自然月出的复盘报告（本期 vs 上期），回答"这段时间怎么样"。
 const store = require('../../utils/store.js');
+const swipe = require('../../utils/swipe.js');
 const app = getApp();
 
 const DAY = 86400000;
@@ -91,11 +92,33 @@ Page({
     store.ensureAll().then(() => this.build());
   },
 
+  /* 切到其它 tab 再切回来（或首次进入）：整页回到顶部 */
+  scrollToTop() {
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+  },
+
+  /* 切换 tab 进入本页：恢复初始状态（回到「周」视图、本期、默认排序），并回顶 */
+  resetToInitial() {
+    this.setData({ view: 'week', offset: 0, docSort: 'n', docLimit: 20 }, () => this.build());
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+  },
+
   /* ---------------- 视图切换 ---------------- */
   onView(e) {
     const v = e.currentTarget.dataset.v;
     if (v === this.data.view) return;
     this.setData({ view: v, offset: 0 }, () => this.build());
+  },
+  /* 左右滑动切视图（周 / 月 / 全部）：向左滑下一个，向右滑上一个 */
+  onSwipeStart(e) { swipe.start(this, e); },
+  onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
+  stepDim(dir) {
+    const keys = ['week', 'month', 'all'];
+    const i = keys.indexOf(this.data.view);
+    if (i < 0) return;
+    const ni = dir === 'left' ? i + 1 : i - 1;
+    if (ni < 0 || ni >= keys.length) return;
+    this.onView({ currentTarget: { dataset: { v: keys[ni] } } });
   },
   onPrev() { if (this.data.view === 'all') return; this.setData({ offset: this.data.offset - 1 }, () => this.buildPeriod()); },
   onNext() {

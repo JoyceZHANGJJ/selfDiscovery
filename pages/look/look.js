@@ -1,6 +1,7 @@
 // pages/look/look.js —— 看
 const store = require('../../utils/store.js');
 const ui = require('../../utils/ui.js');
+const swipe = require('../../utils/swipe.js');
 const app = getApp();
 
 function dmClass(m) {
@@ -63,17 +64,10 @@ Page({
     selRec: null,
     delUndo: null,
     tasks: { show: false, tit: '', sum: '', undone: [], doneGroups: [], doneN: 0, abandGroups: [], abandN: 0 },
-    taskOpen: { undone: true, done: false, aband: false }, // 待完成 / 已完成 / 已放弃 折叠态（true=展开）
     // 待办视图的「显示更多」窗口：待完成 20 条、已完成 / 已放弃 各 7 天（与清单页同一套）
     limU: 20, limD: 7, limA: 7,
     doneDayAll: {}, abandDayAll: {},
     empty: false,
-    // 待办长按就地编辑（与清单 / 记页共用的 inline-editor 组件）
-    editing: false,
-    edFocus: false,       // 显示与聚焦分开：手指抬起后才聚焦（见 onRowTouchend）
-    edId: '',
-    edTxt: '',
-    ed: { top: 0, left: 0, width: 0, height: 0 },
 
     // 游标分页 + 快捷时间
     range: 'all',
@@ -319,7 +313,7 @@ Page({
      三段都可收起。「全部」里不再平铺待办——待办只在自己那个维度（备忘 / 购物）下看 */
   buildTasks(ts) {
     if (!store.isTask(this.data.filter)) {
-      return { show: false, tit: '', sum: '', undone: [], undoneN: 0, doneGroups: [], doneN: 0, abandGroups: [], abandN: 0, openU: true, openD: false, openA: false };
+      return { show: false, tit: '', sum: '', undone: [], undoneN: 0, doneGroups: [], doneN: 0, abandGroups: [], abandN: 0 };
     }
     // 注意：recVM 的产物里没有 ts / doneAt / abandonedAt，必须在 map 之前对原始记录排序，
     // 否则 sort 比较的全是 undefined，等于没排
@@ -337,14 +331,12 @@ Page({
       ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
       : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
     const tit = this.data.kindFilter === 'all' ? '待办' : '待办 · ' + this.data.kindFilter;
-    const open = this.data.taskOpen || { undone: true, done: false, aband: false };
     return {
       show: (u + dn + an) > 0, tit, sum, undone, undoneN: u,
       undoneHide: Math.max(0, u - undone.length),
       doneGroups, doneN: dn, abandGroups, abandN: an,
       doneHide: Math.max(0, doneDays.length - doneGroups.length),
-      abandHide: Math.max(0, abandDays.length - abandGroups.length),
-      openU: open.undone !== false, openD: open.done === true, openA: open.aband === true
+      abandHide: Math.max(0, abandDays.length - abandGroups.length)
     };
   },
 
@@ -511,17 +503,9 @@ Page({
   // 手动滚动会与 adjust-position 的原生键盘避让叠加（先被滚到顶部、又被原生推起一次），
   // 导致键盘弹出时搜索框“飞”到页面顶端。统一交给 adjust-position 原生处理。
   onSearchFocus() {},
-  // 待完成 / 已完成 折叠切换
-  onTaskFold(e) {
-    const k = e.currentTarget.dataset.k;
-    const open = Object.assign({}, this.data.taskOpen || { undone: true, done: false });
-    open[k] = !open[k];
-    this.setData({ taskOpen: open });
-    this.rebuild();
-  },
   /* 待办各段的「显示更多」：u 待完成（条）/ d 已完成（天）/ a 已放弃（天） */
   onTaskMore(e) {
-    const k = e.currentTarget.dataset.k;
+    const k = this._detailOr(e, 'k');
     const patch = {};
     if (k === 'u') patch.limU = this.data.limU + 20;
     else if (k === 'd') patch.limD = this.data.limD + 7;
@@ -531,8 +515,8 @@ Page({
   },
   /* 某一天「展开全部 / 收起」（这天超过 20 条时才有入口） */
   onDayMore(e) {
-    const k = String(e.currentTarget.dataset.k);
-    const w = e.currentTarget.dataset.w;   // d 已完成 | a 已放弃
+    const k = String(this._detailOr(e, 'k'));
+    const w = this._detailOr(e, 'w');   // d 已完成 | a 已放弃
     const which = w === 'a' ? 'abandDayAll' : 'doneDayAll';
     const map = Object.assign({}, this.data[which]);
     if (map[k]) delete map[k]; else map[k] = 1;
@@ -546,6 +530,18 @@ Page({
     this.data.kindFilter = 'all';
     this.setData({ filter: this.data.filter, stateFilter: 'all', kindFilter: 'all', sel: null, selRec: null });
     this.resetLoad();
+  },
+  /* 左右滑动切维度（全部 / 各维度）：向左滑下一个，向右滑上一个 */
+  onSwipeStart(e) { swipe.start(this, e); },
+  onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
+  stepDim(dir) {
+    const mods = this.data.modules || this.modulesVM();
+    const keys = ['all'].concat(mods.map(m => m.k));
+    const i = keys.indexOf(this.data.filter);
+    if (i < 0) return;
+    const ni = dir === 'left' ? i + 1 : i - 1;
+    if (ni < 0 || ni >= keys.length) return;
+    this.onFilter({ currentTarget: { dataset: { f: keys[ni] } } });
   },
   // 觉察 · 喜恶筛选（与「可做」的流转状态筛选同一套：切了就重拉第一页）
   onKindFilter(e) {
@@ -587,6 +583,24 @@ Page({
     wx.pageScrollTo({ scrollTop: 0, duration: 300 });
   },
 
+  /* 切到其它 tab 再切回来（或首次进入）：整页回到顶部 */
+  scrollToTop() {
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+  },
+
+  /* 切换 tab 进入本页：恢复初始状态（回到「全部」维度、清空搜索与子筛选），并回顶 */
+  resetToInitial() {
+    this.clearFloats();
+    if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
+    this.data.filter = 'all'; this.data.stateFilter = 'all'; this.data.kindFilter = 'all'; this.data.q = '';
+    this.setData({ filter: 'all', stateFilter: 'all', kindFilter: 'all', q: '', sel: null, selRec: null });
+    this.resetLoad();
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+  },
+
+  /* 看页对待办只做概览：改 / 删 / 放弃 / 恢复都去清单页管理 */
+  goList() { wx.navigateTo({ url: '/pages/list/list' }); },
+
   /* 页面滚动：顺手收起记录操作条（页面级滚动下微信会同步原生输入层位置） */
   onPageScroll(e) {
     this._pageTop = e.scrollTop || 0;
@@ -613,6 +627,10 @@ Page({
   findRec(id) {
     return (app.globalData.records || []).find(x => x.id === id) || (this.data.recs || []).find(x => x.id === id);
   },
+
+  // 待办行现在可能在 todo-list 组件里：交互事件要么来自本页（dataset），要么来自组件（detail），统一取 id / 字段
+  _id(e) { return (e.detail && e.detail.id != null) ? e.detail.id : e.currentTarget.dataset.id; },
+  _detailOr(e, key) { return (e.detail && e.detail[key] != null) ? e.detail[key] : e.currentTarget.dataset[key]; },
   syncGlobal(id, fn) {
     const g = app.globalData.records || [];
     const r = g.find(x => x.id === id); if (r) fn(r);
@@ -629,7 +647,7 @@ Page({
 
   /* 备忘/购物：勾选切换完成态 */
   onRecCheck(e) {
-    const id = e.currentTarget.dataset.id;
+    const id = this._id(e);
     const r = (this.data.recs || []).find(x => x.id === id);
     if (!r || !store.isTask(r.m)) return;
     r.done = !r.done; r.doneAt = r.done ? Date.now() : 0;
@@ -638,103 +656,25 @@ Page({
     this.setData({ recs: this.data.recs.slice() }, () => this.rebuild());
   },
 
-  /* ---------------- 长按记录（与清单 / 记页共用 inline-editor） ----------------
-     待办：就地快捷改；其它维度：与点「改」等价，跳记页完整编辑 */
+  /* ---------------- 长按记录 ----------------
+     看页对待办只作概览（管理去清单页），所以待办长按不做事；
+     其它维度：与点「改」等价，跳记页完整编辑 */
   onRowLongPress(e) {
-    const id = e.currentTarget.dataset.id;
+    const id = this._id(e);
     const r = this.findRec(id);
-    if (!r) return;
+    if (!r || store.isTask(r.m)) return;   // 待办不在这里改
     this._lpAt = Date.now();   // 长按后紧跟着的那次点击要忽略掉
-    if (store.isTask(r.m)) { this._openEdit(id, r.txt || ''); return; }
     app.globalData.editRec = store.decorate(r);
     this.setData({ sel: null, selRec: null });
     wx.switchTab({ url: '/pages/index/index' });
   },
 
-  /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器（量好再显示，避免闪到上一次的位置） */
-  _openEdit(id, txt) {
-    const q = wx.createSelectorQuery().in(this);
-    q.selectViewport().scrollOffset();
-    q.select('#erow-' + id).boundingClientRect();
-    q.exec(res => {
-      const scrollTop = (res[0] && res[0].scrollTop) || 0;
-      const rect = res[1];
-      if (!rect) return;
-      this.setData({
-        ed: {
-          top: Math.round(rect.top + scrollTop),
-          left: Math.round(rect.left),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height)
-        },
-        sel: null, selRec: null,
-        edId: id, edTxt: txt, editing: true, edFocus: false
-      });
-      // 兜底：万一 touchend 没触发（手势被系统吞掉），500ms 后自己聚焦
-      if (this._focusTimer) clearTimeout(this._focusTimer);
-      this._focusTimer = setTimeout(() => {
-        if (this.data.editing && !this.data.edFocus) this.onRowTouchend();
-      }, 500);
-    });
-  },
-
-  /* 手指抬起后再聚焦：长按过程中就聚焦的话，抬手瞬间微信的「点到外面」会把输入框 blur 掉，
-     表现为「一松手输入框就关了」 */
-  onRowTouchend() {
-    if (!this.data.editing || this.data.edFocus) return;
-    this._focusAt = Date.now();
-    this.setData({ edFocus: true });
-  },
-
-  /* 组件派发 save：失焦 / 键盘「完成」/ 点「保存」都走这里；改空或没改动则不落云 */
-  onEditSave(e) {
-    if (this._closing) return;
-    // 刚聚焦就被系统「点到外面」blur 掉（长按抬手那一下）：忽略，不要当成用户改完了
-    if (this._focusAt && Date.now() - this._focusAt < 400) return;
-    const id = this.data.edId;
-    if (!id || !this.data.editing) return;
-    const txt = ((e.detail && e.detail.value) || '').trim();
-    const i = (this.data.recs || []).findIndex(x => x.id === id);
-    const r = i >= 0 ? this.data.recs[i] : this.findRec(id);
-    if (!r || !store.isTask(r.m) || !txt || txt === r.txt) { this._closeEdit(); return; }
-    r.txt = txt;
-    store.updateRecord(r).catch(() => {});
-    this.syncGlobal(id, gr => { gr.txt = txt; });
-    this._closeEdit();
-    this.setData({ recs: this.data.recs.slice() }, () => this.rebuild());
-    wx.showToast({ title: '已更新', icon: 'none' });
-  },
-
-  /* 收起：位置原地不动，只把宽高收成 0。
-     一挪位置，微信会把「带焦点的输入框」滚进可视区（键盘重弹 + 页面跳回顶部）；
-     挪走之前保留 edId，让那一行继续隐身，避免与原生层残留互相重影 */
-  _closeEdit() {
-    this._closing = true;
-    setTimeout(() => { this._closing = false; }, 150);
-    this._focusAt = 0;
-    const ed = this.data.ed || {};
-    this.setData({
-      editing: false,
-      edFocus: false,
-      edId: '',
-      edTxt: '',
-      ed: { top: ed.top || 0, left: ed.left || 0, width: 0, height: 0 }
-    });
-  },
-
-  /* 还要改更多字段（时间 / 原因等）：点条目走操作条里的「改」；这里只做删除 */
-  onEditDel() {
-    const r = this.findRec(this.data.edId);
-    this._closeEdit();
-    if (!r || !store.isTask(r.m)) return;
-    this._delRec(r);
-  },
-
   onRecTap(e) {
     if (this._lpAt && Date.now() - this._lpAt < 400) return;   // 长按刚触发过，忽略随之而来的点击
-    const id = e.currentTarget.dataset.id;
+    const id = this._id(e);
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
+    if (r && store.isTask(r.m)) return;   // 看页的待办只作概览：不出操作条
     this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
   },
 

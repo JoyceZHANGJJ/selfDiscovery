@@ -18,3 +18,10 @@
 .lg-b { margin-bottom: 18px; }
 .lg-d { font-size: 12px; font-weight: 800; color: var(--accent); margin-bottom: 5px; letter-spacing: .02em; }
 .lg-i { font-size: 13px; color: var(--ink2); line-height: 1.8; }
+/* 快捷创建类别勾选 */
+.qa-dot { width: 7px; height: 7px; border-radius: 50%; }
+.qcpick { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px 2px; }
+.qctag { display: inline-flex; align-items: center; font-size: 13px; color: var(--ink2); padding: 7px 13px; border: 1px solid var(--line2); border-radius: 99px; background: #fff; box-sizing: border-box; }
+.qctag .qa-dot { margin-right: 6px; }
+.qctag.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+.qc-hint { font-size: 11.5px; color: var(--ink3); margin: 8px 2px 0; line-height: 1.6; }

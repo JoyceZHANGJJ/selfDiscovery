@@ -1,4 +1,4 @@
-<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
   <view class="statusbar-mask"></view>
   <!-- 整页改为页面级滚动（与记页一致）：搜索框等原生输入层由微信同步位置，不再套在 scroll-view 里 -->
   <view class="screen">
@@ -54,84 +54,18 @@
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
       </view>
 
-      <!-- 待办清单（按类别分项；不走时间流，平铺成清单）；待完成 / 已完成 可折叠 -->
-      <block wx:if="{{tasks.show}}">
-        <view class="sect-t">{{tasks.tit}}</view>
-        <view wx:if="{{tasks.sum}}" class="tsum">{{tasks.sum}}</view>
-
-        <!-- 待完成 -->
-        <view wx:if="{{tasks.undoneN}}">
-          <view class="tfhd" bindtap="onTaskFold" data-k="undone">
-            <view class="tt">待完成 · {{tasks.undoneN}}</view>
-            <view class="tl"></view>
-            <view class="tc {{tasks.openU?'open':''}}">▸</view>
-          </view>
-          <block wx:if="{{tasks.openU}}">
-            <view wx:for="{{tasks.undone}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{sel===item.id?'sel':''}} {{item.done?'done':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
-              <view class="edge" style="background:{{item.c}}"></view>
-              <view class="hd">
-                <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
-                <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all' || filter==='todo'}}">{{item.m}}</text>
-                <text class="tv">{{item.txt}}</text>
-                <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
-              </view>
-              <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
-            </view>
-            <view wx:if="{{tasks.undoneHide}}" class="moreline" data-k="u" bindtap="onTaskMore">显示更多（还有 {{tasks.undoneHide}} 条）</view>
-          </block>
-        </view>
-
-        <!-- 已完成：按完成那天分段（与时间线同款日标签），段内按完成时间倒序 -->
-        <view wx:if="{{tasks.doneN}}">
-          <view class="tfhd" bindtap="onTaskFold" data-k="done">
-            <view class="tt">已完成 · {{tasks.doneN}}</view>
-            <view class="tl"></view>
-            <view class="tc {{tasks.openD?'open':''}}">▸</view>
-          </view>
-          <block wx:if="{{tasks.openD}}">
-            <view wx:for="{{tasks.doneGroups}}" wx:key="key" wx:for-item="g">
-              <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="d" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
-              <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl done {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
-                <view class="edge" style="background:{{item.c}}"></view>
-                <view class="hd">
-                  <view class="ck on" data-id="{{item.id}}" catchtap="onRecCheck"></view>
-                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all' || filter==='todo'}}">{{item.m}}</text>
-                  <text class="tv">{{item.txt}}</text>
-                  <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
-                </view>
-                <view class="done-at">{{item.doneAtText}}</view>
-              </view>
-            </view>
-            <view wx:if="{{tasks.doneHide}}" class="moreline" data-k="d" bindtap="onTaskMore">显示更早（还有 {{tasks.doneHide}} 天）</view>
-          </block>
-        </view>
-
-        <!-- 已放弃：与已完成同构（按放弃那天分段），点条目出操作条可「恢复」 -->
-        <view wx:if="{{tasks.abandN}}">
-          <view class="tfhd" bindtap="onTaskFold" data-k="aband">
-            <view class="tt">已放弃 · {{tasks.abandN}}</view>
-            <view class="tl"></view>
-            <view class="tc {{tasks.openA?'open':''}}">▸</view>
-          </view>
-          <block wx:if="{{tasks.openA}}">
-            <view wx:for="{{tasks.abandGroups}}" wx:key="key" wx:for-item="g">
-              <view class="daylab">{{g.day}}<text wx:if="{{g.n > 20}}" class="daymore" data-k="{{g.key}}" data-w="a" bindtap="onDayMore">{{g.all ? '收起' : '展开全部 ' + g.n + ' 条'}}</text></view>
-              <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl ab {{sel===item.id?'sel':''}} {{edId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
-                <view class="edge" style="background:{{item.c}}"></view>
-                <view class="hd">
-                  <!-- 已放弃的圈里画个 ×，且不可点：完成走「恢复」而不是直接勾掉 -->
-                  <view class="ck"></view>
-                  <text class="mn" style="color:{{item.c}}" wx:if="{{filter==='all' || filter==='todo'}}">{{item.m}}</text>
-                  <text class="tv">{{item.txt}}</text>
-                  <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
-                </view>
-                <view class="done-at">{{item.abandAtText}}</view>
-              </view>
-            </view>
-            <view wx:if="{{tasks.abandHide}}" class="moreline" data-k="a" bindtap="onTaskMore">显示更早（还有 {{tasks.abandHide}} 天）</view>
-          </block>
-        </view>
-      </block>
+      <!-- 待办：看页只作「概览」——可勾选完成，但改 / 删 / 放弃 / 恢复都去清单页做。
+           渲染复用公用组件 todo-list；manage=false 关闭「点击出操作条 / 长按就地编辑」 -->
+      <todo-list wx:if="{{tasks.show}}" id="todoList"
+        tit="{{tasks.tit}}" sum="{{tasks.sum}}"
+        manage="{{false}}" showMn="{{filter==='all' || filter==='todo'}}"
+        undone="{{tasks.undone}}" doneGroups="{{tasks.doneGroups}}" abandGroups="{{tasks.abandGroups}}"
+        undoneN="{{tasks.undoneN}}" doneN="{{tasks.doneN}}" abandN="{{tasks.abandN}}"
+        undoneHide="{{tasks.undoneHide}}" doneHide="{{tasks.doneHide}}" abandHide="{{tasks.abandHide}}"
+        bind:check="onRecCheck" bind:more="onTaskMore" bind:daymore="onDayMore">
+        <!-- 看页只作概览：给一个去清单页管理的入口（插槽内容由本页处理事件） -->
+        <view class="tolist-link" bindtap="goList">去清单页管理 ›</view>
+      </todo-list>
 
       <!-- 觉察 · 喜恶：与「可做」的流转状态筛选同一个位置（喜恶是存在 ext 里的细节值，选项取池子） -->
       <view wx:if="{{filter==='obs' && kinds.length}}" class="filters states">
@@ -171,9 +105,6 @@
       </block>
     </view>
   </view>
-
-  <!-- 待办长按就地编辑：与清单页 / 记页共用同一个组件 -->
-  <inline-editor visible="{{editing}}" focus="{{edFocus}}" rect="{{ed}}" value="{{edTxt}}" bind:save="onEditSave" bind:del="onEditDel" />
 
   <!-- 记录操作条：与记页共用同一组件，按钮集合/可见性只维护一处 -->
   <rec-actions rec="{{selRec}}" visible="{{sel!=null}}" bind:action="onRecAction" />

@@ -11,19 +11,24 @@
 /* 快捷新增：一张独立小卡片（列表是轴线行，它是带边框/底色的块，层次一眼分开）。
    位置仍在筛选与列表之间，上下留白拉开距离 */
 .qadd {
-  display: flex; align-items: center;
-  margin: 12px 0 16px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 9px;
+  margin: 12px 0 16px; padding: 10px;
   background: var(--surface, #fff); border: 1px solid var(--line2, #E2DCD1); border-radius: 14px;
   box-shadow: 0 4px 14px rgba(35,35,31,.05);
 }
-/* 目标模块：模块色小药丸（描边 + 同色文字/圆点；--mc 由页面按 备忘 / 购物 传进来） */
+.qadd-row { display: flex; align-items: center; }
+/* 非全部模式下，目标模块药丸（描边 + 同色文字/圆点；--mc 由页面按 备忘 / 购物 传进来） */
 .qadd-m {
   display: flex; align-items: center; flex-shrink: 0; margin-right: 8px;
   font-size: 12.5px; color: var(--mc, #55524A); padding: 5px 10px;
   border: 1px solid var(--mc, #E2DCD1); border-radius: 999px;
 }
 .qadd-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
-.qadd-swap { font-size: 10.5px; color: var(--ink3); text-decoration: underline; margin-left: 6px; }
+/* 全部模式下平铺的可勾选类别（与「＋」球面板同一套 chip 样式） */
+.qa-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
+.qa-chips { white-space: nowrap; width: 100%; }
+.qa-chip { display: inline-flex; align-items: center; font-size: 12.5px; color: var(--ink2); padding: 5px 11px; border: 1px solid var(--line2); border-radius: 99px; margin-right: 8px; background: #fff; box-sizing: border-box; }
+.qa-chip.on { color: #fff; background: var(--accent); border-color: var(--accent); }
 /* 输入框沿用记页那套 mini-in 的手感：平时是柔和底色、聚焦才亮边框 */
 .qadd-in {
   flex: 1; min-width: 0; height: 34px; line-height: 34px; border: 1px solid transparent;

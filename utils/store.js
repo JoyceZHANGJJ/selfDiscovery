@@ -225,6 +225,20 @@ function isSingle(g) { for (const m of OPTGROUPS) { if (m.gs.indexOf(g) >= 0) { 
 // 该选项组是否隐藏手填输入框（这类组不能手填，编辑时不留残值）
 function isNoInput(g) { for (const m of OPTGROUPS) { if (m.gs.indexOf(g) >= 0) { const f = FIELDS[m.m]; return !!(f.items.find(it => it.g === g && it.noInput)); } } return false; }
 function getOPT(g) { const O = G.OPT || OPT; return O[g] || []; }
+// 快捷创建（「＋」球面板）里平铺哪些类别：待办类别（todoKind 池）+ 随记（jot）。
+// 由用户在「设置」里勾选，最多 QUICKCATS_MAX 个；没勾过时给默认（全部待办类别 + 随记，截断到上限）。
+const QUICKCATS_LS = 'self_quickcats_v1';
+const QUICKCATS_MAX = 5;
+function defaultQuickCats() {
+  const cats = (getOPT('todoKind') || []).map(c => ({ m: 'todo', cat: c }));
+  cats.push({ m: 'jot' });
+  return cats.slice(0, QUICKCATS_MAX);
+}
+function getQuickCats() {
+  try { const v = wx.getStorageSync(QUICKCATS_LS); if (v && Array.isArray(v) && v.length) return v; } catch (e) {}
+  return defaultQuickCats();
+}
+function setQuickCats(arr) { const a = (arr || []).slice(0, QUICKCATS_MAX); try { wx.setStorageSync(QUICKCATS_LS, a); } catch (e) {} return a; }
 // 去做模块默认分类：优先锁定值「想做」（不随选项顺序变化），找不到再退第一个，最后兜底「想做」
 function wantKindDefault() {
   const k = getOPT('wantKind');
@@ -1287,7 +1301,7 @@ function reload() {
 
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, CAT_COLORS, catColor, taskCat, taskColor, winDays,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, CAT_COLORS, catColor, taskCat, taskColor, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, takeRenameMap,
   isDefault, addDelDef, clearDelDef, markOptCustom,

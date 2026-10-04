@@ -1,4 +1,4 @@
-<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px">
+<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
   <view class="statusbar-mask"></view>
   <!-- 整页使用页面级滚动（不再用 scroll-view）：
        页面滚动时微信会同步原生输入层位置，安卓上光标/文字飘出输入框的问题从根上消失 -->
@@ -33,7 +33,7 @@
 
         <!-- 模块标签（横向滚动，维度多也不挤） -->
         <view class="tagrow-wrap">
-          <scroll-view class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" bindscroll="onTagScroll">
+          <scroll-view class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" bindscroll="onTagScroll" bindtouchstart="onTagTouch">
             <view class="tagrow">
               <view wx:for="{{modules}}" wx:key="k" class="tg {{tag===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTag">
                 <view class="dot" style="background:{{item.c}}"></view>{{item.n}}

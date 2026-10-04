@@ -1,7 +1,8 @@
 {
   "usingComponents": {
     "inline-editor": "/components/inline-editor/inline-editor",
-    "rec-actions": "/components/rec-actions/rec-actions"
+    "rec-actions": "/components/rec-actions/rec-actions",
+    "todo-list": "/components/todo-list/todo-list"
   },
   "navigationStyle": "custom",
   "enablePullDownRefresh": true

@@ -6,17 +6,34 @@ function hhmm(ts) {
   return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
 }
 
-// 快捷记能记哪几种（按这个顺序轮换）：待办 + 随记（一句话想法）。
-// 购物不在这里：球是「随手记一条」的入口，买东西另有清单页的「购物」一栏去记。
-// 待办的类别不写死，实时取选项池（跟着 todoKindDefault：锁定的「备忘」，改名 / 增删后自动跟上），
-// 所以「✎ 管理」里把默认类别改名后，球上显示的名字与写进 ext 的类别都会跟着变
-const QA_KINDS = ['todo', 'jot'];
-function qaInfo(k) {
-  if (k === 'jot') return { k: 'jot', cat: '', n: '随记', ph: '想记点什么', c: store.mcolor('jot') };
-  const cat = (store.todoKindDefault() || [])[0] || '备忘';
+// 快捷记（「＋」球面板）：不切换模块，而是把用户在「设置」里勾选的类别（待办类别 + 随记，最多 5 个）
+// 平铺成 chips，点哪个就在哪个类别下记。类别实时取选项池（改名 / 增删后自动跟上）；
+// 没勾过时给默认（全部待办类别 + 随记）。
+function catInfo(qc) {
+  if (qc.m === 'jot') return { k: 'jot', cat: '', n: '随记', ph: '想记点什么', c: store.mcolor('jot') };
+  const cat = qc.cat || (store.todoKindDefault() || [])[0] || '备忘';
   return { k: 'todo', cat, n: cat, ph: '要记住什么', c: store.catColor(cat) };
 }
-const QA_DEF = qaInfo('todo');   // 初始展示（面板每次展开时会重新算一遍）
+// 把存储里的快捷类别（{m,cat}）转成面板要的展示结构（带名字 / 颜色 / 占位符 / key），
+// 并过滤掉已从选项池里消失的待办类别（随记永远有效）。空了则兜底一个默认待办类别。
+function buildQaCats() {
+  const pool = store.getOPT('todoKind') || [];
+  let cats = (store.getQuickCats() || []).map(qc => {
+    const info = catInfo(qc);
+    return { key: qc.m === 'jot' ? 'jot' : ('todo:' + (qc.cat || '')), m: info.k, cat: qc.cat || '', n: info.n, c: info.c, ph: info.ph };
+  }).filter(qc => qc.m !== 'todo' || pool.indexOf(qc.cat) >= 0);
+  // 顺序以排列为准：待办类别按选项池顺序，随记排最后（不随勾选先后）
+  cats.sort((a, b) => {
+    const ai = a.m === 'jot' ? pool.length : pool.indexOf(a.cat);
+    const bi = b.m === 'jot' ? pool.length : pool.indexOf(b.cat);
+    return (ai < 0 ? 1e9 : ai) - (bi < 0 ? 1e9 : bi);
+  });
+  if (!cats.length) {
+    const d = catInfo({ m: 'todo', cat: (store.todoKindDefault() || [])[0] || '备忘' });
+    cats = [{ key: 'todo:' + d.cat, m: 'todo', cat: d.cat, n: d.n, c: d.c, ph: d.ph }];
+  }
+  return cats;
+}
 
 Component({
   options: { addGlobalClass: true },
@@ -32,14 +49,13 @@ Component({
       { pagePath: '/pages/review/review', text: '回看', icon: '◎' },
       { pagePath: '/pages/set/set', text: '设置', icon: '⚙' }
     ],
-    // 快捷记待办（「＋」球）：点球就在原地弹条，不跳页；长按球才进清单页
+    // 快捷记（「＋」球）：点球就在原地弹条，不跳页；长按球才进清单页
     qa: false,           // 面板是否展开
-    // 目标：todo | jot（面板上显示 待办类别 / 随记）。每次展开都回到第一个（待办）——
-    // 球本身就是「随手记一条」的默认入口，不记住上次切换的（切换只在本次面板打开期间有效）
-    qaM: 'todo',
-    qaName: QA_DEF.n,    // 目标的名字 / 占位符 / 色点（随切换、以及选项池改名/增删一起更新）
-    qaPh: QA_DEF.ph,
-    qaC: QA_DEF.c,
+    qaCats: [],          // 平铺的快捷类别（来自 getQuickCats，带名字 / 颜色 / 占位符 / key）
+    qaIdx: 0,            // 当前选中的类别下标
+    qaName: '',          // 当前类别名字（撤销条展示用）
+    qaPh: '',            // 当前类别占位符
+    qaC: '',             // 当前类别色点
     qaTxt: '',
     qaFocus: false,      // 输入框是否聚焦：打开面板不自动聚焦（不弹键盘），点输入框才弹；失焦即收起面板
     qaUndo: null,        // 刚记下的那条（给一次撤销）
@@ -49,9 +65,10 @@ Component({
 
   lifetimes: {
     attached() {
-      // 选项池可能在别处被改名 / 增删：组件每次加载都把默认目标的展示重算一遍
-      const d = qaInfo(QA_KINDS[0]);
-      this.setData({ qaM: d.k, qaName: d.n, qaPh: d.ph, qaC: d.c });
+      // 选项池可能在别处被改名 / 增删：组件每次加载都把平铺类别重算一遍
+      const cats = buildQaCats();
+      const a = cats[0] || {};
+      this.setData({ qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
       // 吸底面板要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
       // 所以直接把键盘高度当 bottom，面板始终落在键盘上方（与记页吸底操作行同一套做法）
       this._kbHandler = (res) => {
@@ -86,6 +103,9 @@ Component({
     },
     switchTab(e) {
       if (this.isEditing()) { this.blocked(); return; }
+      // 快捷记面板开着时点 tab：先把面板收起（输入组件失焦后，点哪里都应该收起），再正常切页
+      if (this.data.qa) this.closeQa();
+      if (this.data.qaUndo) this.dismissUndo();
       const idx = e.currentTarget.dataset.index;
       // 再点一次「当前所在」的 tab：不跳转，让当前页回到顶部（页面实现 onTabReselect）
       if (idx === this.data.selected) {
@@ -98,8 +118,21 @@ Component({
         return;
       }
       const path = this.data.list[idx].pagePath;
-      wx.switchTab({ url: path });
-    },
+      wx.switchTab({
+        url: path,
+        success: () => {
+          // 切到别的 tab：目标页恢复初始状态（维度 / 筛选 / 视图回到默认）并回顶。
+          // 页面实现了 resetToInitial 就走它，否则退回只回顶（如设置页）。
+          setTimeout(() => {
+            const pages = getCurrentPages();
+            const route = path.replace(/^\//, '');
+            const page = pages.find(p => p.route === route) || pages[pages.length - 1];
+            if (page && typeof page.resetToInitial === 'function') page.resetToInitial();
+            else if (page && typeof page.scrollToTop === 'function') page.scrollToTop();
+          }, 30);
+        }
+      });
+      },
     // 图标轻弹一次（回顶后的反馈）：动画结束就移除类，保证下次点击能重播
     pulse() {
       if (this._pulseTimer) clearTimeout(this._pulseTimer);
@@ -138,16 +171,19 @@ Component({
       this._qaCancelBlurClose();
       // 不重置 qaTxt：上一次是被「收起键盘」收走的草稿要继续能写（主动收起走 closeQa 会清掉）
       // 也**不自动聚焦**：弹键盘会顶动页面、打断正在看的内容；要输的时候点一下输入框就够了
-      // 目标每次都回到待办：默认入口就是它，不记住上次切换的（切换只在本次打开期间有效）
-      // 类别每次重新取选项池：改名 / 增删后自动跟上
-      const d = qaInfo(QA_KINDS[0]);
-      this.setData({ qa: true, qaFocus: false, qaUndo: null, qaM: d.k, qaName: d.n, qaPh: d.ph, qaC: d.c });
+      // 类别每次重新取选项池：改名 / 增删后自动跟上，并过滤掉已删的类别
+      const cats = buildQaCats();
+      const a = cats[0] || {};
+      this.setData({ qa: true, qaFocus: false, qaUndo: null, qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
     },
     closeQa(keepDraft) {
       this._qaCancelBlurClose();
       if (!this.data.qa && !this.data.qaFocus) return;
       this.setData(keepDraft ? { qa: false, qaFocus: false } : { qa: false, qaFocus: false, qaTxt: '' });
     },
+    // 点面板自身空白区（标题 / chips 行空白）也收起：与「点面板以外」同一套心智
+    onQaBgTap() { if (this.data.qa) this.closeQa(); },
+    onQaNoop() {},
     /* 输入框失焦就收起面板：面板是「跟着键盘的输入条」，键盘一收（系统收起键、下滑收起、点别处）
        它不该继续悬在页面角上；顺手把页面滚动还给用户（遮罩没了才能正常滚）。
        已输入的文字留着（keepDraft），再点「＋」还能接着写；主动收起（点别处 / 点 ×）才清空。 */
@@ -167,22 +203,22 @@ Component({
       if (this.data.qa) { this.closeQa(); return; }
       this.dismissUndo();
     },
+    /* 面板开着时，在面板以外做任何操作（点按 / 上下滚动页面）都收起。
+       保留草稿（keepDraft）：滚动多半只是想看看别处，不该把手打的字清掉。 */
+    onMaskTouch() { if (this.data.qa) this.closeQa(true); },
     // 收起「已记入 …」撤销条（点它处、或 3.2 秒后自动走这里）
     dismissUndo() {
       if (!this.data.qaUndo) return;
       this._qaStopUndoTimer();
       this.setData({ qaUndo: null });
     },
-    /* 目标轮换：待办 → 随记 → 待办（待办显示的是选项池里的默认类别名） */
-    onQaSwitch() {
-      // 点标签本身不算「收键盘」：先取消失焦收起，再切目标（否则面板会被自己关掉）
+    /* 点类别 chip：切换「当前要记的类别」。切换时清掉草稿，避免误存到别的类别 */
+    onQaChip(e) {
       this._qaCancelBlurClose();
-      const focused = this.data.qaFocus;
-      const i = QA_KINDS.indexOf(this.data.qaM);
-      const nx = qaInfo(QA_KINDS[(i + 1) % QA_KINDS.length]);
-      this.setData({ qaM: nx.k, qaName: nx.n, qaPh: nx.ph, qaC: nx.c, qaFocus: false });
-      // 点标签会让输入框失焦、键盘收起：如果刚才正在输入，切完把焦点还回去，好接着打字
-      if (focused) setTimeout(() => { if (this.data.qa) this.setData({ qaFocus: true }); }, 40);
+      const i = +e.currentTarget.dataset.i;
+      if (i === this.data.qaIdx) return;
+      const a = this.data.qaCats[i] || {};
+      this.setData({ qaIdx: i, qaName: a.n, qaPh: a.ph, qaC: a.c, qaTxt: '', qaFocus: false });
     },
     goList() { this.closeQa(); wx.navigateTo({ url: '/pages/list/list' }); },
 
@@ -190,17 +226,17 @@ Component({
     onQaSave() {
       const txt = (this.data.qaTxt || '').trim();
       if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
-      const info = qaInfo(this.data.qaM);
+      const a = this.data.qaCats[this.data.qaIdx] || {};
       this._qaCancelBlurClose();   // 收起输入框本身会触发失焦：这里已经要关了，别再排一次
       const ts = Date.now();
       // 待办：把类别写进 ext（src=todoKind）；随记没有类别
-      const rec = { m: info.k, txt, ts, t: hhmm(ts), ext: info.cat ? [info.cat] : [], extSrc: info.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
+      const rec = { m: a.m, txt, ts, t: hhmm(ts), ext: a.cat ? [a.cat] : [], extSrc: a.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
       store.addRecord(rec).then(rid => {
         rec._rid = rid; rec.id = rid;
         const G = getApp().globalData;
         if (!G.records) G.records = [];
         G.records.unshift(store.decorate(rec));
-        this.setData({ qa: false, qaFocus: false, qaTxt: '', qaUndo: { id: rid, txt, name: info.n } });
+        this.setData({ qa: false, qaFocus: false, qaTxt: '', qaUndo: { id: rid, txt, name: a.n } });
         this.notifyPage();
         this._qaStartUndoTimer();
       }).catch(() => wx.showToast({ title: '没记上，再试一次', icon: 'none' }));

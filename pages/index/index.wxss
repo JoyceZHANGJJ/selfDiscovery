@@ -37,7 +37,7 @@
 /* 在做：第 N 天 标签（与看页一致） */
 .tag.doing { font-size: 11px; color: #fff; background: #C0A05A; padding: 1px 7px; border-radius: 999px; margin-right: 6px; line-height: 1.5; }
 
-/* 「已删除 …」撤销条（浮在屏幕上，与记卡无关）：记页有吸底的「记下 / 保存修改」操作行
-   （bottom 58px + 自身约 58px 高），所以这里要从全局的 66px 再抬高一层，否则会压在按钮上。
+/* 「已删除 …」撤销条（浮在屏幕上，与记卡无关）：位置与看 / 清单页统一——落在底部 tab 栏
+   之上（用全局 .undo-bar 的 66px）。之前单独抬到 122px 是为了躲开吸底的「记下 / 保存修改」
+   操作行，但那个高度正好和右下角的「＋」快捷球撞在一起，也和其它页不一致，所以取消。
    注：「已记入 …」那条不在这里——它排进记卡内部、跟着记卡一起收放（见上面的 .sbline） */
-.undo-bar { bottom: calc(122px + env(safe-area-inset-bottom, 0px)); }
