@@ -44,6 +44,7 @@ Page({
     brandChars: [],
     brandPlay: false,
     ready: false,
+    loadFail: false,     // 首次取数失败（云环境没开 / 网络问题）：撤掉骨架屏，给一个能点的重试
     modules: [],
     tag: 'obs',
     greet: { t: '', s: '' },
@@ -52,9 +53,6 @@ Page({
     recentTab: 'recent',   // 「最近」这一段的切换：'recent'（最近）/ 'done'（已完成的最新十条）
     editing: false,
     focusIdx: -1,
-    scrollTop: 0,
-    composerTop: 0,
-    scrollTo: '',
     // 维度标签行的「可滚动」渐变提示：只有标签真的超出、右侧还有内容时才显示
     tagFade: false,
     recSel: null,
@@ -117,7 +115,9 @@ Page({
     this._kbH = 0;
     this._clearBarFollow();   // 键盘状态从零开始（上一次离开时的跟随位置不能留）
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 0, theme: store.curTheme() });
-    store.ensureAll().then(() => {
+    store.ensureAll().then(ok => {
+      // 没拉到：撤掉骨架屏、显示可点的重试（以前这里什么都不做，页面会永远停在骨架屏）
+      if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       const mods = this.modulesVM();
       const def = mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k);
       // 当前选中无效（如删掉了「观察」维度）时，回落到默认：有观察则观察，否则第一个维度
@@ -139,12 +139,18 @@ Page({
       this.setData({ ready: true });
       this.recompute();
       this._measureBar();   // 量一下吸底操作行的实际高度（键盘弹出时输入框要给它让位）
-      // 悬浮球「备忘/购物」快速记：跳转后自动切到对应模块
-      if (app.globalData && app.globalData.pendingTag) {
-        const t = app.globalData.pendingTag;
-        app.globalData.pendingTag = null;
-        if (t !== this.st.tag) this.onTag({ currentTarget: { dataset: { k: t } } });
-      }
+    });
+  },
+
+  /* 首次取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
+  onRetry() {
+    if (this._retrying) return;
+    this._retrying = true;
+    this.setData({ loadFail: false });
+    store.ensureAll().then(ok => {
+      this._retrying = false;
+      if (!ok) { this.setData({ loadFail: true }); return; }
+      this.onShow();   // 成功了就按正常进页再走一遍（数据已经就绪，会直接渲染）
     });
   },
 
@@ -495,18 +501,17 @@ Page({
     // （见 index.wxml），所以这里先从细节列表里摘出来；保存仍按 f.items 的原顺序写 ext/extSrc，
     // 于是 export/import 的按顺序对齐完全不受影响
     const descItem = (f.items || []).find(it => it.free === store.DESC_KEY);
-    // 「可做」按流转状态过滤字段：进行中感受 仅做中/点开始/已做编辑时显示；做了的感受/收获 仅点完成/已做编辑时显示；
-    // 为什么不做了 仅点放弃/编辑「不做」时显示
+    // 「可做」按流转状态过滤字段：进行中感受 仅做中/点开始/已做编辑时显示；做了的感受/收获 仅点完成/已做编辑时显示
     let fitems = f.items.filter(it => it.free !== store.DESC_KEY);
+    // 「放弃原因」只在两种时候出现：① 正在走「放弃」这个动作（从操作条点「放弃」进来）；
+    // ② 编辑一条**已经放弃**的记录（回看 / 改原因）。其余时候不出现——
+    // 这条规则待办与可做同一套（待办以前漏了，导致每写一条待办都摆着「为什么不做了」）
+    fitems = fitems.filter(it => it.free !== 'abandonWhy' ||
+      this.st.abandoning || !!(this.st.edit && this.st.edit.status === 'abandon'));
     if (tag === 'want') {
       fitems = fitems.filter(it => {
         if (it.free === 'doingNote') return !!this.st.showDoing;
         if (it.free === 'doneFeel' || it.free === 'doneGain') return !!this.st.showDone;
-        // 「放弃原因」：待办只在点「放弃」进来时问原因（编辑一条已放弃的待办不再显示这一格）；
-        // 可做沿用原口径——编辑一条已「不做」的记录也显示，方便回看 / 改
-        if (it.free === 'abandonWhy') {
-          return this.st.abandoning || (!store.isTask(tag) && this.st.showAbandon);
-        }
         return true;
       });
     }

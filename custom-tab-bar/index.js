@@ -90,7 +90,6 @@ Component({
       if (wx.offKeyboardHeightChange && this._kbHandler) wx.offKeyboardHeightChange(this._kbHandler);
       this._kbHandler = null;
       if (this._qaUndoTimer) clearTimeout(this._qaUndoTimer);
-      if (this._qaBlurTimer) clearTimeout(this._qaBlurTimer);
       if (this._qaChipFocusTimer) clearTimeout(this._qaChipFocusTimer);
     }
   },
@@ -201,39 +200,35 @@ Component({
 
     openQa() {
       this._qaStopUndoTimer();
-      this._qaCancelBlurClose();
-      // 不重置 qaTxt：上一次是被「收起键盘」收走的草稿要继续能写（主动收起走 closeQa 会清掉）
+      // 不重置 qaTxt：上一次没写完的草稿要继续能写（只有主动收起才清，见 closeQa）
       // 也**不自动聚焦**：弹键盘会顶动页面、打断正在看的内容；要输的时候点一下输入框就够了
       // 类别每次重新取选项池：改名 / 增删后自动跟上，并过滤掉已删的类别
       const cats = buildQaCats();
       const a = cats[0] || {};
       this.setData({ qa: true, qaFocus: false, qaUndo: null, qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
-      // 键盘还弹着时再开一次面板（比如刚点别处收起又点回来）：把它直接抬到键盘上方，
-      // 不然要等你再点一下输入框、键盘高度事件来了才抬
-      if (this._kbH) this._applyKb(this._kbH);
+      // 位置按**当前**键盘状态给：不能沿用上一次记下的键盘高度——键盘已经收了、面板还按旧高度
+      // 悬在页面中间（这就是「再打开位置变了」）。键盘真在的话，点输入框那一下会再来一次高度事件
+      this._applyKb(0);
     },
     closeQa(keepDraft) {
-      this._qaCancelBlurClose();
       if (!this.data.qa && !this.data.qaFocus) return;
       this.setData(keepDraft ? { qa: false, qaFocus: false } : { qa: false, qaFocus: false, qaTxt: '' });
+      this._applyKb(0);   // 收起后面板不再需要跟着键盘，位置状态归位
     },
-    // 点面板自身空白区（标题 / chips 行空白）也收起：与「点面板以外」同一套心智
-    onQaBgTap() { if (this.data.qa) this.closeQa(); },
+    // 点面板自身空白区（标题 / chips 行空白）：没在输入时收起；**输入中不动它**——
+    // 写到一半顺手点一下面板空白（很常见）不该把整个面板收掉。收起走「点面板以外」或「点 × 球」
+    onQaBgTap() { if (this.data.qa && !this.data.qaFocus) this.closeQa(); },
     onQaNoop() {},
-    /* 输入框失焦就收起面板：面板是「跟着键盘的输入条」，键盘一收（系统收起键、下滑收起、点别处）
-       它不该继续悬在页面角上；顺手把页面滚动还给用户（遮罩没了才能正常滚）。
-       已输入的文字留着（keepDraft），再点「＋」还能接着写；主动收起（点别处 / 点 ×）才清空。 */
+    /* 输入框失焦：**不再顺手收起面板**。
+       以前一失焦（键盘被系统收起 / 下滑收起 / 误触）整个面板就消失，写到一半的内容被打断；
+       现在只把「焦点」与「位置」归位，面板留着、草稿留着——想接着写，点一下输入框就行。
+       收起只剩这几处主动操作：点面板以外（onMaskTap）、点 × 球、切 tab、记下。 */
     onQaBlur() {
-      this._qaCancelBlurClose();
-      // 刚点过类别 chip：这次失焦是「换类别」带来的，不算离开输入——面板继续开着（见 onQaChip）
+      // 刚点过类别 chip：这次失焦是「换类别」带来的，键盘还在，焦点与位置都别动（见 onQaChip）
       if (this._qaChipAt && Date.now() - this._qaChipAt < 600) return;
-      this._qaBlurTimer = setTimeout(() => {
-        this._qaBlurTimer = null;
-        if (this.data.qa) this.closeQa(true);
-      }, 180);
+      this.setData({ qaFocus: false });
+      this._applyKb(0);   // 失焦＝键盘要走了：位置回到球的上方，别按旧高度悬在半空
     },
-    // 面板内部的点击（切换模块等）会先让输入框失焦：延后一点关闭，并允许被取消
-    _qaCancelBlurClose() { if (this._qaBlurTimer) { clearTimeout(this._qaBlurTimer); this._qaBlurTimer = null; } },
     onQaInput(e) { this.setData({ qaTxt: e.detail.value }); },
     /* 点到面板 / 撤销条以外的任何地方（含页面空白、记录行、记录操作条、球）：都收起。
        与「记录操作条」同一套心智（见记页 clearFloats）；键盘是系统层，不会走到这里，所以打字不受影响。 */
@@ -253,10 +248,9 @@ Component({
     /* 点类别 chip：切换「当前要记的类别」。**不动输入框里已经写的内容**——
        先写完、再决定归到哪一类是最自然的顺序（草稿只在主动收起面板时才清，见 closeQa）。
        输入框正开着（键盘弹着）时这一下也不能把面板关掉：点 chip 会让输入框失焦，
-       一失焦 onQaBlur 就会收起整个面板 —— 变成「想换个类别就得重新点一次球」。
-       所以①记下这次点击，让随之而来的失焦不关面板；②把焦点收回来（键盘不闪断）。 */
+        所以①记下这次点击，让随之而来的失焦不动这一下（见 onQaBlur 的守卫）；
+       ②把焦点收回来（键盘不闪断）。 */
     onQaChip(e) {
-      this._qaCancelBlurClose();
       const i = +e.currentTarget.dataset.i;
       if (i === this.data.qaIdx) return;
       const a = this.data.qaCats[i] || {};
@@ -275,7 +269,6 @@ Component({
       const txt = (this.data.qaTxt || '').trim();
       if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
       const a = this.data.qaCats[this.data.qaIdx] || {};
-      this._qaCancelBlurClose();   // 收起输入框本身会触发失焦：这里已经要关了，别再排一次
       const ts = Date.now();
       // 待办 / 随记：把类别写进 ext（src=todoKind / jotKind）
       const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext: a.cat ? [a.cat] : [], extSrc: a.cat ? [a.src || 'todoKind'] : [], done: false, doneAt: 0, status: '' };

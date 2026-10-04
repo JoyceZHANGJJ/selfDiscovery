@@ -6,10 +6,6 @@ const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
 const app = getApp();
 
-function dmClass(m) {
-  return ['obs', 'now', 'want', 'nope', 'done', 'todo', 'like'].indexOf(m) >= 0 ? 'dm-' + m : 'dm-custom';
-}
-
 Page({
   data: {
     theme: 'mint',
@@ -50,6 +46,7 @@ Page({
     hasMore: true,
     loading: false,
     ready: false,     // 首屏数据未就绪时先渲染骨架屏（与记页同一套 .sk 样式）
+    loadFail: false,  // 取数失败：撤掉骨架屏，给一句说明 + 可点的重试（以前是整屏空白）
     stat: {}          // 后端统计结果：{ byMod } / { bySt } / { total, tops, ext } / { total, byCat }（随记）
   },
 
@@ -68,10 +65,24 @@ Page({
     this.setData({ sel: null, selRec: null, delUndo: null });
     // 兜底：若此前停留在已下架的「做了」维度，回到「全部」
     if (this.data.filter === 'done') this.setData({ filter: 'all', stateFilter: 'all' });
-    store.ensureAll().then(() => {
+    store.ensureAll().then(ok => {
+      // 基础数据（记录 / 选项池）没拉到：不用再等分页了，直接给失败态
+      if (!ok) { this.setData({ loadFail: true, ready: true, loading: false }); return; }
       // 首屏交给骨架屏挡着：ready 由 resetLoad → loadMore 的首屏回调置 true
       // （之前在这里就置 true，骨架屏在真正取到第一页数据前就撤了，等于看不见）
       this.resetLoad();
+    });
+  },
+
+  /* 取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
+  onRetry() {
+    if (this._retrying) return;
+    this._retrying = true;
+    this.setData({ loadFail: false, ready: false });
+    store.ensureAll().then(ok => {
+      this._retrying = false;
+      if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
+      this.onShow();   // 成功了按正常进页再走一遍
     });
   },
 
@@ -140,7 +151,6 @@ Page({
     }
     const v = vm.baseVM(r);
     v.dt = dt;
-    v.dm = dmClass(r.m);
     v.doingDays = doingDays;
     v.dur = durLine;
     v.from = fromLine;
@@ -471,8 +481,8 @@ Page({
     }).catch(() => {
       if (gen !== this._gen) return;
       this._loading = false;
-      // 失败也要撤掉骨架屏，否则会一直卡在占位上（空列表 + 下拉刷新重试）
-      this.setData({ loading: false, hasMore: false, ready: true });
+      // 失败也要撤掉骨架屏，否则会一直卡在占位上；并给出「点击重试」（以前是整屏空白）
+      this.setData({ loading: false, hasMore: false, ready: true, loadFail: true });
       wx.stopPullDownRefresh();
     });
   },

@@ -4,8 +4,8 @@
        页面滚动时微信会同步原生输入层位置，安卓上光标/文字飘出输入框的问题从根上消失 -->
   <view class="screen" bindtap="onBodyTap">
     <view class="body body-page">
-      <!-- 骨架屏：数据未就绪时占位，避免首屏空卡片闪动 -->
-      <view wx:if="{{!ready}}" class="composer sk">
+      <!-- 骨架屏：数据未就绪时占位，避免首屏空卡片闪动；取数失败时不占位（换下面的重试） -->
+      <view wx:if="{{!ready && !loadFail}}" class="composer sk">
         <view class="sk-line sk-w60"></view>
         <view class="sk-line sk-w40 sk-sm"></view>
         <view class="sk-row">
@@ -18,6 +18,12 @@
         <view class="sk-hr"></view>
         <view class="sk-line sk-w30 sk-sm"></view>
         <view class="sk-btn"></view>
+      </view>
+
+      <!-- 取数失败：给一句说明 + 一个能点的重试 -->
+      <view wx:elif="{{loadFail}}" class="loadfail">
+        <view class="lft">没加载出来</view>
+        <view class="lfr" bindtap="onRetry">点击重试</view>
       </view>
 
       <block wx:else>

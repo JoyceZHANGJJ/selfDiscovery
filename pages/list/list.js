@@ -35,6 +35,8 @@ Page({
     showTodo: true,         // 这一段是否渲染待办清单（「全部」下选了待办、或各待办类别段）
     // 本页只做「看与管理」：新增走右下角的「＋」球（快捷记面板）或记页，页面上不再放输入框
     show: false,
+    ready: false,        // 首屏数据未就绪时先渲染骨架屏（与记 / 看 同一套 .sk 样式）
+    loadFail: false,     // 取数失败：撤掉骨架屏，给一句说明 + 可点的重试
     tit: '全部',
     sum: '',
     undone: [],
@@ -69,7 +71,23 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 4, theme: wx.getStorageSync('theme') || 'sand' });
     }
-    store.ensureAll().then(() => this.rebuild());
+    store.ensureAll().then(ok => {
+      if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
+      this.setData({ ready: true });
+      this.rebuild();
+    });
+  },
+
+  /* 取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
+  onRetry() {
+    if (this._retrying) return;
+    this._retrying = true;
+    this.setData({ loadFail: false, ready: false });
+    store.ensureAll().then(ok => {
+      this._retrying = false;
+      if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
+      this.onShow();   // 成功了按正常进页再走一遍
+    });
   },
 
   /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
