@@ -1,3 +1,11 @@
+/* 组件根上挂一份底部偏移变量：page 级变量（app.wxss）对自定义组件内部不可靠，
+   球 / 面板 / tab 栏都在本组件里，必须在这里自给自足（值与 app.wxss 的 page 块保持一致） */
+.tabroot {
+  --max-w: 640px;
+  --tabbar-h: 58px;
+  --fab-bottom: 116px;
+  --qa-bottom: 178px;
+}
 .tabbar {
   display: flex;
   border-top: 1px solid var(--line, #EAE5DC);

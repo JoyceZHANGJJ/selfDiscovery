@@ -9,7 +9,10 @@
    以前 58 / 116 / 178 / 640 散落在 app.wxss、组件 wxss 甚至 JS 拼的 style 字符串里，
    改 tab 栏高度要全项目搜一遍。CSS 变量沿 DOM 继承，能穿透自定义组件（含 custom-tab-bar），
    JS 拼的 style 里也可以直接写 var()（见 index.js 的 barBottom、custom-tab-bar 的 qaBottom） */
-page {
+/* 注意：page 级变量对**自定义组件内部**不可靠（组件样式隔离会挡住这条继承）——
+   所以 custom-tab-bar / rec-actions 组件在自己的根节点上各挂了一份同值变量（见各自 wxss）。
+   改这四个值时两处一起改（组件里那份带注释指回这里） */
+page, .app {
   --max-w: 640px;      /* 内容最大宽：.screen / .actbar / .tabbar 对齐 */
   --tabbar-h: 58px;    /* 底部 tab 栏高度：页面操作条 / 吸底操作行抬离底部用 */
   --fab-bottom: 116px; /* 悬浮球距底：tab 栏高度 + 球的留白 */

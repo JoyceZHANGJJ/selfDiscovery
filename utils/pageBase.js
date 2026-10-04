@@ -38,13 +38,17 @@ function pageBase(extra) {
     /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
        只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来。
        矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
-       会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
+       会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。
+       名字**在这里运行时取**（getApp().APP_NAME），不能用模块顶层缓存的那份：
+       本模块被页面 require 的时机早于 App() 注册完成，顶层 getApp() 拿到的是空，
+       appName 变成空串 → 标题就「不展示了」 */
     layoutBrand() {
+      const inst = (typeof getApp === 'function' && getApp()) || {};
       const mb = ui.capsuleRect();
       if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
       this.setData({
         brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
-        brandChars: String(this.data.appName || '').split('')
+        brandChars: String(inst.APP_NAME || this.data.appName || '').split('')
       });
     },
 
