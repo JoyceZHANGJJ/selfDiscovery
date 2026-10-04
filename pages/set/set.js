@@ -48,7 +48,11 @@ Page({
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
     this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, hidden: false, theme: wx.getStorageSync('theme') || 'mint' });
+    // tabBar 的 hidden 跟着「有没有浮层」走，不能写死 false：
+    // 从后台切回来也会走一次 onShow，写死就会把 tab 栏放出来、压住浮层底部的按钮（主题面板的「完成」）
+    const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
+    if (tb) tb.setData({ selected: 3, hidden: this._anyOverlay(), theme: wx.getStorageSync('theme') || 'mint' });
+    this._rehideTabBar();   // 后台回来那一瞬间 tabBar 有自己的复位时序，过一拍再收一次
     this.buildThemeOpts();   // 主题表 / 当前 / 常用：圆点那边改过主题时，切回设置页要能看到最新的
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));
@@ -214,9 +218,24 @@ Page({
   onImportTap() { this.setData({ importOverlay: true, importText: '' }); this.setTabBarHidden(true); },
   onImportInput(e) { this.setData({ importText: e.detail.value }); },
   closeImport() { this.setData({ importOverlay: false }); this.setTabBarHidden(false); },
+  /* 有没有浮层开着：开着时底部 tab 栏要收起来（否则压住浮层底部的按钮） */
+  _anyOverlay() {
+    return !!(this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay || this.data.themeOverlay);
+  },
+  /* 浮层开着时，过一拍再把 tabBar 收一次：从后台切回来（或切 tab 回来）的那一瞬间，
+     tabBar 有自己的重建 / 复位时序，只在 onShow 里设一次可能被它盖回来——
+     表现就是主题面板底部的「完成」被 tab 栏压住 */
+  _rehideTabBar() {
+    if (!this._anyOverlay()) return;
+    if (this._rehideTimer) clearTimeout(this._rehideTimer);
+    this._rehideTimer = setTimeout(() => {
+      this._rehideTimer = null;
+      if (this._anyOverlay()) this.setTabBarHidden(true);
+    }, 300);
+  },
   // 系统返回（Android 返回键 / iOS 左滑）：浮层打开时只关浮层，不退出小程序
   onBackPress() {
-    if (this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay || this.data.themeOverlay) {
+    if (this._anyOverlay()) {
       this.setData({ importOverlay: false, dimOverlay: false, logOverlay: false, themeOverlay: false });
       this.setTabBarHidden(false);
       return true;

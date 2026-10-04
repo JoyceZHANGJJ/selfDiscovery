@@ -84,11 +84,7 @@ Component({
       this.setData({ theme: t, themeStyle: store.themeStyle(t), qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
       // 吸底面板要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
       // 所以直接把键盘高度当 bottom，面板始终落在键盘上方（与记页吸底操作行同一套做法）
-      this._kbHandler = (res) => {
-        const h = (res && res.height) || 0;
-        this.setData({ qaBottom: h > 0 ? (h + 10) + 'px' : 'calc(178px + env(safe-area-inset-bottom, 0px))' });
-      };
-      if (wx.onKeyboardHeightChange) wx.onKeyboardHeightChange(this._kbHandler);
+      this._bindKb();
     },
     detached() {
       if (wx.offKeyboardHeightChange && this._kbHandler) wx.offKeyboardHeightChange(this._kbHandler);
@@ -98,7 +94,30 @@ Component({
       if (this._qaChipFocusTimer) clearTimeout(this._qaChipFocusTimer);
     }
   },
+  // 每次切回本页都重新绑一次：有些基础库只保留最后注册的那一个监听，
+  // 别处（记页 onLoad）注册过之后，我们这条可能就收不到键盘高度了
+  pageLifetimes: {
+    show() { this._bindKb(); }
+  },
   methods: {
+    /* 键盘高度 → 面板底边距：面板自己抬到键盘上方 10px，键盘收起就回到球的上方 */
+    _applyKb(h) {
+      h = Math.max(0, Math.round(h || 0));
+      this._kbH = h;
+      this.setData({ qaBottom: h > 0 ? (h + 10) + 'px' : 'calc(178px + env(safe-area-inset-bottom, 0px))' });
+    },
+    /* 绑 / 重绑全局键盘监听（先 off 再 on，避免切页回来重复注册） */
+    _bindKb() {
+      if (!wx.onKeyboardHeightChange) return;
+      if (!this._kbHandler) this._kbHandler = (res) => this._applyKb((res && res.height) || 0);
+      if (wx.offKeyboardHeightChange) wx.offKeyboardHeightChange(this._kbHandler);
+      wx.onKeyboardHeightChange(this._kbHandler);
+    },
+    /* 输入框自带的键盘高度事件——**真正可靠的那一路**：
+       全局那条在部分机型上不派发（记页也是这么兜的），而这里一定跟着这个输入框的键盘走。
+       回看整页是 scroll-view（页面本身不滚），微信的 adjust-position 顶不动页面，
+       只靠全局那条就会出现「面板留在原位、被键盘盖住」（其它页是被微信顺手顶上去才看着没事） */
+    onQaKb(e) { this._applyKb((e && e.detail && e.detail.height) || 0); },
     // 当前页是否处于编辑态（以页面自身的 editing 为准，避免两份状态不同步导致锁死）
     isEditing() {
       const pages = getCurrentPages();
@@ -189,6 +208,9 @@ Component({
       const cats = buildQaCats();
       const a = cats[0] || {};
       this.setData({ qa: true, qaFocus: false, qaUndo: null, qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
+      // 键盘还弹着时再开一次面板（比如刚点别处收起又点回来）：把它直接抬到键盘上方，
+      // 不然要等你再点一下输入框、键盘高度事件来了才抬
+      if (this._kbH) this._applyKb(this._kbH);
     },
     closeQa(keepDraft) {
       this._qaCancelBlurClose();
