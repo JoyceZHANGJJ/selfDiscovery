@@ -5,7 +5,7 @@
 //   （只看 觉察 / 此刻 / 可做；待办 / 随记不算可回看的"内容主题"）
 // · 周 / 月：按自然周 / 自然月出的复盘报告（本期 vs 上期），回答"这段时间怎么样"。
 const store = require('../../utils/store.js');
-const ui = require('../../utils/ui.js');
+const pageBase = require('../../utils/pageBase.js');
 const swipe = require('../../utils/swipe.js');
 const date = require('../../utils/date.js');
 const app = getApp();
@@ -61,14 +61,8 @@ function periodOf(unit, offset) {
   return { start, end, label, rel, unit, offset };
 }
 
-Page({
+Page(pageBase({
   data: {
-    theme: 'mint',
-    statusH: 20,
-    themeStyle: store.themeStyle('mint'),
-    // 程序名彩蛋：与记 / 看 / 清单 同一套（按胶囊矩形定位 + 下拉逐字浮现）
-    appName: (app && app.APP_NAME) || '',
-    brandTop: 0, brandLeft: 0, brandW: 0, brandH: 0, brandChars: [], brandPlay: false,
     view: 'week',        // week | month | all（主题档案）
     // —— 周 / 月复盘 ——
     offset: 0,
@@ -86,9 +80,7 @@ Page({
   _docs: [],             // 全量档案（不塞进 data，避免 setData 过大）
 
   onShow() {
-    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
-    store.syncWindowBg();
+    this.ensureTheme();
     this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(ok => {
@@ -110,32 +102,8 @@ Page({
     });
   },
 
-  /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
-     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来（与记 / 看 / 清单 同一套）。
-     矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
-     会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
-  layoutBrand() {
-    const mb = ui.capsuleRect();
-    if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
-    this.setData({
-      brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
-      brandChars: String(this.data.appName || '').split('')
-    });
-  },
-
-  /* 名字露出来的这会儿，播一次逐字浮现 */
-  playBrand() {
-    this.setData({ brandPlay: true });
-    if (this._brandTimer) clearTimeout(this._brandTimer);
-    this._brandTimer = setTimeout(() => this.setData({ brandPlay: false }), 900);
-  },
-
-  /* 切到其它 tab 再切回来（或首次进入）：整页回到顶部 */
-  scrollToTop() {
-    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
-  },
-  /* 再点一次底部「回看」：整页回到顶部（与记 / 看 同一套） */
-  onTabReselect() { this.scrollToTop(); },
+  /* 主题 / 程序名 / 回顶（ensureTheme / layoutBrand / playBrand / scrollToTop / onTabReselect）
+     已收敛到 utils/pageBase.js */
 
   /* 切换 tab 进入本页：恢复初始状态（回到「周」视图、本期、默认排序），并回顶 */
   resetToInitial() {
@@ -369,4 +337,4 @@ Page({
     store.reload().then(() => { this.build(); wx.stopPullDownRefresh(); })
       .catch(() => wx.stopPullDownRefresh());
   }
-});
+}));

@@ -1,5 +1,6 @@
 // pages/set/set.js —— 设置
 const store = require('../../utils/store.js');
+const pageBase = require('../../utils/pageBase.js');
 const CHANGELOG = require('../../utils/changelog.js');
 const app = getApp();
 
@@ -9,11 +10,8 @@ function fmtDay(ts) {
   return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
 }
 
-Page({
+Page(pageBase({
   data: {
-    theme: 'mint',
-    statusH: 20,
-    themeStyle: store.themeStyle('mint'),
     greets: { day: [], night: [] },
     greetOpen: false,
     geEdit: null,
@@ -46,9 +44,7 @@ Page({
   g: null,
 
   onShow() {
-    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
-    store.syncWindowBg();
+    this.ensureTheme();
     // tabBar 的 hidden 跟着「有没有浮层」走，不能写死 false：
     // 从后台切回来也会走一次 onShow，写死就会把 tab 栏放出来、压住浮层底部的按钮（主题面板的「完成」）
     const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
@@ -369,4 +365,4 @@ Page({
     store.saveDims(app.globalData.dims);
     this.setData({ dims: (app.globalData.dims || []).map(x => ({ k: x.k, n: x.n, c: x.c, opt: (x.opt || []).length })) });
   }
-});
+}));

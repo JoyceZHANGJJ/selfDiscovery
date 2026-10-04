@@ -1,6 +1,6 @@
 // pages/index/index.js —— 记
 const store = require('../../utils/store.js');
-const ui = require('../../utils/ui.js');
+const pageBase = require('../../utils/pageBase.js');
 const swipe = require('../../utils/swipe.js');
 const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
@@ -31,18 +31,8 @@ function tsFromDate(dStr, tStr) {
   const ts = new Date(p[0], p[1] - 1, p[2], q[0], q[1], 0, 0).getTime();
   return { ts, t: ('0' + q[0]).slice(-2) + ':' + ('0' + q[1]).slice(-2) };
 }
-Page({
+Page(pageBase({
   data: {
-    theme: 'mint',
-    statusH: 20,
-    themeStyle: store.themeStyle('mint'),
-    appName: (app && app.APP_NAME) || '',
-    brandTop: 0,
-    brandLeft: 0,
-    brandW: 0,
-    brandH: 0,
-    brandChars: [],
-    brandPlay: false,
     ready: false,
     loadFail: false,     // 首次取数失败（云环境没开 / 网络问题）：撤掉骨架屏，给一个能点的重试
     modules: [],
@@ -288,25 +278,7 @@ Page({
     this._clearBarFollow();
   },
 
-  ensureTheme() {
-    const t = store.curTheme();
-    const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
-    store.syncWindowBg(t);   // 下拉露出的底色跟着主题走，否则与页面 var(--bg) 分层
-  },
-
-  /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
-     只有下拉刷新把页面（含这个 fixed 元素）推下去时才露出来。
-     矩形走 ui.capsuleRect()（一份会话内固定值的缓存）——各页现查的话，赶上页面切换
-     会拿到「看起来合理但错位」的值，程序名就会跑到主题圆点的位置。 */
-  layoutBrand() {
-    const mb = ui.capsuleRect();
-    if (!mb) return;   // 取不到就先不显示（它平时本来就是被盖住的），下次 onShow 再取
-    this.setData({
-      brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
-      brandChars: String(this.data.appName || '').split('')
-    });
-  },
+  /* 主题 / 程序名（ensureTheme / layoutBrand / playBrand）已收敛到 utils/pageBase.js */
 
   rotateGreet() {
     const g = app.globalData;
@@ -1030,15 +1002,7 @@ Page({
     this.copyRec(r);
   },
   /* 把一条记录放进剪贴板：只复制那一句话本身（最近列表里最显眼的就是它） */
-  copyRec(r) {
-    const txt = r.txt || '';
-    if (!txt) return;
-    wx.setClipboardData({
-      data: txt,
-      success: () => { if (wx.vibrateShort) wx.vibrateShort(); },
-      fail: () => wx.showToast({ title: '没复制上，再试一次', icon: 'none' })
-    });
-  },
+  /* copyRec 已收敛到 utils/pageBase.js */
 
   /* 量取该行「整张卡片」的位置（文档坐标）→ 赋值并打开编辑器（量好再显示，避免闪到上一次的位置）。
      gesture=true（左滑触发）时手指正好在抬起，聚焦要隔一拍再做——抬手瞬间聚焦会被微信
@@ -1255,13 +1219,7 @@ Page({
     if (this.data.saveUndo) { patch.saveUndo = null; this._stopSaveTimer(); }
     if (Object.keys(patch).length) this.setData(patch);
   },
-  _stopDelTimer() { if (this._delTimer) { clearTimeout(this._delTimer); this._delTimer = null; } },
-  _startDelTimer() {
-    this._stopDelTimer();
-    this._delTimer = setTimeout(() => {
-      if (this.data.delUndo) this.setData({ delUndo: null });
-    }, 3000);
-  },
+  /* _stopDelTimer / _startDelTimer 已收敛到 utils/pageBase.js */
 
   /* 记下后的确认条：写清记进了哪个模块（觉察还会带上喜恶），并按模块给一个动作——
      待办（备忘 / 购物）给「撤销」：它常常是随手一句、更容易打错，与悬浮球快捷记同一套心智；
@@ -1368,9 +1326,7 @@ Page({
     if (this._refreshing) { wx.stopPullDownRefresh(); return; }   // 已在刷新中，避免重复触发
     this._refreshing = true;
     // 名字这会儿正好从胶囊后露出来，播一次逐字浮现
-    this.setData({ brandPlay: true });
-    if (this._brandTimer) clearTimeout(this._brandTimer);
-    this._brandTimer = setTimeout(() => this.setData({ brandPlay: false }), 900);
+    this.playBrand();
 
     const afterData = () => {
       wx.stopPullDownRefresh();
@@ -1425,4 +1381,4 @@ Page({
       }
     });
   }
-});
+}));
