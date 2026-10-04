@@ -9,11 +9,22 @@
 .body-page { padding: calc(var(--status-h, 20px) + 46px) 14px 0; }
 /* 程序名（.brand / .bc / .play）样式已提到 app.wxss，记页与看页共用 */
 
-/* 列表跟随页面滚动，不再单独限高（限高会在内容不足时留下大片空白） */
-.listpane { height: auto; }
+/* 列表跟随页面滚动，不再单独限高（限高会在内容不足时留下大片空白），
+   但要留一个最小高度：「最近 / 待办 / 已完成」三段的条数不一样（10 / 3 / 10），
+   不留的话整页会随列表长短伸缩——短的那段整页刚好装得下就「滑不动」了，
+   停在底部时还会被拉回去，看着像记卡在上下跳。
+   （高度与列表长度挂钩：长的那段由内容撑开，短的这段由 min-height 兜住，两段页高接近） */
+.listpane { height: auto; min-height: calc(100vh - 200px); }
 .body-list { padding: 0 14px calc(64px + env(safe-area-inset-bottom, 0px)); }
+/* 「最近 / 已完成」切换：标题位上的两个词（选中的加深 + 主题色下划线），不额外加控件 */
+.rectabs .rt { font-size: 13px; font-weight: 800; color: var(--ink4); margin-right: 16px; padding-bottom: 2px; border-bottom: 2px solid transparent; }
+.rectabs .rt.on { color: var(--ink); border-bottom-color: var(--accent); }
 .composer .big-in { margin-top: 10px; }
 .composer .extra:first-child { margin-top: 14px; }
+/* 待办 / 随记：输入框上方的「类别」行。它紧跟维度标签行，要和非纯输入型模块的
+   「什么事 / 归类」那一行一样紧（间距全部来自 .tagrow 的 12px + 4px），
+   所以去掉 .extra 默认的 margin-top:14px，否则会比「什么事」多出一截 */
+.composer .extra.cattop { margin-top: 0; }
 /* 记卡底部：按钮行（.sbbtns）+ 「已记入 …」确认条（.sbline，就在按钮下方）。
    确认条属于记卡的一部分（不再浮在屏幕底部），所以它出现时记卡撑开、消失后收回；
    吸底块整体高度跟着变，但底边始终吸在 bottom:barBottom 处，所以按钮会往上让出这一行 */

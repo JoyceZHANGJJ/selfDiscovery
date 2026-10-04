@@ -3,7 +3,7 @@
   <!-- 整页页面级滚动（与记页一致）：输入框不套在 scroll-view 内，避免安卓上光标/文字飘出去 -->
   <view class="screen">
     <view class="body" bindtap="onBodyTap">
-      <view class="sect-t">{{tit}}</view>
+      <view class="sect-t" id="blk-title">{{tit}}</view>
       <view wx:if="{{sum}}" class="tsum">{{sum}}</view>
       <view wx:if="{{show}}" class="ehint">长按任意一条即可就地修改或删除</view>
 
@@ -14,28 +14,26 @@
         </view>
       </view>
 
-      <!-- 快捷新增：独立小卡片（和下面轴线式的待办行分层），位置仍在筛选与列表之间。
-           回车即记下、可连着加；筛了具体类别 / 随记时目标跟筛走，筛「全部」时平铺可勾选的类别供直接点选 -->
-      <view class="qadd" style="--mc:{{qaC}}">
-        <scroll-view wx:if="{{seg==='all'}}" class="qa-chips" scroll-x="{{true}}" enhanced show-scrollbar="{{false}}" bindtouchstart="onChipsTouch">
-          <view wx:for="{{qaCats}}" wx:key="key" class="qa-chip {{qaKey===item.key?'on':''}}" data-k="{{item.key}}" bindtap="onQaChip">
-            <view class="qa-dot" style="background:{{item.c}}"></view>
-            <text>{{item.n}}</text>
-          </view>
-        </scroll-view>
-        <view class="qadd-row">
-          <input class="qadd-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="qadd" />
-          <view class="qadd-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">记下</view>
-        </view>
+      <!-- 随记 · 类别（二级筛选）：全部 + 各随记类别（与看页觉察的「喜恶」同一套，带在选项池里增删）。
+           只在「随记」段里出现；选「全部」时下面的随记按类别分段展示 -->
+      <view wx:if="{{seg==='jot' && jotKinds.length}}" class="filters" id="blk-jotfilters">
+        <view class="ft {{jf==='all'?'on':''}}" data-k="all" bindtap="onJotFilter">全部</view>
+        <view wx:for="{{jotKinds}}" wx:key="*this" class="ft {{jf===item?'on':''}}" data-k="{{item}}" bindtap="onJotFilter">{{item}}</view>
       </view>
 
+      <!-- 本页只做「看与管理」：页面上不再放输入框，新增走右下角的「＋」球（快捷记面板）或记页 -->
       <block wx:if="{{show}}">
-        <!-- 随记：平铺列表（没有待完成 / 已完成 / 已放弃那套，也没有完成勾选）；
-             行只负责显示，就地改 / 删由长按与操作条负责，和待办共用同一个 inline-editor -->
+        <!-- 随记：按「随记类别」分段展示（没有待完成 / 已完成 / 已放弃那套，也没有完成勾选）——
+             段头是类别（组序＝随记类别池顺序），组内按记录时间倒序；「随记」这一段就是全部随记，
+             只是分了几组，不会漏内容。行只负责显示，就地改 / 删由长按与操作条负责，
+             和待办共用同一个 inline-editor -->
         <block wx:if="{{seg==='jot'}}">
-          <view wx:for="{{jots}}" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{edId===item.id?'blank':''}} {{sel===item.id?'sel':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
-            <view class="edge" style="background:{{item.c}}"></view>
-            <view class="hd"><text class="tv">{{item.txt}}</text><text class="tw">{{item.t}}</text></view>
+          <view wx:for="{{jotGroups}}" wx:key="key" wx:for-item="g">
+            <view wx:if="{{g.head}}" class="daylab"><view class="jgdot" style="background:{{g.c}}"></view>{{g.day}}<text class="jgn">{{g.n}} 条</text></view>
+            <view wx:for="{{g.recs}}" wx:for-item="item" wx:key="id" id="erow-{{item.id}}" class="rec list tl {{edId===item.id?'blank':''}} {{sel===item.id?'sel':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecTap" bindlongpress="onLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
+              <view class="edge" style="background:{{item.c}}"></view>
+              <view class="hd"><text class="tv">{{item.txt}}</text><text class="tw">{{item.t}}</text></view>
+            </view>
           </view>
           <view wx:if="{{jotHide}}" class="moreline" data-k="j" bindtap="onMore">显示更多（还有 {{jotHide}} 条）</view>
         </block>
@@ -52,7 +50,7 @@
           bind:touchend="onRowTouchend" bind:more="onMore" bind:daymore="onDayMore" />
       </block>
 
-      <view wx:if="{{empty}}" class="empty-mini">{{seg==='jot' ? '还没有随记' : '还没有备忘或购物记录'}}</view>
+      <view wx:if="{{empty}}" class="empty-mini">{{emptyText}}</view>
     </view>
 
     <!-- 待办就地编辑：与记页 / 看页共用同一个组件 -->
@@ -67,4 +65,9 @@
     <view class="tx">已删除「{{delUndo.txt}}」</view>
     <view class="tb" bindtap="onUndoDel">撤销</view>
   </view>
+
+  <!-- 快捷记录：本页不是 tab 页（没有自定义 tabBar），所以手动挂一份组件（quick-ball 即它）——
+       ballOnly 只渲染右下角的「＋」球与快捷记面板，不渲染底部 tab 栏。
+       记下后组件会回调本页的 onQuickTodo → rebuild，新的一条立刻出现在列表里 -->
+  <quick-ball ballOnly="{{true}}" />
 </view>

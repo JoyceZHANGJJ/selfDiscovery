@@ -32,8 +32,10 @@ Page({
     logOverlay: false,
     logs: CHANGELOG,
     logLatest: (CHANGELOG[0] || {}).d || '',
-    quickOpts: [],     // 快捷创建可勾选的类别（待办类别 + 随记），每项带 on 标记
-    _selKeys: []       // 已勾选的 key 有序列表（todo:<类别> / jot）
+    quickOpts: [],     // 快捷创建可勾选的类别（待办类别 + 随记类别），每项带 on 标记
+    quickCount: 0,     // 已勾选数量（显示成 N/上限）
+    quickMax: store.QUICKCATS_MAX,   // 上限（store 里单一来源，不写死）
+    _selKeys: []       // 已勾选的 key 有序列表（todo:<类别> / jot:<类别>）
   },
 
   g: null,
@@ -108,13 +110,12 @@ Page({
   },
   persistGreets() { app.globalData.greets = this.g; store.saveGreets(this.g); },
 
-  /* 快捷创建：把「待办类别（选项池）+ 随记」列出来，标出已勾选的（来自 getQuickCats） */
+  /* 快捷创建：把「待办类别 + 随记类别」（都来自选项池）列出来，标出已勾选的（来自 getQuickCats） */
   buildQuickOpts() {
-    const pool = store.getOPT('todoKind') || [];
     const sel = store.getQuickCats();
-    const selSet = new Set(sel.map(c => c.m === 'jot' ? 'jot' : ('todo:' + c.cat)));
-    const quickOpts = pool.map(c => ({ key: 'todo:' + c, n: c, c: store.catColor(c), on: selSet.has('todo:' + c) }));
-    quickOpts.push({ key: 'jot', n: '随记', c: store.mcolor('jot'), on: selSet.has('jot') });
+    const selSet = new Set(sel.map(c => c.m === 'jot' ? ('jot:' + (c.cat || '')) : ('todo:' + c.cat)));
+    const quickOpts = (store.getOPT('todoKind') || []).map(c => ({ key: 'todo:' + c, n: c, c: store.catColor(c), on: selSet.has('todo:' + c) }))
+      .concat((store.getOPT('jotKind') || []).map(c => ({ key: 'jot:' + c, n: c, c: store.jotColor(c), on: selSet.has('jot:' + c) })));
     // 只认「仍然存在」的类别：选项池里被删掉的类别不再计数、也不再占 5 个名额。
     // 顺手把清理后的结果写回存储（只在与当前存储不同时写，避免每次进页面都写存储）。
     const selKeys = quickOpts.filter(o => o.on).map(o => o.key);
@@ -123,22 +124,22 @@ Page({
     if (!same) store.setQuickCats(cleaned);
     this.setData({ quickOpts, _selKeys: selKeys, quickCount: selKeys.length });
   },
-  // 勾选 / 取消：最多 5 个；改动即持久化。顺序始终以选项排列为准（类别池顺序 + 随记），不随点击先后
+  // 勾选 / 取消：最多 QUICKCATS_MAX 个；改动即持久化。顺序始终以选项排列为准（待办类别池 + 随记类别池），不随点击先后
   onQuickToggle(e) {
     const key = e.currentTarget.dataset.k;
     const onSet = new Set(this.data._selKeys);
     if (onSet.has(key)) { onSet.delete(key); }
     else {
-      if (onSet.size >= 5) { wx.showToast({ title: '最多选 5 个', icon: 'none' }); return; }
+      if (onSet.size >= store.QUICKCATS_MAX) { wx.showToast({ title: '最多选 ' + store.QUICKCATS_MAX + ' 个', icon: 'none' }); return; }
       onSet.add(key);
     }
-    // 按 quickOpts 的展示顺序重排（类别池 + 随记），保证「顺序 = 排列」
+    // 按 quickOpts 的展示顺序重排（待办类别 + 随记类别），保证「顺序 = 排列」
     const sel = this.data.quickOpts.map(o => o.key).filter(k => onSet.has(k));
     const quickOpts = this.data.quickOpts.map(o => Object.assign({}, o, { on: onSet.has(o.key) }));
     store.setQuickCats(sel.map(k => this._keyToCat(k)));
     this.setData({ _selKeys: sel, quickOpts, quickCount: sel.length });
   },
-  _keyToCat(k) { return k === 'jot' ? { m: 'jot' } : { m: 'todo', cat: k.slice(5) }; },
+  _keyToCat(k) { return k.indexOf('jot:') === 0 ? { m: 'jot', cat: k.slice(4) } : { m: 'todo', cat: k.slice(5) }; },
 
   /* 数据：导出 / 导入 / 清空 */
   exportText(recs) {

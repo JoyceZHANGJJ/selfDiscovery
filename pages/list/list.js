@@ -1,12 +1,14 @@
 // pages/list/list.js —— 清单：备忘 / 购物（待办）+ 随记（平铺列表）快捷查看
 const store = require('../../utils/store.js');
 const swipe = require('../../utils/swipe.js');
+const ui = require('../../utils/ui.js');
 const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
 const app = getApp();
 
-// 筛选行 / 快捷新增的目标 id：待办类别用 'k:<类别>'，随记用 'jot'，全部用 'all'。
-// 类别一律实时取选项池 todoKind —— 「✎ 管理」里加了新类别，清单页会自动多一项
+// 筛选行 / 快捷新增的目标 id：待办类别用 'k:<类别>'，随记类别用 'j:<类别>'
+// （裸 'jot' = 随记的默认类别，筛「随记」整段或兜底时用），全部用 'all'。
+// 类别一律实时取选项池（todoKind / jotKind）—— 「✎ 管理」里加了新类别，清单页会自动多一项
 function todoSeg(v) { return 'k:' + v; }
 
 // 能在清单页就地改 / 删的记录：待办 + 随记（都是「一句话」，区别只是前者有完成与状态）
@@ -17,21 +19,16 @@ Page({
     theme: store.curTheme(),
     statusH: 20,
     themeStyle: store.themeStyle(store.curTheme()),
-    seg: 'all',            // 'all' | 'jot' | 'k:<类别>'（类别来自选项池，可增删）
+    seg: 'all',            // 'all' | 'jot'（随记整段）| 'k:<待办类别>'（都来自选项池，可增删）
     segs: [],              // 筛选行：全部 + 各待办类别 + 随记（rebuild 里按选项池生成）
-    // 顶部快捷新增：输入 → 回车 → 立刻出现在列表顶部，可连着加（目标跟筛选走）
-    qaTxt: '',
-    qaM: 'k:备忘',         // seg='all' 时的目标：'k:<类别>' | 'jot'
-    qaCats: [],            // 全部模式下平铺的可勾选类别（来自「设置」里的快捷创建勾选，最多 5 个）
-    qaKey: 'k:备忘',       // 当前快捷新增目标（用于高亮 chips）
-    qaC: store.catColor('备忘'),
-    qaName: '备忘',
-    qaPh: '要记住什么',
+    jf: 'all',             // 随记段的二级筛选（'all' | <随记类别>），只在「随记」段里出现
+    jotKinds: [],          // 随记类别池（二级筛选行的候选项）
+    // 本页只做「看与管理」：新增走右下角的「＋」球（快捷记面板）或记页，页面上不再放输入框
     show: false,
     tit: '待办',
     sum: '',
     undone: [],
-    jots: [],
+    jotGroups: [],         // 随记：按「随记类别」分段（段头＝类别，组内按时间倒序）
     doneGroups: [],
     doneN: 0,
     abandGroups: [],
@@ -84,6 +81,8 @@ Page({
     const recs = app.globalData.records || [];
     const seg = this.data.seg;
     const isJot = seg === 'jot';
+    // 随记段的二级筛选：'all' 时不筛（按类别分段展示＝全部随记），选了某一类就只看这一类
+    const jcat = (isJot && this.data.jf !== 'all') ? this.data.jf : '';
     // 备忘 / 购物 合并成「待办」后，它们是同一个模块（todo）下的「类别」：按类别筛
     const cat = seg.indexOf('k:') === 0 ? seg.slice(2) : '';
     const tasks = recs.filter(r => store.isTask(r.m));
@@ -96,11 +95,16 @@ Page({
     // 已完成 / 已放弃各按「那天」分段（与看页同一套）：段头给日期，行内只写「完成 / 放弃 · HH:MM」
     const doneDays = this.groupByDay(doneRecs, r => r.doneAt || r.ts);
     const abandDays = this.groupByDay(abandRecs, r => r.abandonedAt || r.ts);
-    // 随记不是待办：没有 待完成 / 已完成 / 已放弃 那套，就是一个平铺列表（按记录时间倒序）
-    const jotsAll = isJot ? recs.filter(r => r.m === 'jot').sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(r => this.recVM(r)) : [];
+    // 随记不是待办：没有 待完成 / 已完成 / 已放弃 那套。展示按「随记类别」分段——
+    // 段头是类别、组内按记录时间倒序。所以「随记」这一段本身就是全部随记（只是分了几组），
+    // 不会漏掉任何一条；组序取选项池顺序（被删掉的老类别排在最后）。
+    // 筛到某个随记类别（j:<类别>）时就只有那一个类别，不再显示段头（标题已写明）
+    const jotRecs = isJot ? recs.filter(r => r.m === 'jot' && (!jcat || store.jotCat(r) === jcat)).sort((a, b) => (b.ts || 0) - (a.ts || 0)) : [];
+    const jotTotal = jotRecs.length;
     // 每段只渲染「最近一段」，其余收在「显示更多」后面（已长了的段不会一上来全铺开）
     const undone = undoneAll.slice(0, this.data.limU);
-    const jots = jotsAll.slice(0, this.data.limJ);
+    const jotGroups = isJot ? this.groupJots(jotRecs, this.data.limJ, !jcat) : [];
+    const jotHide = jotGroups.reduce((s, g) => s + g.hide, 0);
     const doneGroups = store.winDays(doneDays, this.data.limD, this.data.doneDayAll);
     const abandGroups = store.winDays(abandDays, this.data.limA, this.data.abandDayAll);
 
@@ -108,35 +112,26 @@ Page({
     const sum = u
       ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
       : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
-    // 标题：就叫「待办」（不再罗列 备忘与购物——类别是可增删的）；按类别筛时显示类别名
-    const tit = isJot ? '随记' : (cat || '待办');
-    // 筛选行：全部 + 各待办类别 + 随记（类别实时取选项池，加新类别后自动出现）
+    // 标题：待办按类别筛时显示类别名，否则叫「待办」（不再罗列 备忘与购物——类别是可增删的）；
+    // 随记整段叫「随记」，筛到某一类时也只显示类别名（与待办同一套）
+    const tit = isJot ? (jcat || '随记') : (cat || '待办');
+    // 筛选行：全部 + 各待办类别 + 随记（实时取选项池，「✎ 管理」里加新类别后自动多一项）。
+    // 随记下的「念头 / 灵感」不放这里，而是随记段里单独一行二级筛选（见 jotKinds）
     const segs = [{ k: 'all', n: '全部', c: '' }]
       .concat(store.getOPT('todoKind').map(v => ({ k: todoSeg(v), n: v, c: store.catColor(v) })))
       .concat([{ k: 'jot', n: '随记', c: store.mcolor('jot') }]);
-    // 全部模式下平铺的可勾选类别（来自「设置」里的快捷创建勾选，最多 5 个）；筛了具体项时目标跟筛走
-    const pool = store.getOPT('todoKind') || [];
-    const qaCats = (store.getQuickCats() || []).map(qc => {
-      const key = qc.m === 'jot' ? 'jot' : ('k:' + (qc.cat || ''));
-      const T = this.qaDesc(key);
-      return { key, m: T.m, cat: T.cat, n: T.n, c: T.c };
-    }).filter(o => o.m !== 'todo' || pool.indexOf(o.cat) >= 0);
-    const qaKeys = qaCats.map(o => o.key);
-    let qaM = this.data.qaM;
-    if (qaKeys.indexOf(qaM) < 0) qaM = qaKeys[0] || 'jot';
-    const qm = (isJot || cat) ? seg : qaM;
-    const T = this.qaDesc(qm);
     this.setData({
-      show: isJot ? jotsAll.length > 0 : list.length > 0,
-      tit, sum: isJot ? (jotsAll.length ? jotsAll.length + ' 条' : '') : sum,
-      undone, doneGroups, abandGroups, jots, segs,
-      undoneN: u, doneN: dn, abandN: an, jotN: jotsAll.length,
+      show: isJot ? jotTotal > 0 : list.length > 0,
+      tit, sum: isJot ? (jotTotal ? jotTotal + ' 条' : '') : sum,
+      undone, doneGroups, abandGroups, jotGroups, segs,
+      jotKinds: store.getOPT('jotKind') || [],
+      undoneN: u, doneN: dn, abandN: an, jotN: jotTotal,
       undoneHide: Math.max(0, u - undone.length),
       doneHide: Math.max(0, doneDays.length - doneGroups.length),
       abandHide: Math.max(0, abandDays.length - abandGroups.length),
-      jotHide: Math.max(0, jotsAll.length - jots.length),
-      empty: isJot ? jotsAll.length === 0 : list.length === 0,
-      qaCats, qaM: qaM, qaKey: qm, qaName: T.n, qaPh: T.ph, qaC: T.c
+      jotHide,
+      empty: isJot ? jotTotal === 0 : list.length === 0,
+      emptyText: isJot ? (jcat ? '这个类别还没有随记' : '还没有随记') : '还没有备忘或购物记录'
     });
   },
 
@@ -173,16 +168,50 @@ Page({
     return order.map(k => map[k]);
   },
 
+  /* 随记按「随记类别」分段：段头用日标签那套（.daylab，时间线轴线因此照常对齐），
+     组序取随记类别池顺序——被删掉的老类别、以及没类别（合并前）的记录排在最后。
+     组内保持传进来的时间倒序；每组各自最多渲染 lim 条，其余交给「显示更多」收口
+     （所以「随记」这一段永远是全部随记，只是分了几组）。
+     withHead=false（已筛到某一类）时不显示段头，标题里已经写明是哪个类别 */
+  groupJots(recs, lim, withHead) {
+    const pool = store.getOPT('jotKind') || [];
+    const map = {}, order = [];
+    recs.forEach(r => {
+      const cat = store.jotCat(r);
+      if (!map[cat]) {
+        map[cat] = { key: cat || 'jot-none', day: cat || '未分类', c: store.jotColor(cat), recs: [] };
+        order.push(cat);
+      }
+      map[cat].recs.push(r);
+    });
+    const rank = (cat) => { const i = pool.indexOf(cat); return cat ? (i < 0 ? 1e5 : i) : 1e6; };
+    order.sort((a, b) => rank(a) - rank(b));
+    return order.map(cat => {
+      const g = map[cat];
+      const shown = g.recs.slice(0, lim).map(r => this.recVM(r));
+      return { key: g.key, day: g.day, c: g.c, head: !!withHead, n: g.recs.length, recs: shown, hide: Math.max(0, g.recs.length - shown.length) };
+    });
+  },
+
   onSeg(e) {
     this.data.seg = e.currentTarget.dataset.s;
-    this.setData({ seg: this.data.seg });
+    // 换段时随记的二级筛选归零：它只属于「随记」那一段
+    this.data.jf = 'all';
+    this.setData({ seg: this.data.seg, jf: 'all' });
     this.rebuild();
+    // 换段后把这一段标题对齐到屏幕顶部（像切 tab 那样主动滚一下）：
+    // 各段的列表长短差很多，不主动对齐就会被浏览器被动拉回，看着像整页在跳
+    ui.alignTop(this, '#blk-title');
+  },
+  // 随记 · 二级筛选：全部 / 各随记类别（数据都在本地，不用重拉）
+  onJotFilter(e) {
+    this.data.jf = e.currentTarget.dataset.k || 'all';
+    this.setData({ jf: this.data.jf, sel: null, selRec: null });
+    this.rebuild();
+    ui.alignTop(this, '#blk-jotfilters');
   },
   /* 左右滑动切筛选段（全部 / 各待办类别 / 随记）：向左滑下一个，向右滑上一个 */
-  onSwipeStart(e) {
-    if (this._noSwipe) { this._noSwipe = false; this._swX = null; return; }   // 起点在类别 chips：只滚 chips，不切段
-    swipe.start(this, e);
-  },
+  onSwipeStart(e) { swipe.start(this, e); },
   onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
   stepDim(dir) {
     if (this.data.editing) return;   // 就地编辑中不切
@@ -193,9 +222,6 @@ Page({
     if (ni < 0 || ni >= segs.length) return;
     this.onSeg({ currentTarget: { dataset: { s: segs[ni].k } } });
   },
-  // 快捷新增的类别 chips 是横向 scroll-view：在它上面按下时打个标记，横滑它只滚 chips，不切筛选段
-  onChipsTouch() { this._noSwipe = true; },
-
   /* ---------------- 点条目：记录操作条（放弃 / 恢复 / 改 / 删除） ----------------
      勾选框是「完成」（catchtap 单独处理），点条目的其它地方才是次级操作，两者互不干扰 */
   onRecTap(e) {
@@ -235,45 +261,6 @@ Page({
     }
     if (type === 'edit') { this.setData({ sel: null, selRec: null }); this._openEdit(id, r.txt || ''); return; }
     if (type === 'del') { this.setData({ sel: null, selRec: null }); this._del(r); }
-  },
-
-  /* ---------------- 快捷新增待办 / 随记 ---------------- */
-  // 目标 id → 描述（名字 / 占位符 / 模块 / 类别 / 色点）
-  qaDesc(k) {
-    if (k === 'jot') return { n: '随记', ph: '想记点什么', m: 'jot', cat: '', c: store.mcolor('jot') };
-    const cat = k.indexOf('k:') === 0 ? k.slice(2) : (store.getOPT('todoKind')[0] || '备忘');
-    return { n: cat, ph: '要记住什么', m: 'todo', cat, c: store.catColor(cat) };
-  },
-  // 快捷新增的目标：筛到具体项就是它，否则用「切换」选的那个
-  qaTarget() {
-    const s = this.data.seg;
-    return (s === 'jot' || s.indexOf('k:') === 0) ? s : this.data.qaM;
-  },
-  // 只有「全部」时目标才可切（筛了某类别 / 随记时，目标就是筛选本身）；点 chips 即在类别间平铺切换
-  onQaChip(e) {
-    if (this.data.seg !== 'all') return;
-    const k = e.currentTarget.dataset.k;
-    if (k === this.data.qaM) return;
-    const T = this.qaDesc(k);
-    this.setData({ qaM: k, qaKey: k, qaName: T.n, qaPh: T.ph, qaC: T.c });
-  },
-  onQaInput(e) { this.setData({ qaTxt: e.detail.value }); },
-  /* 回车（或点「记下」）即落库：输入框清空、列表顶部立刻多一条，可继续输下一条 */
-  onQaSave() {
-    const txt = (this.data.qaTxt || '').trim();
-    if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
-    const T = this.qaDesc(this.qaTarget());
-    const ts = Date.now();
-    // 待办：把类别写进 ext（src=todoKind）；随记没有类别
-    const rec = { m: T.m, txt, ts, t: date.hhmm(ts), ext: T.cat ? [T.cat] : [], extSrc: T.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
-    store.addRecord(rec).then(rid => {
-      rec._rid = rid; rec.id = rid;
-      if (!app.globalData.records) app.globalData.records = [];
-      app.globalData.records.unshift(store.decorate(rec));
-      this.setData({ qaTxt: '' });
-      this.rebuild();
-      wx.showToast({ title: '已记入' + T.n, icon: 'none', duration: 900 });
-    }).catch(() => wx.showToast({ title: '没记上，再试一次', icon: 'none' }));
   },
 
   onCheck(e) {

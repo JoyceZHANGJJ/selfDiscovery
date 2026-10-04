@@ -17,7 +17,7 @@
       </view>
 
       <block wx:else>
-      <view class="sect-t">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
+      <view class="sect-t" id="blk-title">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
       <input id="searchBox" class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{true}}" cursor-spacing="20" always-embed="{{true}}" bindfocus="onSearchFocus" />
 
       <view class="filters">
@@ -27,15 +27,15 @@
         </view>
       </view>
 
-      <!-- 快捷时间选择 -->
-      <view class="ranges">
+      <!-- 快捷时间选择（待办不展示这一行：见 loadAllTasks——它的查询也不再按时间范围限制） -->
+      <view wx:if="{{filter!=='todo'}}" class="ranges">
         <view class="rg {{range==='all'?'on':''}}" data-r="all" bindtap="onRange">全部</view>
         <view class="rg {{range==='today'?'on':''}}" data-r="today" bindtap="onRange">今天</view>
         <view class="rg {{range==='7d'?'on':''}}" data-r="7d" bindtap="onRange">近7天</view>
         <view class="rg {{range==='30d'?'on':''}}" data-r="30d" bindtap="onRange">近30天</view>
       </view>
 
-      <!-- 统计（待办 / 随记不展示） -->
+      <!-- 统计（待办不展示；随记按「类别」数数量，与待办同一口径） -->
       <view class="bars" wx:if="{{!stats.hide}}">
         <view class="sect-t" style="margin:0 0 8px">统计 · {{filter==='all'?'全部':filterName}}</view>
         <view wx:if="{{stats.all}}" class="st-sum">共 <b>{{stats.total}}</b> 条</view>
@@ -69,6 +69,13 @@
 
       <!-- 觉察 · 喜恶：与「可做」的流转状态筛选同一个位置（喜恶是存在 ext 里的细节值，选项取池子） -->
       <view wx:if="{{filter==='obs' && kinds.length}}" class="filters states">
+        <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
+        <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
+      </view>
+
+      <!-- 随记 · 类别：全部 + 各随记类别（与觉察的喜恶、待办的类别同一套）——
+           随记记录走下面的时间线，标题会带上所选类别 -->
+      <view wx:if="{{filter==='jot' && kinds.length}}" class="filters states">
         <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
       </view>

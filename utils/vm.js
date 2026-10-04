@@ -10,7 +10,9 @@ function baseVM(r) {
   return {
     id: r.id,
     m: store.recMname(r),
-    c: task ? store.taskColor(r) : store.mcolor(r.m),
+    // 颜色：待办按类别（备忘 / 购物 / 自己的类别）、随记按类别（念头 / 灵感 …）各取一色；
+    // 其余维度用模块色
+    c: task ? store.taskColor(r) : (r.m === 'jot' ? store.jotColor(store.jotCat(r)) : store.mcolor(r.m)),
     txt: r.txt,
     desc: r.desc || '',
     t: r.t,

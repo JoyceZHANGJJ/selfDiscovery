@@ -1,37 +1,46 @@
 const store = require('../utils/store.js');
 const date = require('../utils/date.js');
 
-// 快捷记（「＋」球面板）：不切换模块，而是把用户在「设置」里勾选的类别（待办类别 + 随记，最多 5 个）
-// 平铺成 chips，点哪个就在哪个类别下记。类别实时取选项池（改名 / 增删后自动跟上）；
-// 没勾过时给默认（全部待办类别 + 随记）。
+// 快捷记（「＋」球面板）：不切换模块，而是把用户在「设置」里勾选的类别（待办类别 + 随记类别，
+// 上限见 store.QUICKCATS_MAX）平铺成 chips（多了自动换行），点哪个就在哪个类别下记。
+// 类别实时取选项池（改名 / 增删后自动跟上）；没勾过时给默认（全部待办类别 + 全部随记类别）。
 function catInfo(qc) {
-  if (qc.m === 'jot') return { k: 'jot', cat: '', n: '随记', ph: '想记点什么', c: store.mcolor('jot') };
+  if (qc.m === 'jot') {
+    const cat = qc.cat || (store.jotKindDefault() || [])[0] || '念头';
+    return { k: 'jot', src: 'jotKind', cat, n: cat, ph: '想记点什么', c: store.jotColor(cat) };
+  }
   const cat = qc.cat || (store.todoKindDefault() || [])[0] || '备忘';
-  return { k: 'todo', cat, n: cat, ph: '要记住什么', c: store.catColor(cat) };
+  return { k: 'todo', src: 'todoKind', cat, n: cat, ph: '要记住什么', c: store.catColor(cat) };
 }
 // 把存储里的快捷类别（{m,cat}）转成面板要的展示结构（带名字 / 颜色 / 占位符 / key），
-// 并过滤掉已从选项池里消失的待办类别（随记永远有效）。空了则兜底一个默认待办类别。
+// 并过滤掉已从选项池里消失的类别（待办类别看 todoKind、随记类别看 jotKind）。
+// 空了则兜底一个默认待办类别。
 function buildQaCats() {
   const pool = store.getOPT('todoKind') || [];
+  const jpool = store.getOPT('jotKind') || [];
   let cats = (store.getQuickCats() || []).map(qc => {
     const info = catInfo(qc);
-    return { key: qc.m === 'jot' ? 'jot' : ('todo:' + (qc.cat || '')), m: info.k, cat: qc.cat || '', n: info.n, c: info.c, ph: info.ph };
-  }).filter(qc => qc.m !== 'todo' || pool.indexOf(qc.cat) >= 0);
-  // 顺序以排列为准：待办类别按选项池顺序，随记排最后（不随勾选先后）
+    return { key: (qc.m === 'jot' ? 'jot:' : 'todo:') + info.cat, m: info.k, src: info.src, cat: info.cat, n: info.n, c: info.c, ph: info.ph };
+  }).filter(qc => qc.m !== 'todo' || pool.indexOf(qc.cat) >= 0)
+    .filter(qc => qc.m !== 'jot' || jpool.indexOf(qc.cat) >= 0);
+  // 顺序以排列为准：待办类别按 todoKind 池顺序，随记类别接在后面按 jotKind 池顺序（不随勾选先后）
   cats.sort((a, b) => {
-    const ai = a.m === 'jot' ? pool.length : pool.indexOf(a.cat);
-    const bi = b.m === 'jot' ? pool.length : pool.indexOf(b.cat);
+    const ai = a.m === 'jot' ? (pool.length + jpool.indexOf(a.cat)) : pool.indexOf(a.cat);
+    const bi = b.m === 'jot' ? (pool.length + jpool.indexOf(b.cat)) : pool.indexOf(b.cat);
     return (ai < 0 ? 1e9 : ai) - (bi < 0 ? 1e9 : bi);
   });
   if (!cats.length) {
     const d = catInfo({ m: 'todo', cat: (store.todoKindDefault() || [])[0] || '备忘' });
-    cats = [{ key: 'todo:' + d.cat, m: 'todo', cat: d.cat, n: d.n, c: d.c, ph: d.ph }];
+    cats = [{ key: 'todo:' + d.cat, m: 'todo', src: d.src, cat: d.cat, n: d.n, c: d.c, ph: d.ph }];
   }
   return cats;
 }
 
 Component({
   options: { addGlobalClass: true },
+  // ballOnly：只挂「＋」球与快捷记面板、不渲染底部 tab 栏——给清单页这类「非 tab 页」用
+  // （它们没有自定义 tabBar，整页本来就没有任何快捷记录入口）
+  properties: { ballOnly: { type: Boolean, value: false } },
   data: {
     selected: 0,
     theme: 'mint',
@@ -66,10 +75,13 @@ Component({
 
   lifetimes: {
     attached() {
-      // 选项池可能在别处被改名 / 增删：组件每次加载都把平铺类别重算一遍
+      // 主题：tab 页会在 onShow 里 setData({theme}) 推过来；挂在清单页（ballOnly）时没人推，
+      // 所以这里按当前主题先初始化一次，免得球与面板用默认主题的配色。
+      // 平铺类别也每次重算一遍：选项池可能在别处被改名 / 增删
+      const t = store.curTheme();
       const cats = buildQaCats();
       const a = cats[0] || {};
-      this.setData({ qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
+      this.setData({ theme: t, themeStyle: store.themeStyle(t), qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
       // 吸底面板要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
       // 所以直接把键盘高度当 bottom，面板始终落在键盘上方（与记页吸底操作行同一套做法）
       this._kbHandler = (res) => {
@@ -163,6 +175,7 @@ Component({
     // 长按球 = 进清单页（原来的行为挪到这里，球本身改成「随手记」）
     onFabLong() {
       if (this.isEditing()) { this.blocked(); return; }
+      if (this.data.ballOnly) return;   // 球就挂在清单页上：长按不再叠开一层同样的页面
       this.closeQa();
       wx.navigateTo({ url: '/pages/list/list' });
     },
@@ -221,8 +234,6 @@ Component({
       const a = this.data.qaCats[i] || {};
       this.setData({ qaIdx: i, qaName: a.n, qaPh: a.ph, qaC: a.c, qaTxt: '', qaFocus: false });
     },
-    goList() { this.closeQa(); wx.navigateTo({ url: '/pages/list/list' }); },
-
     /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条 */
     onQaSave() {
       const txt = (this.data.qaTxt || '').trim();
@@ -230,14 +241,14 @@ Component({
       const a = this.data.qaCats[this.data.qaIdx] || {};
       this._qaCancelBlurClose();   // 收起输入框本身会触发失焦：这里已经要关了，别再排一次
       const ts = Date.now();
-      // 待办：把类别写进 ext（src=todoKind）；随记没有类别
-      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext: a.cat ? [a.cat] : [], extSrc: a.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
+      // 待办 / 随记：把类别写进 ext（src=todoKind / jotKind）
+      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext: a.cat ? [a.cat] : [], extSrc: a.cat ? [a.src || 'todoKind'] : [], done: false, doneAt: 0, status: '' };
       store.addRecord(rec).then(rid => {
         rec._rid = rid; rec.id = rid;
         const G = getApp().globalData;
         if (!G.records) G.records = [];
         G.records.unshift(store.decorate(rec));
-        this.setData({ qa: false, qaFocus: false, qaTxt: '', qaUndo: { id: rid, txt, name: a.n } });
+        this.setData({ qa: false, qaFocus: false, qaTxt: '', qaUndo: { id: rid, txt, name: store.recMname(rec) } });
         this.notifyPage();
         this._qaStartUndoTimer();
       }).catch(() => wx.showToast({ title: '没记上，再试一次', icon: 'none' }));

@@ -2,7 +2,8 @@
   "usingComponents": {
     "inline-editor": "/components/inline-editor/inline-editor",
     "rec-actions": "/components/rec-actions/rec-actions",
-    "todo-list": "/components/todo-list/todo-list"
+    "todo-list": "/components/todo-list/todo-list",
+    "quick-ball": "/custom-tab-bar/index"
   },
   "navigationStyle": "custom",
   "enablePullDownRefresh": true

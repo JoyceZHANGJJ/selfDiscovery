@@ -81,7 +81,8 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .ft { font-size: 12.5px; padding: 5px 2px; border: 0; background: none; color: var(--ink3); border-bottom: 2px solid transparent; }
 .ft.on { color: var(--accent); font-weight: 700; border-bottom-color: var(--accent); }
 .ft .fd { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink3); margin-right: 5px; vertical-align: middle; }
-.ft.on .fd { background: #fff; }
+/* 选中项的小圆点保留自己的类别色：筛选行是「下划线 tab」而不是填充药丸，
+   原来的「选中变白」（给填充式设计的）会让圆点在浅底上直接看不见 */
 .daylab { font-size: 11.5px; color: var(--ink3); margin: 15px 0 2px; letter-spacing: .06em; }
 .st-sum { font-size: 12.5px; color: var(--ink2); margin-bottom: 11px; }
 .st-sum b { color: var(--ink); font-weight: 800; }

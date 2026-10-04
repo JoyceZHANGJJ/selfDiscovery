@@ -22,7 +22,7 @@
 
       <block wx:else>
       <!-- 输入区（含问候与模块标签，整块卡片） -->
-      <view class="composer" catchtap="noop">
+      <view class="composer" catchtap="noop" id="blk-top">
         <!-- 问候 -->
         <view class="greet-row">
           <view class="greet-wrap">
@@ -44,17 +44,18 @@
           <view wx:if="{{tagFade}}" class="tagrow-fade"></view>
         </view>
 
-        <!-- 待办 / 随记：纯主输入框（不要主项标题），细节只留必要的行。
-             待办在这里多一行「类别」（todoKind，可从 ✎ 管理 加新类别）；随记没有 items，就只有一个输入框 -->
+        <!-- 待办 / 随记：纯主输入框（不要主项标题）。
+             类别（待办类别 todoKind / 随记类别 jotKind，可从 ✎ 管理 加新类别）摆在输入框**上方**：
+             先定类别，再写内容；其余细节行（如待办的「原因」）仍在输入框下方 -->
         <block wx:if="{{composer.plain}}">
+          <view wx:for="{{composer.catItems}}" wx:key="index" wx:for-item="it" class="extra cattop">
+            <view class="qrow"><view class="ql">{{it.label}}</view><view class="mg" data-g="{{it.group}}" bindtap="onManage">✎ 管理</view></view>
+            <view class="chips">
+              <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
+            </view>
+          </view>
           <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
-            <block wx:if="{{it.type==='g'}}">
-              <view class="qrow"><view class="ql">{{it.label}}</view><view class="mg" data-g="{{it.group}}" bindtap="onManage">✎ 管理</view></view>
-              <view class="chips">
-                <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
-              </view>
-            </block>
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
             <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="24" bindfocus="onFieldFocus"></textarea>
           </view>
@@ -139,15 +140,22 @@
     </view>
   </view>
 
-  <!-- 最近列表：跟随页面滚动（不再单独限高，避免内容不足时底部留一大块空白） -->
-  <view class="screen listpane">
+  <!-- 最近列表：跟随页面滚动（不再单独限高，避免内容不足时底部留一大块空白）。
+       这一块上左右滑动切换「最近 / 待办 / 已完成」：用标记法（不 catch），
+       让根节点的手势识别跳过这次触摸——既不会误切上面的维度，也不影响页面滚动 -->
+  <view class="screen listpane" bindtouchstart="onListSwipeStart" bindtouchend="onListSwipeEnd">
     <view class="body body-list" bindtap="onBodyTap">
-      <view class="sect-t">最近</view>
+      <!-- 「最近 / 待办 / 已完成」：标题位上的几个词就是开关（选中的加深 + 主题色下划线），都只列 10 条 -->
+      <view class="sect-t rectabs">
+        <text class="rt {{recentTab==='recent'?'on':''}}" data-k="recent" catchtap="onRecentTab">最近</text>
+        <text class="rt {{recentTab==='todo'?'on':''}}" data-k="todo" catchtap="onRecentTab">待办</text>
+        <text class="rt {{recentTab==='done'?'on':''}}" data-k="done" catchtap="onRecentTab">已完成</text>
+      </view>
       <view wx:if="{{!ready}}">
         <view class="sk-rec"></view>
         <view class="sk-rec"></view>
       </view>
-      <view wx:if="{{ready && recent.length===0}}" class="empty-mini">还没有记录</view>
+      <view wx:if="{{ready && recent.length===0}}" class="empty-mini">{{recentEmpty}}</view>
       <view wx:for="{{recent}}" wx:key="id" id="{{item.task ? 'erow-'+item.id : ''}}" class="rec tl {{item.task?'list':''}} {{item.longTxt?'long':''}} {{item.desc?'has-desc':''}} {{recSel===item.id?'sel':''}} {{item.done?'done':''}} {{qeId===item.id?'blank':''}}" style="--dot:{{item.c}}" data-id="{{item.id}}" catchtap="onRecentTap" bindlongpress="onRecentLongPress" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchend">
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">

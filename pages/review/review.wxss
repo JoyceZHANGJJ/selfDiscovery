@@ -1,6 +1,10 @@
 /* pages/review/review.wxss —— 回看（全部 · 主题档案 / 周 · 月复盘）
    基础卡片（.kpis/.kpi/.bars/.heat/.barrow/.empty-mini）来自 app.wxss，这里补本页特有的 */
 
+/* 内容留一个最小高度：本期没什么记录时整页也不会短到滑不动
+   （换视图时会先回到顶部，见 review.js 的 onView） */
+.body { min-height: calc(100vh - 120px); }
+
 /* ================= 全部：主题档案 ================= */
 .dochead { font-size: 12px; color: var(--ink3); margin: 8px 0 4px; }
 .doc { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 12px 14px; margin-bottom: 9px; }

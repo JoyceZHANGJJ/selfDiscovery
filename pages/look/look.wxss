@@ -4,6 +4,10 @@
    否则 .app 只有固定一屏高，滚出一屏后页面底色露白、背景分层 */
 .app { position: static; min-height: 100vh; display: block; }
 .screen { height: auto; }
+/* 左右滑动切维度时时间线长短会变（全部 / 觉察 / 此刻 / 可做 / 待办 / 随记）：
+   给内容一个最小高度——短的那份也留出可滚动的余量，页面高度差也被收住
+   （不然短维度整页刚好装下就滑不动、停在底部时还会被拉回去，看着像整页在跳） */
+.body { min-height: calc(100vh + 60px); }
 
 /* 首屏骨架屏占位（动画与尺寸沿用 app.wxss 的 .sk* 系列，这里只压一下搜索框那条的高度） */
 .skpage { padding-top: 2px; }

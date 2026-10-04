@@ -17,7 +17,7 @@ function extVal(r, src) {
   const i = es.indexOf(src);
   return i >= 0 ? (ex[i] || '') : '';
 }
-// 去掉相邻重复项，得到一个「变化序列」（如 喜欢 → 没兴趣）
+// 去掉相邻重复项，得到一个「变化序列」（如 喜欢 → 无感）
 function seqOf(vals) {
   const out = [];
   vals.forEach(v => { if (v && out[out.length - 1] !== v) out.push(v); });
@@ -102,6 +102,9 @@ Page({
   onView(e) {
     const v = e.currentTarget.dataset.v;
     if (v === this.data.view) return;
+    // 换视图＝换一份文档（周 / 月 / 全部 的内容长度差很多）：先回到顶部再换，
+    // 否则从「全部」切到「周」时页面会被拉回底部，看着像整页在跳
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
     this.setData({ view: v, offset: 0 }, () => this.build());
   },
   /* 左右滑动切视图（周 / 月 / 全部）：向左滑下一个，向右滑上一个 */
@@ -115,9 +118,15 @@ Page({
     if (ni < 0 || ni >= keys.length) return;
     this.onView({ currentTarget: { dataset: { v: keys[ni] } } });
   },
-  onPrev() { if (this.data.view === 'all') return; this.setData({ offset: this.data.offset - 1 }, () => this.buildPeriod()); },
+  // 翻上 / 下一期：同样是一份新内容，换完回到顶部（与 onView 一致的预期）
+  onPrev() {
+    if (this.data.view === 'all') return;
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+    this.setData({ offset: this.data.offset - 1 }, () => this.buildPeriod());
+  },
   onNext() {
     if (this.data.view === 'all' || this.data.offset >= 0) return;   // 已经是本期，不再往后
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
     this.setData({ offset: this.data.offset + 1 }, () => this.buildPeriod());
   },
   build() { if (this.data.view === 'all') this.buildDocs(); else this.buildPeriod(); },

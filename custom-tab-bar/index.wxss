@@ -57,11 +57,13 @@
 }
 .qa-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .qa-title { font-size: 12.5px; color: var(--ink2, #55524A); font-weight: 600; }
-.qa-list { font-size: 12.5px; color: var(--accent, #7C9A86); text-decoration: underline; padding: 2px 0 2px 8px; }
-.qa-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
-.qa-chips { white-space: nowrap; margin-bottom: 9px; }
-.qa-chip { display: inline-flex; align-items: center; font-size: 12.5px; color: var(--ink2, #55524A); padding: 5px 11px; border: 1px solid var(--line2, #E2DCD1); border-radius: 99px; margin-right: 8px; background: #fff; box-sizing: border-box; }
-.qa-chip.on { color: #fff; background: var(--accent, #7C9A86); border-color: var(--accent, #7C9A86); }
+.qa-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
+/* 快捷类别：纯文字（与记卡里的「类别 / 喜恶」同一套）——无边框无底，
+   选中＝主题色 + 加粗；类别颜色由前面的小圆点带出来（原来靠药丸底色）。
+   最多 10 个，横向铺不下就换行（面板吸在球上方，往上长） */
+.qa-chips { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 10px; }
+.qa-chip { display: inline-flex; align-items: center; font-size: 13.5px; color: var(--ink, #22252A); padding: 3px 0; box-sizing: border-box; }
+.qa-chip.on { color: var(--accent, #7C9A86); font-weight: 700; }
 .qa-row { display: flex; align-items: center; }
 .qa-in {
   flex: 1; min-width: 0; height: 38px; line-height: 38px; border: 1px solid var(--line2, #E2DCD1);
@@ -75,3 +77,5 @@
 .undo-bar.qa-undo { left: 16px; right: 16px; z-index: 62; }
 /* 球展开时（显示 ×）压深一档，和「收起」区分开 */
 .fab.on { background: var(--ink2, #55524A); }
+/* 注：ballOnly（清单页这类非 tab 页）只隐藏底部 tab 栏，球与面板的位置与 tab 页完全一致
+   （球 bottom 116px、面板 178px），保证「快捷入口」在每个页面都在同一个地方 */

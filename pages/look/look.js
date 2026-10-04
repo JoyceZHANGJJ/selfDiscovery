@@ -28,7 +28,7 @@ Page({
     filterName: '全部',
     stateFilter: 'all',
     q: '',
-    // 觉察专用：喜恶筛选（喜欢 / 有趣 / 没兴趣 / 不喜欢，取选项池），与「可做」的流转状态筛选同一个位置
+    // 觉察专用：喜恶筛选（喜欢 / 感兴趣 / 无感 / 讨厌，取选项池），与「可做」的流转状态筛选同一个位置
     kindFilter: 'all',
     kinds: [],
     recs: [],          // 已加载（装饰后）的记录，按 ts 倒序
@@ -50,7 +50,7 @@ Page({
     hasMore: true,
     loading: false,
     ready: false,     // 首屏数据未就绪时先渲染骨架屏（与记页同一套 .sk 样式）
-    stat: {}          // 后端统计结果：{ byMod } / { bySt } / { total, tops, ext }
+    stat: {}          // 后端统计结果：{ byMod } / { bySt } / { total, tops, ext } / { total, byCat }（随记）
   },
 
   onLoad() {
@@ -169,6 +169,11 @@ Page({
       const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
       return { all: false, title: '可做 · 流转', lead: `共 ${total} 条`, bars, extra: '' };
     }
+    // 「随记」：与待办一个口径——只数数量，不做「最常记的」文本 Top（随记多是
+    // 一次性的一句话，比拼哪句话记得多没什么参考价值）；数量按类别分（可增删，取选项池）
+    if (filter === 'jot') {
+      return this.jotStatsVM(stat.byCat || {}, stat.total || 0);
+    }
     // 「全部」：各觉察维度条数（不含备忘/购物，与下面清单口径区分开）
     const allMods = store.MODULES.filter(m => !store.isTask(m.k));
     if (filter === 'all') {
@@ -214,6 +219,13 @@ Page({
       const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
       return { all: false, title: '可做 · 流转', lead: `共 ${list.length} 条`, bars, extra: '' };
     }
+    // 「随记」：与 buildStats 同一套（搜索态就在客户端数各类别的条数）
+    if (filter === 'jot') {
+      const cats = store.getOPT('jotKind') || [];
+      const byCat = {};
+      list.forEach(r => { const c = store.jotCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
+      return this.jotStatsVM(byCat, list.length);
+    }
     // 「全部」统计不计备忘/购物
     const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m)) : list;
     const allMods = store.MODULES.filter(m => !store.isTask(m.k));
@@ -238,6 +250,26 @@ Page({
     return { all: false, title: store.mname(filter), lead: keys.length ? `${labelMap[filter]}：${keys[0]} · ${acc[keys[0]]} 次` : '这个模块还没有记录', bars, extra };
   },
 
+  /* 随记统计的呈现：各类别的条数（类别取自选项池，可增删）——与待办同一口径，只数数量。
+     池子里没有的（老记录还没类别 / 类别后来被删掉）归到「未分类」（与清单页同一叫法），
+     这样每条记录都有归属，各行加起来就等于「共 N 条」。
+     数量为 0 的类别不占行（同待办的汇总行：没有的那项就不写） */
+  jotStatsVM(byCat, total) {
+    const cats = store.getOPT('jotKind') || [];
+    const bars = cats.map(c => ({ n: c, c: store.jotColor(c), n2: byCat[c] || 0 }));
+    const other = Math.max(0, (total || 0) - bars.reduce((s, b) => s + b.n2, 0));
+    if (other) bars.push({ n: '未分类', c: store.jotColor(''), n2: other });
+    const shown = bars.filter(b => b.n2 > 0);
+    const mx = shown.length ? Math.max(...shown.map(b => b.n2)) : 1;
+    return {
+      all: false,
+      title: '随记 · 类别',
+      lead: total ? `共 ${total} 条` : '还没有随记',
+      bars: shown.map(b => ({ n: b.n, c: b.c, n2: b.n2, w: Math.round(b.n2 / mx * 100) + '%' })),
+      extra: ''
+    };
+  },
+
   rebuild() {
     const all = this.data.recs;
     const q = this.data.q.trim().toLowerCase();
@@ -260,6 +292,9 @@ Page({
       } else if (this.data.filter === 'todo' && this.data.kindFilter !== 'all') {
         // 待办：类别筛（同上：搜索态客户端过滤，非搜索态云端已按它筛过）
         f1b = store.taskCat(r) === this.data.kindFilter;
+      } else if (this.data.filter === 'jot' && this.data.kindFilter !== 'all') {
+        // 随记：类别筛（同上）
+        f1b = store.jotCat(r) === this.data.kindFilter;
       }
       const f2 = !q || (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q) >= 0;
       return f1 && f1b && f2;
@@ -271,12 +306,15 @@ Page({
     aware.forEach(r => { if (!map[r.day]) { map[r.day] = []; days.push(r.day); } map[r.day].push(this.recVM(r)); });
     const groups = days.map(d => ({ day: d, recs: map[d] }));
     const stats = this.buildStats(effM, list, !!q);
-    // 正在看某个「喜恶」/ 某个待办类别时，标题也带上它——避免列表筛过了、标题却说整个模块
-    const kn = ((effM === 'obs' || effM === 'todo') && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
+    // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别时，标题也带上它——
+    // 避免列表筛过了、标题却说整个模块
+    const kn = (['obs', 'todo', 'jot'].indexOf(effM) >= 0 && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
     this.setData({
       modules: this.modulesVM(),
-      // 子筛选取项池：觉察是「喜恶」，待办是「类别」——用户在选项管理里增删后这里自动跟上
-      kinds: effM === 'todo' ? store.getOPT('todoKind') : store.getOPT('obsKind'),
+      // 子筛选取项池：觉察是「喜恶」，待办是「类别」，随记是「类别」——
+      // 用户在选项管理里增删后这里自动跟上
+      kinds: effM === 'todo' ? store.getOPT('todoKind')
+        : (effM === 'jot' ? store.getOPT('jotKind') : store.getOPT('obsKind')),
       filterName: effM === 'all' ? '全部' : (store.mname(effM) + kn),
       days: groups,
       tasks: this.buildTasks(tasks),
@@ -338,8 +376,9 @@ Page({
             : (this.data.stateFilter === 'done' ? 'done'
             : (this.data.stateFilter === 'abandon' ? 'abandon' : 'all')));
     }
-    // 觉察的喜恶 / 待办的类别筛选交给云端（否则分页会混进不匹配的记录，页数与「已经到底了」都会不准）
-    const subF = this.data.filter === 'obs' || this.data.filter === 'todo';
+    // 觉察的喜恶 / 待办的类别 / 随记的类别筛选交给云端（否则分页会混进不匹配的记录，
+    // 页数与「已经到底了」都会不准）
+    const subF = this.data.filter === 'obs' || this.data.filter === 'todo' || this.data.filter === 'jot';
     const extTags = (subF && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
     // 「全部」的时间线不看待办，所以查询里就把它们排掉：
     // 否则一页 20 条被待办占满，时间线只显示几条、页面短到滚不动，上拉加载更多点了没反应
@@ -398,14 +437,12 @@ Page({
   },
   /* 待办视图不分页：ensureAll 已经把记录全量拉进内存，直接用本地那份——
      分页时「待完成 · N」是全部、列出的行只有已加载的几页，两者对不上。
-     这里只应用时间范围与类别筛选，渲染量交给「显示更多」窗口收口。 */
+     待办也不看时间范围（页面上没有那行筛选，见 look.wxml），这里只应用类别筛选，
+     渲染量交给「显示更多」窗口收口。 */
   loadAllTasks() {
     const all = app.globalData.records || [];
-    const start = this.data.rangeStart;
     const cat = this.data.kindFilter !== 'all' ? this.data.kindFilter : '';
-    const list = all.filter(r => store.isTask(r.m)
-      && (start == null || (r.ts || 0) >= start)
-      && (!cat || store.taskCat(r) === cat));
+    const list = all.filter(r => store.isTask(r.m) && (!cat || store.taskCat(r) === cat));
     this._loading = false;
     this._everLoaded = true;
     this.setData({ recs: list, hasMore: false, loading: false, ready: true }, () => {
@@ -436,7 +473,23 @@ Page({
       store.countByStatus({ startTs }).then(bySt => this.setData({ stat: { bySt } }, () => this.rebuild()));
       return;
     }
-    // 觉察筛了喜恶时，统计也跟着落在同一个喜恶里（不然列表是筛过的、数字是全模块的）
+    // 随记：按类别数数量（类别取自选项池，可增删）——和待办一样只看数量，不做文本 Top。
+    // 已经筛了某个类别时，数量也落在同一个筛选里（与觉察的喜恶同一套口径）
+    if (f === 'jot') {
+      const cats = store.getOPT('jotKind') || [];
+      const base = this.data.kindFilter !== 'all' ? [this.data.kindFilter] : null;
+      const jobs = cats.map(c => store.countRecords({ m: 'jot', startTs, extTags: base ? base.concat([c]) : [c] }));
+      jobs.push(store.countRecords({ m: 'jot', startTs, extTags: base }));   // 最后一个＝总数（各类别之和可能漏掉未分类的）
+      Promise.all(jobs).then(arr => {
+        const total = arr[arr.length - 1] || 0;
+        const byCat = {};
+        cats.forEach((c, i) => { byCat[c] = arr[i] || 0; });
+        this.setData({ stat: { total, byCat } }, () => this.rebuild());
+      });
+      return;
+    }
+    // 觉察筛了喜恶时，统计也跟着落在同一个筛选里
+    //（不然列表是筛过的、数字却是全模块的）
     const tags = (f === 'obs' && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
     const jobs = [store.countRecords({ m: f, startTs, extTags: tags }), store.countByTxt({ m: f, startTs, extTags: tags })];
     if (f === 'obs') {
@@ -456,7 +509,8 @@ Page({
     this._loading = true;
     this.setData({ loading: true, hasMore: false });
     const q = this.effQuery();
-    const params = { m: q.m, mNot: q.mNot, startTs: this.data.rangeStart };
+    // 待办不看时间范围（页面上没有那行筛选），其它维度照旧
+    const params = { m: q.m, mNot: q.mNot, startTs: this.data.filter === 'todo' ? null : this.data.rangeStart };
     store.loadAllRecords(params).then(all => {
       const q2 = this.data.q.trim().toLowerCase();
       const list = all.filter(r => (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q2) >= 0);
@@ -506,6 +560,9 @@ Page({
     this.data.kindFilter = 'all';
     this.setData({ filter: this.data.filter, stateFilter: 'all', kindFilter: 'all', sel: null, selRec: null });
     this.resetLoad();
+    // 换维度后把这一页的标题对齐到屏幕顶部（像切 tab 那样主动滚一下）：
+    // 各维度时间线长短差很多，不主动对齐就会被浏览器被动拉回，看着像整页在跳
+    ui.alignTop(this, '#blk-title');
   },
   /* 左右滑动切维度（全部 / 各维度）：向左滑下一个，向右滑上一个 */
   onSwipeStart(e) { swipe.start(this, e); },
@@ -524,12 +581,14 @@ Page({
     this.data.kindFilter = e.currentTarget.dataset.k || 'all';
     this.setData({ kindFilter: this.data.kindFilter, sel: null, selRec: null });
     this.resetLoad();
+    ui.alignTop(this, '.filters.states');   // 换完把这一行（喜恶 / 类别 / 状态）顶到屏幕上
   },
   // 可以 维度下的状态切换：未做 / 在做 / 做了
   onStateFilter(e) {
     this.data.stateFilter = e.currentTarget.dataset.s;
     this.setData({ stateFilter: this.data.stateFilter });
     this.resetLoad();
+    ui.alignTop(this, '.filters.states');
   },
   // 快捷时间选择：全部 / 今天 / 近7天 / 近30天
   onRange(e) {
@@ -537,6 +596,7 @@ Page({
     const map = { all: '全部', today: '今天', '7d': '近7天', '30d': '近30天' };
     this.setData({ range: r, rangeLabel: map[r] || '全部', rangeStart: this.rangeStartOf(r), stateFilter: 'all' });
     this.resetLoad();
+    ui.alignTop(this, '.ranges');
   },
   rangeStartOf(range) {
     if (range === 'all') return null;

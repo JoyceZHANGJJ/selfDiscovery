@@ -45,6 +45,7 @@ Page({
     greet: { t: '', s: '' },
     composer: {},
     recent: [],
+    recentTab: 'recent',   // 「最近」这一段的切换：'recent'（最近）/ 'done'（已完成的最新十条）
     editing: false,
     focusIdx: -1,
     scrollTop: 0,
@@ -111,10 +112,8 @@ Page({
       let cur = this.data.tag;
       if (!mods.some(m => m.k === cur)) { cur = def; this.setData({ tag: def }); }
       this.st.tag = cur;
-      // 进入「去做」时若还没选分类，补上默认分类（以往靠 onTag 触发，现在默认就是它，需在此兜底）
-      if (cur === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-      // 待办同理：进入时若没选类别，补上默认「备忘」
-      if (cur === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+      // 进入 可做 / 待办 / 随记 时若还没选必选项，补上默认（分类 / 类别；以往靠 onTag 触发，这里兜底）
+      this.ensureModuleDefaults(cur);
       // 回到记页且没有待编辑记录时，清掉可能残留的编辑态，避免所有操作一直被拦
       // （从「管理选项」页返回时除外：编辑中的内容与状态要原样保留）
       if (!app.globalData.editRec && !this.st.fromManage) this.setData({ editing: false });
@@ -207,8 +206,7 @@ Page({
       else this.st.typed[src] = val;
     });
     // 记录本身没有分类（历史数据）时才补默认分类；有则只回显记录自己的值，避免默认+记录值同时选中
-    if (r.m === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    if (r.m === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+    this.ensureModuleDefaults(r.m);
     // 「开始」流转进入：稍后在「保存修改」时才记录开始时间（这里只标记 startMode）
     this.st.startMode = !!g.editStart; g.editStart = null;
     // 「完成」流转进入：稍后在「保存修改」时才置「做了」并记录完成时间（这里只标记 completing）
@@ -397,11 +395,14 @@ Page({
     const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
     const focusIdx = focusKey ? items.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
     const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下' };
-    // 待办 / 随记：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行
-    // （待办多一行「类别」，随记 items 为空；见 index.wxml 的 plain 分支）
+    // 待办 / 随记：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行（见 index.wxml 的 plain 分支）
     const plain = store.isTask(tag) || tag === 'jot';
+    // 待办 / 随记的「类别」（todoKind / jotKind）摆在主输入框**上方**：先定类别，再写内容。
+    // 其余细节行（如待办的「原因」）仍在输入框下方
+    const catItems = plain ? items.filter(it => it.type === 'g') : [];
+    const bodyItems = plain ? items.filter(it => it.type !== 'g') : items;
     // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
-    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', items, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
+    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', catItems, items: bodyItems, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
       // 「归类」不需要输入框：从选项池点选即可（要靠「✎ 管理」增删），
       // 所以带描述的模块把主输入框整个去掉，输入框只留给「具体的描述」
       mainInput: !descItem,
@@ -409,12 +410,59 @@ Page({
       hasDesc: !!descItem, descPh: descItem ? descItem.ph : '', descVal: (this.st.free && this.st.free[store.DESC_KEY]) || '' };
   },
 
-  /* 最近记录条数：固定 10 条；已完成的待办、已放弃的待办都不在这里出现（去待办清单里看就好） */
+  /* 「最近 / 待办 / 已完成」三块列表共用这一段（标题旁的几个词就是开关），都只取 10 条：
+     ・最近：日常记录。已完成的待办、已放弃的待办不在这里出现（去待办清单里看就好）
+     ・待办：还没做完的待办（已放弃的不算——那类去清单页看），按记录时间倒序
+     ・已完成：最近 10 条「完成」的（待办勾掉的 + 可做「做了」的 + 历史 m='done'），按完成时间倒序 */
   recentVM() {
-    return (app.globalData.records || [])
+    const all = app.globalData.records || [];
+    const tab = this.data.recentTab;
+    if (tab === 'todo') {
+      return all
+        .filter(r => store.isTask(r.m) && !r.done && r.status !== 'abandon')
+        .slice(0, 10)
+        .map(r => this.recVM(r));
+    }
+    if (tab === 'done') {
+      // filter 出来的是新数组，sort 不会动到 app.globalData.records 的顺序
+      return all
+        .filter(r => r.done || r.status === 'done' || r.m === 'done')
+        .sort((a, b) => (b.doneAt || b.ts || 0) - (a.doneAt || a.ts || 0))
+        .slice(0, 10)
+        .map(r => this.recVM(r));
+    }
+    return all
       .filter(r => !(store.isTask(r.m) && (r.done || r.status === 'abandon')))
       .slice(0, 10)
       .map(r => this.recVM(r));
+  },
+
+  /* 「最近 / 待办 / 已完成」切换（点标题旁的字，或在这块列表上左右滑）：只换这一段的列表，
+     输入区与正在输入的内容都不动。
+     这一段**不主动滚到顶部**：留在原处更贴合「原地换一份列表」的手感，
+     三段的长短差交给列表区自己的 min-height 收住（见 pages/index/index.wxss） */
+  onRecentTab(e) { this._goRecent(e.currentTarget.dataset.k); },
+  _goRecent(k) {
+    if (!k || k === this.data.recentTab) return;
+    this.setData({ recentTab: k, recSel: null, recSelRec: null });
+    this.recompute();
+  },
+  /* 最近段（列表区）上左右滑动切这三块：向左滑下一个，向右滑上一个。
+     起点在这块区域时打个标记，根节点的手势识别就跳过这次触摸——
+     在列表上滑动只切这三块，不去切上面的维度（也不用 catch，页面滚动不受影响） */
+  onListSwipeStart(e) { this._inList = true; swipe.start(this, e); },
+  onListSwipeEnd(e) {
+    this._inList = false;
+    const d = swipe.end(this, e);   // 顺手把起点清掉：根节点随后那次 end 就什么也拿不到
+    if (d) this.stepRecent(d);
+  },
+  stepRecent(dir) {
+    const keys = ['recent', 'todo', 'done'];
+    const i = keys.indexOf(this.data.recentTab);
+    if (i < 0) return;
+    const ni = dir === 'left' ? i + 1 : i - 1;
+    if (ni < 0 || ni >= keys.length) return;
+    this._goRecent(keys[ni]);
   },
 
   recompute() {
@@ -433,7 +481,9 @@ Page({
       tag: this.st.tag,
       composer,
       focusIdx: willFocus ? -1 : fi,
-      recent: recs
+      recent: recs,
+      recentEmpty: this.data.recentTab === 'done' ? '还没有完成的记录'
+        : (this.data.recentTab === 'todo' ? '还没有待办' : '还没有记录')
     };
     this.setData(patch, () => {
       this.checkTagFade();   // 维度标签行是否需要「可滚动」的渐变提示（随维度数量变化）
@@ -456,14 +506,16 @@ Page({
     this.st.tag = e.currentTarget.dataset.k;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
-    if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    if (this.st.tag === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+    this.ensureModuleDefaults();
     this.setData({ tag: this.st.tag });
     this.recompute();
+    // 换维度后把记卡（含问候）对齐到屏幕顶部：内容长短一变就会被浏览器被动拉回，主动对齐更好预期
+    ui.alignTop(this, '#blk-top');
   },
   /* 记卡上左右滑动切维度（未编辑态）：向左滑到下一个维度，向右滑回上一个 */
   onSwipeStart(e) {
     if (this._noSwipe) { this._noSwipe = false; this._swX = null; return; }   // 起点在标签行：只滚标签，不切维度
+    if (this._inList) return;   // 起点在「最近」列表区：那次滑动由列表自己处理（切 最近/待办/已完成）
     swipe.start(this, e);
   },
   onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
@@ -579,9 +631,8 @@ Page({
     this.st.startMode = false; this.st.doing = false; this.st.completing = false;
     this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
-    if (def === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    if (def === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
-    this.setData({ editing: false, tag: def, focusIdx: -1, saveUndo: null });
+    this.ensureModuleDefaults(def);
+    this.setData({ editing: false, tag: def, focusIdx: -1, saveUndo: null, recentTab: 'recent' });
     this.recompute();
     wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },
@@ -711,6 +762,11 @@ Page({
       wx.showToast({ title: '请选择类别', icon: 'none' });
       return;
     }
+    // 随记：类别为必选（默认已选「念头」）
+    if (this.st.tag === 'jot' && (!this.st.pick['jotKind'] || !this.st.pick['jotKind'].length)) {
+      wx.showToast({ title: '请选择类别', icon: 'none' });
+      return;
+    }
     const ext = [], extSrc = [];
     f.items.forEach(it => {
       if (it.g) {
@@ -742,11 +798,15 @@ Page({
       });
     }
   },
-  // 「可做」的分类是必选项：清空表单后要把默认分类补回来，
-  // 否则分类选中态丢失，下一条还会因「请选择分类」而记不进去
-  ensureDefaultKind() {
-    if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-    if (this.st.tag === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+  // 「可做」的分类、「待办」的类别、「随记」的类别都是必选项：清空表单后要把默认值补回来，
+  // 否则选中态丢失，下一条还会因「请选择…」而记不进去；
+  // 觉察的「怎么开始的」不是必选，但也有个默认（自己想做），填的时候少点一下
+  ensureModuleDefaults(tag) {
+    const t = tag || this.st.tag;
+    if (t === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
+    if (t === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+    if (t === 'jot' && !this.st.pick['jotKind']) this.st.pick['jotKind'] = store.jotKindDefault();
+    if (t === 'obs' && !this.st.pick['obsStart']) this.st.pick['obsStart'] = store.obsStartDefault();
   },
 
   afterSave(rec) {
@@ -754,7 +814,7 @@ Page({
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
-    this.ensureDefaultKind();   // 记下后仍在 可做 时，把默认分类选回来
+    this.ensureModuleDefaults();   // 记下后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
     this.recompute();
     if (isEdit) { wx.showToast({ title: '已更新', icon: 'none', duration: 800 }); return; }
@@ -762,7 +822,7 @@ Page({
   },
   onEditCancel() {
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
-    this.ensureDefaultKind();   // 取消编辑后仍在 可做 时，把默认分类选回来
+    this.ensureModuleDefaults();   // 取消编辑后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '' });
     this.recompute();
   },
@@ -1063,9 +1123,8 @@ Page({
       this._refreshing = false;
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
       this.st.startMode = false; this.st.completing = false; this.st.abandoning = false; this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false; this.st.ending = false;
-      // 刷新后仍在「可做」/「待办」时，补回默认分类 / 类别（避免被清空）
-      if (this.st.tag === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
-      if (this.st.tag === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+      // 刷新后仍在「可做」/「待办」/「随记」时，补回默认分类 / 类别（避免被清空）
+      this.ensureModuleDefaults();
       this.rotateGreet();
       this.recompute();
     }).catch(() => { wx.stopPullDownRefresh(); this._refreshing = false; });

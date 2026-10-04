@@ -1,20 +1,22 @@
-<view class="tabroot" style="{{themeStyle}}" wx:if="{{!hidden}}">
+<view class="tabroot {{ballOnly ? 'ballonly' : ''}}" style="{{themeStyle}}" wx:if="{{!hidden}}">
   <!-- 快捷记（待办 / 随记）：点「＋」球在原地弹条（不跳页）；
        面板 / 撤销条以外的任何地方（页面空白、记录、操作条、球）都收起——但键盘不收起 -->
   <!-- 遮罩上的任何操作（点按 / 上下滚动）都收起面板：不只是点击，滚动页面也算 -->
   <view wx:if="{{qa || qaUndo}}" class="qa-mask" bindtap="onMaskTap" bindtouchstart="onMaskTouch" bindtouchmove="onMaskTouch"></view>
   <view wx:if="{{qa}}" class="qa" style="bottom:{{qaBottom}}" bindtap="onQaBgTap">
+    <!-- 标题只留「快捷记」：原先右上角的「清单 ›」入口已去掉。
+         进清单页：看页待办块里的「去清单页管理 ›」，或长按这个「＋」球 -->
     <view class="qa-hd">
       <view class="qa-title">快捷记</view>
-      <view class="qa-list" catchtap="goList">清单 ›</view>
     </view>
-    <!-- 平铺的快捷类别：点哪个就在哪个类别下记（来自「设置」里的勾选，最多 5 个） -->
-    <scroll-view wx:if="{{qaCats.length > 1}}" class="qa-chips" scroll-x="{{true}}" enhanced show-scrollbar="{{false}}">
+    <!-- 平铺的快捷类别：点哪个就在哪个类别下记（来自「设置」里的勾选，上限见 store.QUICKCATS_MAX）。
+         横向铺不下就换行（面板吸在球上方，往上长），不做左右滚——一屏看全、点哪条都不用先拨 -->
+    <view wx:if="{{qaCats.length > 1}}" class="qa-chips">
       <view wx:for="{{qaCats}}" wx:key="key" class="qa-chip {{qaIdx===index?'on':''}}" data-i="{{index}}" catchtap="onQaChip">
         <view class="qa-dot" style="background:{{item.c}}"></view>
         <text>{{item.n}}</text>
       </view>
-    </scroll-view>
+    </view>
     <view class="qa-row" catchtap="onQaNoop">
       <input class="qa-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" confirm-type="done" adjust-position="{{true}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
       <view class="qa-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">记下</view>
@@ -27,7 +29,8 @@
     <view class="tb" bindtap="onQaUndo">撤销</view>
   </view>
 
-  <view class="tabbar">
+  <!-- 底部 tab 栏：ballOnly（挂在清单页这类「非 tab 页」上）时整条不渲染，只留「＋」球与面板 -->
+  <view wx:if="{{!ballOnly}}" class="tabbar">
     <view
       wx:for="{{list}}"
       wx:key="index"
