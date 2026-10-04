@@ -65,7 +65,7 @@ Component({
     qaFocus: false,      // 输入框是否聚焦：打开面板不自动聚焦（不弹键盘），点输入框才弹；失焦即收起面板
     qaUndo: null,        // 刚记下的那条（给一次撤销）
     // 面板底边距：默认落在球的正上方；键盘弹出时改成键盘高度（见 attached）
-    qaBottom: 'calc(178px + env(safe-area-inset-bottom, 0px))'
+    qaBottom: 'calc(var(--qa-bottom) + env(safe-area-inset-bottom, 0px))'
   },
 
   // theme 一变就重算注入变量（各页与切换器只需 setData({ theme })）
@@ -103,7 +103,7 @@ Component({
     _applyKb(h) {
       h = Math.max(0, Math.round(h || 0));
       this._kbH = h;
-      this.setData({ qaBottom: h > 0 ? (h + 10) + 'px' : 'calc(178px + env(safe-area-inset-bottom, 0px))' });
+      this.setData({ qaBottom: h > 0 ? (h + 10) + 'px' : 'calc(var(--qa-bottom) + env(safe-area-inset-bottom, 0px))' });
     },
     /* 绑 / 重绑全局键盘监听（先 off 再 on，避免切页回来重复注册） */
     _bindKb() {

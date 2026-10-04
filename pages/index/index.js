@@ -60,7 +60,7 @@ Page({
     delUndo: null,
     saveUndo: null,       // 刚记下那条的确认条（写清记进了哪里）
     // 吸底操作行（记下 / 保存修改 / 取消）的 bottom：默认抬到底部 tab 栏之上，键盘弹出时再抬到键盘之上
-    barBottom: 'calc(58px + env(safe-area-inset-bottom, 0px))',
+    barBottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))',
     // 输入框的 cursor-spacing：键盘弹出时给吸底操作行让位的高度（≈ 操作行高度 + 余量，
     // 进页后实测一次，见 _measureBar）。微信据此把聚焦的输入框滚到键盘上方，
     // 于是「操作行贴键盘、输入框在操作行上方」
@@ -275,7 +275,7 @@ Page({
     this._barPx = 0;
     this._barRowBottom = null;
     this._barOff0 = null;
-    const tabCalc = 'calc(58px + env(safe-area-inset-bottom, 0px))';
+    const tabCalc = 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))';
     if (this.data.barFollow || this.data.kbOn || this.data.barBottom !== tabCalc) {
       this.setData({ barFollow: false, kbOn: false, barBottom: tabCalc });
     }

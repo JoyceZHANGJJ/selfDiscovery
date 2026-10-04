@@ -5,7 +5,17 @@
 /* 状态栏遮罩：自定义导航下，页面内容滚动时会穿过状态栏（时间/电量）。
    用与背景同色的渐变把它柔和盖住——不挡交互、不占空间，主题切换自动跟随背景色 */
 .statusbar-mask { position: fixed; top: 0; left: 0; right: 0; height: calc(var(--status-h, 20px) + 8px); background: linear-gradient(to bottom, var(--bg) 55%, rgba(0, 0, 0, 0)); z-index: 45; pointer-events: none; }
-.screen { display: block; width: 100%; max-width: 640px; height: 100%; margin: 0 auto; box-sizing: border-box; }
+/* 底部偏移与内容宽的**单一来源**（第三批 · 样式分层）：
+   以前 58 / 116 / 178 / 640 散落在 app.wxss、组件 wxss 甚至 JS 拼的 style 字符串里，
+   改 tab 栏高度要全项目搜一遍。CSS 变量沿 DOM 继承，能穿透自定义组件（含 custom-tab-bar），
+   JS 拼的 style 里也可以直接写 var()（见 index.js 的 barBottom、custom-tab-bar 的 qaBottom） */
+page {
+  --max-w: 640px;      /* 内容最大宽：.screen / .actbar / .tabbar 对齐 */
+  --tabbar-h: 58px;    /* 底部 tab 栏高度：页面操作条 / 吸底操作行抬离底部用 */
+  --fab-bottom: 116px; /* 悬浮球距底：tab 栏高度 + 球的留白 */
+  --qa-bottom: 178px;  /* 快捷记面板默认距底：球的正上方（键盘弹出时改按键盘高度） */
+}
+.screen { display: block; width: 100%; max-width: var(--max-w); height: 100%; margin: 0 auto; box-sizing: border-box; }
 .body { padding: calc(var(--status-h, 20px) + 12px) 14px calc(64px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
 .body-top { padding: calc(var(--status-h, 20px) + 46px) 14px calc(64px + env(safe-area-inset-bottom, 0px)); }
 .body::-webkit-scrollbar { width: 0; }
@@ -66,6 +76,11 @@
 .chip.on { color: var(--accent); font-weight: 700; }
 .mini-in { width: 100%; resize: none; border: 1px solid transparent; border-radius: 11px; padding: 0 11px; height: 34px; line-height: 34px; font-size: 13.5px; font-family: inherit; outline: none; background: var(--soft, #F4F5F5); color: var(--ink, #22252A); caret-color: var(--accent, #2F8F7B); box-sizing: border-box; display: block; }
 textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-height: 20px; }
+/* 小按钮（保存 / 取消 / 改 / 删 / 添加）的公共定义：记页与设置页完全同款，收敛到这里（一份）；
+   选项页的自己覆盖（无框的 accent 文字版）。命中区补齐见各页或这里 */
+.mini-b { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; position: relative; }
+.mini-b::after { content: ''; position: absolute; left: -4px; right: -4px; top: -8px; bottom: -8px; }
+.mini-b.del { color: var(--danger); border-color: #E5C9C7; }
 .mini-in:focus { background: var(--surface); border-color: var(--accent); box-shadow: var(--ring); }
 .savebar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 /* 吸底操作行（记页）：记卡在视口里时，这一行始终贴在视口底部（bottom 由页面按时键盘高度给），
@@ -74,7 +89,7 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 键盘弹着时的形态：sticky 受父容器（记卡）与滚动状态限制，不保证能上移到键盘上方，
    这时改成真正的 fixed——bottom 由页面按键盘高度给（style="bottom:{{barBottom}}"）。
    左右的 30px = 页面 .body 的 14px + 记卡 .composer 的 16px，让按钮与卡片里的内容左右对齐 */
-.savebar.kb { position: fixed; left: 0; right: 0; max-width: 640px; margin: 0 auto; padding: 10px 30px 6px; }
+.savebar.kb { position: fixed; left: 0; right: 0; max-width: var(--max-w); margin: 0 auto; padding: 10px 30px 6px; }
 /* 吸到底部时给一点过渡，避免像"硬贴在列表上" */
 .savebar.sticky::before { content: ''; position: absolute; left: 0; right: 0; top: -14px; height: 14px; background: linear-gradient(to bottom, rgba(255,255,255,0), var(--bg)); pointer-events: none; }
 .btn { flex: 1; padding: 11px 0; border-radius: var(--r-btn); background: var(--accent, #2F8F7B); color: #fff; font-size: 14.5px; font-weight: 700; border: 0; text-align: center; }
@@ -88,7 +103,7 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* ================= 看 · 时间线 ================= */
 .sect-t { font-size: 13px; font-weight: 800; color: var(--ink2); margin: 16px 0 9px; letter-spacing: .02em; }
 /* 清单悬浮入口（右下角，抬到记录操作条「改/删」之上，避免遮挡） */
-.fab { position: fixed; right: 16px; bottom: calc(116px + env(safe-area-inset-bottom, 0px)); width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; border: 3px solid #fff; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; box-shadow: 0 10px 22px rgba(35,35,31,.26), 0 3px 7px rgba(35,35,31,.16); z-index: 45; }
+.fab { position: fixed; right: 16px; bottom: calc(var(--fab-bottom) + env(safe-area-inset-bottom, 0px)); width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; border: 3px solid #fff; box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; box-shadow: 0 10px 22px rgba(35,35,31,.26), 0 3px 7px rgba(35,35,31,.16); z-index: 45; }
 .fab:active { transform: scale(.94); }
 .search { width: 100%; height: 40px; border: 1px solid var(--line2); border-radius: var(--r-in); padding: 0 13px; font-size: 14px; line-height: 40px; font-family: inherit; outline: none; background: #fff; caret-color: var(--accent); box-sizing: border-box; }
 .search:focus { border-color: var(--accent); box-shadow: var(--ring); }
@@ -359,13 +374,9 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .undoline .tx { flex: 1; }
 .undoline .tb { font-size: 12px; color: var(--accent); text-decoration: underline; }
 
-/* ================= 底部操作条 / 下拉刷新 / 通用 ================= */
-.actbar { position: fixed; left: 0; right: 0; bottom: calc(58px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: #fff; border-radius: 18px 18px 0 0; display: flex; align-items: center; padding: 12px 10px calc(12px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -8px 24px rgba(35,35,31,.20); transform: translateY(150%); transition: transform .2s; z-index: 50; pointer-events: none; visibility: hidden; max-width: 640px; margin: 0 auto; }
-.actbar.on { transform: translateY(0); pointer-events: auto; visibility: visible; }
-.actbar > view { flex: 1; text-align: center; font-size: 13.5px; }
-.actbar > view.del { color: #F0A9A5; }
-.actbar > view.tx { flex: 2; font-size: 12.5px; color: #E8E6DE; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding-left: 12px; }
-.actbar > view:active { opacity: .65; }
+/* ================= 撤销条 / 下拉刷新 / 通用 ================= */
+/* 记录操作条（.actbar）的样式已随组件 rec-actions 走：组件默认样式隔离，app.wxss 进不去，
+   这里留过一份「看起来在生效」的副本（还和组件那份分叉了 flex），实际没人用——已删，见 rec-actions.wxss */
 /* 「已删除 … · 撤销」/「已记入 … · 撤销」：原来贴着底部、整屏宽的一条，很容易被忽略。
    改成屏幕正中的小卡片（左右居中、圆角 + 描边 + 投影），带一点点「弹出来」的动效，
    「撤销」也从下划线文字变成实心药丸，一眼能看见、也更好点。

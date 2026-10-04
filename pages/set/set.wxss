@@ -5,16 +5,14 @@
 .app { position: static; min-height: 100vh; display: block; }
 .screen { height: auto; }
 .dot { width: 8px; height: 8px; border-radius: 50%; }
-/* 命中区补齐（与记页同一套）：约 23px 高 → 撑到约 39px */
-.mini-b { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); background: #fff; border-radius: 99px; padding: 4px 11px; position: relative; }
-.mini-b::after { content: ''; position: absolute; left: -4px; right: -4px; top: -8px; bottom: -8px; }
-.mini-b.del { color: var(--danger); border-color: #E5C9C7; }
+/* .mini-b 已收敛到 app.wxss（与记页同一款，含命中区扩展与 .del 色） */
 .gr-row { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--line); }
 .gr-t { flex: 1; font-size: 13px; color: var(--ink); min-width: 0; word-break: break-all; }
 .gr-in { flex: 1; min-width: 0; }
 .gr-add { font-size: 12.5px; color: var(--accent); padding: 9px 2px; }
 .gr-reset { font-size: 12.5px; color: var(--ink3); padding: 11px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
-.ta { width: 100%; }
+/* 导入记录的多行输入框（原来整段样式写在 wxml 的内联 style 里，收敛到这里） */
+.ta { width: 100%; min-height: 180px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.6; background: var(--soft); color: var(--ink); box-sizing: border-box; }
 .hint { font-size: 11.5px; color: var(--ink3); }
 /* 更新日志 */
 .lg-b { margin-bottom: 18px; }
