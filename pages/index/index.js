@@ -2,6 +2,8 @@
 const store = require('../../utils/store.js');
 const ui = require('../../utils/ui.js');
 const swipe = require('../../utils/swipe.js');
+const date = require('../../utils/date.js');
+const vm = require('../../utils/vm.js');
 const app = getApp();
 
 function nowStr() {
@@ -25,25 +27,11 @@ function tsFromDate(dStr, tStr) {
   const ts = new Date(p[0], p[1] - 1, p[2], q[0], q[1], 0, 0).getTime();
   return { ts, t: ('0' + q[0]).slice(-2) + ':' + ('0' + q[1]).slice(-2) };
 }
-// 用时格式化（与看页一致）：不足 1 天用小时；满 1 天用「天」保留一位小数；不足 1 分钟为“片刻”
-function fmtDur(ms) {
-  if (ms <= 0) return '';
-  const DAY = 86400000, HOUR = 3600000, MIN = 60000;
-  if (ms < DAY) {
-    const h = Math.floor(ms / HOUR);
-    if (h > 0) return h + ' 小时';
-    const m = Math.floor(ms / MIN);
-    if (m > 0) return m + ' 分钟';
-    return '片刻';
-  }
-  const d = ms / DAY;
-  return (Math.round(d * 10) / 10) + ' 天';
-}
-
 Page({
   data: {
     theme: 'mint',
     statusH: 20,
+    themeStyle: store.themeStyle('mint'),
     appName: (app && app.APP_NAME) || '',
     brandTop: 0,
     brandLeft: 0,
@@ -156,7 +144,7 @@ Page({
   ensureTheme() {
     const t = store.curTheme();
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: t, statusH: info.statusBarHeight || 20 });
+    this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
   },
 
   /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
@@ -311,8 +299,6 @@ Page({
 
   recVM(r) {
     const dt = store.buildExt(r.m, r.ext, r.extSrc);
-    // 日期前缀：今天空串，昨天 / 前天相对说法，更早给日期（跨年才带年份）
-    const d = store.datePrefix(r.ts);
     const task = store.isTask(r.m);
     const doingDays = (r.m === 'want' && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
     // 用时/历时（与看页一致）：做了=用了/惦记了；觉察=历时
@@ -324,21 +310,25 @@ Page({
       let durLabel = '', durMs = 0;
       if (r.startedAt && endTs && r.startedAt <= endTs) { durMs = endTs - r.startedAt; durLabel = '用了'; }
       else if (baseTs && endTs && baseTs <= endTs) { durMs = endTs - baseTs; durLabel = '惦记了'; }
-      const ds = fmtDur(durMs);
+      const ds = date.fmtDur(durMs);
       if (ds) dur = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
     }
     if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
-      const ds = fmtDur(r.endTs - r.ts);
+      const ds = date.fmtDur(r.endTs - r.ts);
       if (ds) dur = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
     }
     // 不做 的历时：从创建到放弃（惦记了多久）
     if (r.m === 'want' && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
-      const ds = fmtDur(r.abandonedAt - r.ts);
+      const ds = date.fmtDur(r.abandonedAt - r.ts);
       if (ds) dur = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
-    return { id: r.id, m: store.recMname(r), c: task ? store.taskColor(r) : store.mcolor(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt), reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur,
-      // 清单标题超长：隐藏原因/用途，标题独占整行自动折行（右侧只留时间）
-      longTxt: task && String(r.txt || '').length > 12 };
+    const v = vm.baseVM(r);
+    v.dt = dt;
+    v.doingDays = doingDays;
+    v.dur = dur;
+    // 清单标题超长：隐藏原因/用途，标题独占整行自动折行（右侧只留时间）
+    v.longTxt = task && String(r.txt || '').length > 12;
+    return v;
   },
 
   buildComposer() {

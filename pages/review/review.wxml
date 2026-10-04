@@ -1,4 +1,4 @@
-<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
   <view class="statusbar-mask"></view>
   <scroll-view class="screen" scroll-y type="list" refresher-enabled="{{true}}" refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh">
     <view class="body">

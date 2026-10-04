@@ -1,6 +1,12 @@
 // 自我觉察 · 共享数据层（常量 + 云开发 CRUD + 纯计算）
 // 云开发环境 ID：在 app.js 顶部填写 wx.cloud.init 的 env。
 // 集合：records（记录）、options（用户新增选项）、usercfg（问候语/自定义维度）
+const log = require('./log.js');
+const date = require('./date.js');
+// 日期工具统一在 utils/date.js；这里起个别名，内部沿用同名调用，导出也照旧
+const dayLabel = date.dayLabel;
+const agoOf = date.agoOf;
+const datePrefix = date.datePrefix;
 
 /* ---------------- 常量（与线上版同构） ---------------- */
 // 可选维度。无感 / 悦己已并入觉察（见 migrateNopeLikeIntoObs），不再是可选维度，
@@ -130,28 +136,16 @@ const FIELDS = {
   jot:  { main: 'jotItem',  items: [] }
 };
 
-const THEMES = [
-  { k: 'mint', n: '薄荷', bg: '#FFFFFF', ac: '#2F8F7B' },
-  { k: 'sand', n: '暖沙', bg: '#FAF8F4', ac: '#7C9A86' },
-  // { k: 'bamboo', n: '竹青', bg: '#FFFFFF', ac: '#3E9E7C' },
-  { k: 'olive', n: '橄榄', bg: '#F8FAF2', ac: '#6E7B3D' },
-  { k: 'teal', n: '湖青', bg: '#FFFFFF', ac: '#2E8B9A' },
-  { k: 'graph', n: '石墨', bg: '#FFFFFF', ac: '#4F5459' },
-  // { k: 'fog', n: '雾灰', bg: '#F7F8F9', ac: '#6E757B' },
-  { k: 'amber', n: '琥珀', bg: '#FFFCF5', ac: '#C98A2B' },
-  // { k: 'lilac', n: '浅紫', bg: '#F7F5FC', ac: '#9A8BC0' },
-  { k: 'butter', n: '鹅黄', bg: '#FBF8EE', ac: '#C9B25E' },
-  // 温柔 / 温暖色系
-  { k: 'apricot', n: '暖阳', bg: '#FFF8F2', ac: '#D68A5A' },
-  { k: 'peach', n: '蜜桃', bg: '#FFF7F6', ac: '#C9807A' },
-  { k: 'latte', n: '奶茶', bg: '#FAF5EF', ac: '#A98163' }
-];
+// 主题配色统一在 utils/themes.js 维护（单一来源），这里只做读取与转发
+const themes = require('./themes.js');
+const THEMES = themes.THEMES;
 
-// 读取当前主题；若 storage 里是已被删除的废弃主题（如早期的雾蓝/赤陶等），回落默认 mint，
-// 避免冷启动套上不存在的 theme 类，导致 CSS 变量全空、输入框/按钮背景透明
+// 读取当前主题；若 storage 里是已被删除的废弃主题，回落切换列表第一个，
+// 避免冷启动套上不存在的主题、CSS 变量全空（输入框/按钮背景透明）
 function curTheme() {
-  const k = wx.getStorageSync('theme') || 'mint';
-  return THEMES.some(t => t.k === k) ? k : 'mint';
+  const list = themes.themeList();
+  const k = wx.getStorageSync('theme') || list[0].k;
+  return list.some(t => t.k === k) ? k : list[0].k;
 }
 
 // 问候语：白天 30 条 / 夜里 30 条（设置页可自定义，改完存云端；恢复默认即用这里）
@@ -207,12 +201,6 @@ const COLMAP = {
 const FALLBACK = { obs: '感受', want: '诱因', nope: '感受', now: '感受', like: '当时感受' };
 
 /* ---------------- 纯计算 ---------------- */
-function dayLabel(ago) {
-  if (ago <= 0) return '今天';
-  if (ago === 1) return '昨天';
-  const d = new Date(); d.setDate(d.getDate() - ago);
-  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
-}
 function mname(k) {
   if (k === 'done') return '做了';   // 兼容历史 m='done' 记录（新流程已并入「可做·做了」）
   const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n }))).find(x => x.k === k); return m ? m.n : k;
@@ -252,24 +240,6 @@ function todoKindDefault() {
   return [def];
 }
 
-// 时间线（非待办）记录的日期前缀：今天＝空串；昨天 / 前天用相对说法；更早给日期（跨年才带年份）。
-// 与 taskTime 共用同一套「跨年才带年份」的判断，避免去年的记录只显示「10月3日」产生歧义
-function datePrefix(ts) {
-  const ago = agoOf(ts);
-  if (ago <= 0) return '';
-  if (ago === 1) return '昨天 ';
-  if (ago === 2) return '前天 ';
-  const d = new Date(ts), now = new Date();
-  const md = (d.getMonth() + 1) + '月' + d.getDate() + '日';
-  return (d.getFullYear() === now.getFullYear() ? md : (d.getFullYear() + '年' + md)) + ' ';
-}
-function agoOf(ts) {
-  if (!ts) return 0;
-  const d = new Date(ts); d.setHours(0, 0, 0, 0);
-  const n = new Date(); n.setHours(0, 0, 0, 0);
-  const a = Math.round((n - d) / 86400000);
-  return a < 0 ? 0 : a;
-}
 function extLabel(src, m) {
   if (src && src.indexOf('fallback:') === 0) return FALLBACK[m] || '';
   return COLMAP[src] || FALLBACK[m] || '';
@@ -566,7 +536,7 @@ function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, sta
       const hasMore = raw.length >= take;   // 满页 → 可能还有更旧的
       const nextCursor = list.length ? list[list.length - 1].ts : null;
       resolve({ list, hasMore, nextCursor });
-    }).catch(() => resolve({ list: [], hasMore: false, nextCursor: null }));
+    }).catch(e => { log.warn('records.page', e); resolve({ list: [], hasMore: false, nextCursor: null }); });
   });
 }
 // 全量拉取（导出 / 搜索 / 记页数据源）：按小程序端上限 20 自动翻页直到取完
@@ -594,7 +564,7 @@ function countRecords({ m = null, startTs = null, state = null, extTag = null, e
     const tags = (extTags && extTags.length) ? extTags : (extTag ? [extTag] : []);
     const w = recWhere({ m, startTs, state, extTags: tags });
     recCol().where(w).count()
-      .then(r => resolve((r && r.total) || 0)).catch(() => resolve(0));
+      .then(r => resolve((r && r.total) || 0)).catch(e => { log.warn('records.count', e); resolve(0); });
   });
 }
 // 统计：各觉察维度（不含备忘/购物）的条数 → { obs: 12, now: 3, want: 5 }
@@ -632,7 +602,7 @@ function countByTxt({ m = null, startTs = null, top = 8, extTags = null } = {}) 
     .limit(top)
     .end()
     .then(res => (res.list || []).map(x => ({ txt: x._id || '（未填）', n: x.n || 0 })))
-    .catch(() => []);
+    .catch(e => { log.warn('records.topTxt', e); return []; });
 }
 // 兼容旧调用：全量加载（去掉 300 上限，避免早期记录被静默丢弃）
 function loadRecords() { return loadAllRecords({}).then(list => list); }
@@ -645,7 +615,8 @@ function addRecord(rec) {
   if (rec.refTs) data.refTs = rec.refTs;
   if (rec.endTs) data.endTs = rec.endTs;
   if (rec.abandonedAt) data.abandonedAt = rec.abandonedAt;
-  return recCol().add({ data }).then(res => res._id);
+  return recCol().add({ data }).then(res => res._id)
+    .catch(e => { log.err('record.add', e, { m: rec.m, txt: rec.txt }); log.fail('没记上，请重试'); throw e; });
 }
 function updateRecord(rec) {
   const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0 };
@@ -656,10 +627,12 @@ function updateRecord(rec) {
   if (rec.refTs !== undefined) data.refTs = rec.refTs;
   if (rec.endTs !== undefined) data.endTs = rec.endTs;
   if (rec.abandonedAt !== undefined) data.abandonedAt = rec.abandonedAt;
-  return recCol().doc(rec._rid).update({ data });
+  return recCol().doc(rec._rid).update({ data })
+    .catch(e => { log.err('record.update', e, { m: rec.m, txt: rec.txt }); log.fail('没保存上，请重试'); throw e; });
 }
 function deleteRecord(rec) {
-  return recCol().doc(rec._rid).remove();
+  return recCol().doc(rec._rid).remove()
+    .catch(e => { log.err('record.delete', e, { m: rec && rec.m, txt: rec && rec.txt }); log.fail('没删掉，请重试'); throw e; });
 }
 // 清空全部记录（递归分批删除，仅删当前用户自己的）
 function clearAllRecords() {
@@ -668,7 +641,7 @@ function clearAllRecords() {
     if (!docs.length) return 0;
     return Promise.all(docs.map(d => recCol().doc(d._id).remove()))
       .then(() => clearAllRecords()).then(rest => docs.length + rest);
-  }).catch(() => 0);
+  }).catch(e => { log.err('records.clearAll', e); return 0; });
 }
 
 // 选项池：合并默认值、云端、本地存储（本地兜底，保证改动不丢）
@@ -712,7 +685,7 @@ function loadDelDef() {
       persistDelDefLocal(merged);
       _delDef = merged;
       resolve(merged);
-    }).catch(() => { _delDef = local; resolve(local); });
+    }).catch(e => { log.warn('delDef.load', e); _delDef = local; resolve(local); });
   });
 }
 function saveDelDef(arr) {
@@ -722,7 +695,7 @@ function saveDelDef(arr) {
     const docs = res.data || [];
     if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: arr } }).then(() => true).catch(() => false);
     return cfgCol().add({ data: { type: 'delDef', data: arr } }).then(() => true).catch(() => false);
-  }).catch(e => { console.warn('[云] 删除默认选项未同步云端（usercfg 集合已创建？）：', e); return false; });
+  }).catch(e => { log.warn('delDef.sync', e, 'usercfg 集合已创建？'); return false; });
 }
 function addDelDef(g, v) {
   if (!isDefault(g, v)) return Promise.resolve(false);
@@ -755,7 +728,7 @@ function loadOptCustom() {
       persistOptCustomLocal(merged);
       _optCustom = merged;
       resolve(merged);
-    }).catch(() => { _optCustom = local; resolve(local); });
+    }).catch(e => { log.warn('optCustom.load', e); _optCustom = local; resolve(local); });
   });
 }
 function saveOptCustom(map) {
@@ -765,7 +738,7 @@ function saveOptCustom(map) {
     const docs = res.data || [];
     if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: map } }).then(() => true).catch(() => false);
     return cfgCol().add({ data: { type: 'optCustom', data: map } }).then(() => true).catch(() => false);
-  }).catch(e => { console.warn('[云] 已自定义选项组未同步云端：', e); return false; });
+  }).catch(e => { log.warn('optCustom.sync', e); return false; });
 }
 // 用户动过某组后调用：把这一组的完整列表存下来，此后这一组以它为准
 function markOptCustom(g, arr) {
@@ -787,7 +760,7 @@ function loadOptOrder() {
       const merged = Object.assign({}, local, cloud); // 云端覆盖本地
       persistOptOrderLocal(merged);
       resolve(merged);
-    }).catch(() => resolve(local));
+    }).catch(e => { log.warn('optOrder.load', e); resolve(local); });
   });
 }
 function saveOptOrderToCloud(map) {
@@ -795,7 +768,7 @@ function saveOptOrderToCloud(map) {
     const docs = res.data || [];
     if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: map } }).then(() => true).catch(() => false);
     return cfgCol().add({ data: { type: 'optOrder', data: map } }).then(() => true).catch(() => false);
-  }).catch(e => { console.warn('[云] 选项顺序未同步云端（usercfg 集合已创建？）：', e); return false; });
+  }).catch(e => { log.warn('optOrder.sync', e, 'usercfg 集合已创建？'); return false; });
 }
 // 更新某组顺序并持久化（同步 G.OPT 内存、本地、云端）
 function setOptOrder(g, arr) {
@@ -845,7 +818,7 @@ function loadOptions() {
       console.log('[options] 云端读取到 ' + docs.length + ' 条用户选项');
       resolve(O);
     }).catch(e => {
-      console.error('[options] 云端读取失败，回退默认+本地：', e);
+      log.err('options.load', e, '回退默认+本地');
       const O = JSON.parse(JSON.stringify(OPT));
       Object.keys(_optCustom || {}).forEach(g => { if (_optCustom[g]) O[g] = _optCustom[g].slice(); });
       const localClean = {};
@@ -862,7 +835,7 @@ function addOption(g, v) {
       console.log('[options] 云写入成功 id=', res._id, 'group=', g, 'value=', v);
       return true;
     })
-    .catch(e => { console.error('[options] 云写入失败（已存本地）：', e); return false; });
+    .catch(e => { log.err('option.add', e, '已存本地'); return false; });
 }
 function removeOption(g, v) {
   persistLocalOpts();
@@ -871,8 +844,8 @@ function removeOption(g, v) {
       const docs = res.data || [];
       let p = Promise.resolve();
       docs.forEach(d => { p = p.then(() => optCol().doc(d._id).remove()); });
-      p.then(() => resolve(true)).catch(() => resolve(false));
-    }).catch(() => resolve(false));
+      p.then(() => resolve(true)).catch(e => { log.warn('option.remove', e); resolve(false); });
+    }).catch(e => { log.warn('option.remove', e); resolve(false); });
   });
 }
 // 某个选项组是不是某模块的主项组（主项存 txt、不进 ext）；是则返回该模块 key
@@ -942,7 +915,7 @@ function renameOption(g, ov, nv) {
       // ② 历史记录里同一组下的同名值
       return p.then(() => renameInRecords(g, ov, nv));
     }).then(() => resolve(true))
-      .catch(e => { console.warn('[rename] 选项改名未完全同步云端：', e); resolve(false); });
+      .catch(e => { log.warn('option.rename', e); resolve(false); });
   });
 }
 
@@ -1204,7 +1177,7 @@ function loadDims() {
     cfgCol().where({ type: 'dims' }).get().then(res => {
       const d = (res.data && res.data[0] && res.data[0].data) || [];
       resolve(d);
-    }).catch(() => resolve([]));
+    }).catch(e => { log.warn('dims.load', e); resolve([]); });
   });
 }
 function saveDims(arr) {
@@ -1213,7 +1186,7 @@ function saveDims(arr) {
       const docs = res.data || [];
       if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: arr } }).then(resolve).catch(resolve);
       cfgCol().add({ data: { type: 'dims', data: arr } }).then(resolve).catch(resolve);
-    }).catch(e => { console.warn('[云] 自定义维度未同步云端（usercfg 集合已创建？）：', e); resolve(); });
+    }).catch(e => { log.warn('dims.sync', e, 'usercfg 集合已创建？'); resolve(); });
   });
 }
 
@@ -1223,7 +1196,7 @@ function loadGreets() {
     cfgCol().where({ type: 'greets' }).get().then(res => {
       const d = (res.data && res.data[0] && res.data[0].data) || null;
       resolve(d);
-    }).catch(() => resolve(null));
+    }).catch(e => { log.warn('greets.load', e); resolve(null); });
   });
 }
 function saveGreets(obj) {
@@ -1232,7 +1205,7 @@ function saveGreets(obj) {
       const docs = res.data || [];
       if (docs.length) return cfgCol().doc(docs[0]._id).update({ data: { data: obj } }).then(resolve).catch(resolve);
       cfgCol().add({ data: { type: 'greets', data: obj } }).then(resolve).catch(resolve);
-    }).catch(e => { console.warn('[云] 问候语未同步云端（usercfg 集合已创建？）：', e); resolve(); });
+    }).catch(e => { log.warn('greets.sync', e, 'usercfg 集合已创建？'); resolve(); });
   });
 }
 
@@ -1300,7 +1273,7 @@ function reload() {
 }
 
 module.exports = {
-  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme,
+  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, themeAccent,
   dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, CAT_COLORS, catColor, taskCat, taskColor, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, takeRenameMap,

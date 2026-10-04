@@ -1,4 +1,4 @@
-<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
   <view class="statusbar-mask"></view>
   <!-- 整页页面级滚动（与记页一致）：输入框不套在 scroll-view 内，避免安卓上光标/文字飘出去 -->
   <view class="screen">

@@ -1,20 +1,9 @@
 // pages/list/list.js —— 清单：备忘 / 购物（待办）+ 随记（平铺列表）快捷查看
 const store = require('../../utils/store.js');
 const swipe = require('../../utils/swipe.js');
+const date = require('../../utils/date.js');
+const vm = require('../../utils/vm.js');
 const app = getApp();
-
-// 待办的时间只存 HH:MM（与 store.normTime 的输出一致；「今天 / 非今天」的显示交给 taskTime）
-function hhmm(ts) {
-  const d = new Date(ts);
-  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-}
-
-// 某天 0 点的毫秒时间戳：已完成按「完成那天」分段用（与看页同一套，跨年不会撞 key）
-function dayStartTs(ts) {
-  const d = new Date(ts || Date.now());
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
 
 // 筛选行 / 快捷新增的目标 id：待办类别用 'k:<类别>'，随记用 'jot'，全部用 'all'。
 // 类别一律实时取选项池 todoKind —— 「✎ 管理」里加了新类别，清单页会自动多一项
@@ -25,8 +14,9 @@ function canList(m) { return store.isTask(m) || m === 'jot'; }
 
 Page({
   data: {
-    theme: 'sand',
+    theme: store.curTheme(),
     statusH: 20,
+    themeStyle: store.themeStyle(store.curTheme()),
     seg: 'all',            // 'all' | 'jot' | 'k:<类别>'（类别来自选项池，可增删）
     segs: [],              // 筛选行：全部 + 各待办类别 + 随记（rebuild 里按选项池生成）
     // 顶部快捷新增：输入 → 回车 → 立刻出现在列表顶部，可连着加（目标跟筛选走）
@@ -76,21 +66,18 @@ Page({
 
   ensureTheme() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: wx.getStorageSync('theme') || 'sand', statusH: info.statusBarHeight || 20 });
+    const t = store.curTheme();
+    this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
   },
 
   recVM(r) {
-    return {
-      id: r.id, m: store.recMname(r), c: store.isTask(r.m) ? store.taskColor(r) : store.mcolor(r.m),
-      txt: r.txt,
-      // 待办的时间：今天显示时刻，非今天显示简洁日期（避免只有 HH:MM 看不出是哪天）
-      t: r.tt || r.t,
-      done: !!r.done, doneLabel: store.doneLabel(r.doneAt),
-      // 完成时间带「完成 ·」前缀：行右侧那个裸时间是「记录时间」，两个时间要能分得清
-      doneAtText: r.doneAt ? ('完成 · ' + hhmm(r.doneAt)) : '已完成',
-      abandAtText: r.abandonedAt ? ('放弃 · ' + hhmm(r.abandonedAt)) : '已放弃',
-      reason: r.reason || '', usefor: r.usefor || ''
-    };
+    const v = vm.baseVM(r);
+    // 待办的时间：今天显示时刻，非今天显示简洁日期（避免只有 HH:MM 看不出是哪天）
+    v.t = r.tt || r.t;
+    // 完成时间带「完成 ·」前缀：行右侧那个裸时间是「记录时间」，两个时间要能分得清
+    v.doneAtText = r.doneAt ? ('完成 · ' + date.hhmm(r.doneAt)) : '已完成';
+    v.abandAtText = r.abandonedAt ? ('放弃 · ' + date.hhmm(r.abandonedAt)) : '已放弃';
+    return v;
   },
 
   rebuild() {
@@ -179,7 +166,7 @@ Page({
   groupByDay(recs, tsOf) {
     const map = {}, order = [];
     recs.forEach(r => {
-      const k = dayStartTs(tsOf(r));
+      const k = date.dayStart(tsOf(r));
       if (!map[k]) { map[k] = { key: k, day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
       map[k].recs.push(this.recVM(r));
     });
@@ -278,7 +265,7 @@ Page({
     const T = this.qaDesc(this.qaTarget());
     const ts = Date.now();
     // 待办：把类别写进 ext（src=todoKind）；随记没有类别
-    const rec = { m: T.m, txt, ts, t: hhmm(ts), ext: T.cat ? [T.cat] : [], extSrc: T.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
+    const rec = { m: T.m, txt, ts, t: date.hhmm(ts), ext: T.cat ? [T.cat] : [], extSrc: T.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       if (!app.globalData.records) app.globalData.records = [];

@@ -14,5 +14,6 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
+  background: var(--accent);   /* 跟随当前主题（变量由页面根节点注入） */
   box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .08), 0 1px 3px rgba(0, 0, 0, .12);
 }

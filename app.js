@@ -20,8 +20,8 @@ App({
     store.ensureAll();
     // 清理历史残留的已删除主题：避免冷启动套上不存在的 theme 类导致变量全空
     const savedTheme = wx.getStorageSync('theme');
-    if (savedTheme && !store.THEMES.some(t => t.k === savedTheme)) {
-      wx.setStorageSync('theme', 'mint');
+    if (savedTheme && !store.themeList().some(t => t.k === savedTheme)) {
+      wx.setStorageSync('theme', store.themeList()[0].k);
     }
     // 新包发布后：冷启动静默下载，下次进入即最新；有更新时弹提示
     this.checkUpdate();

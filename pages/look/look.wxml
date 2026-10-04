@@ -1,4 +1,4 @@
-<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
   <view class="statusbar-mask"></view>
   <!-- 整页改为页面级滚动（与记页一致）：搜索框等原生输入层由微信同步位置，不再套在 scroll-view 里 -->
   <view class="screen">

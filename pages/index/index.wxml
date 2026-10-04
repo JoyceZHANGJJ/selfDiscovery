@@ -1,4 +1,4 @@
-<view class="app theme-{{theme}}" style="--status-h:{{statusH}}px" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
   <view class="statusbar-mask"></view>
   <!-- 整页使用页面级滚动（不再用 scroll-view）：
        页面滚动时微信会同步原生输入层位置，安卓上光标/文字飘出输入框的问题从根上消失 -->

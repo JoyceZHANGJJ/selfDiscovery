@@ -6,16 +6,10 @@
 // · 周 / 月：按自然周 / 自然月出的复盘报告（本期 vs 上期），回答"这段时间怎么样"。
 const store = require('../../utils/store.js');
 const swipe = require('../../utils/swipe.js');
+const date = require('../../utils/date.js');
 const app = getApp();
 
-const DAY = 86400000;
-
-// 某天 0 点的毫秒时间戳（用于按天去重 / 出每日分布）
-function dayStart(ts) {
-  const d = new Date(ts || Date.now());
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
+const DAY = date.DAY;
 
 // 取一条记录里某个来源的值（细节按 extSrc / ext 对齐）
 function extVal(r, src) {
@@ -70,6 +64,7 @@ Page({
   data: {
     theme: 'mint',
     statusH: 20,
+    themeStyle: store.themeStyle('mint'),
     view: 'week',        // week | month | all（主题档案）
     // —— 周 / 月复盘 ——
     offset: 0,
@@ -87,7 +82,7 @@ Page({
 
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20 });
+    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(() => this.build());
   },
@@ -231,7 +226,7 @@ Page({
     const c = all.filter(r => inR(r.ts || 0, cur));      // 本期记下的（按创建时间归属）
     const pv = all.filter(r => inR(r.ts || 0, pre));     // 上期，用来算增减
 
-    const days = new Set(c.map(r => dayStart(r.ts))).size;
+    const days = new Set(c.map(r => date.dayStart(r.ts))).size;
     const delta = c.length - pv.length;
     const kpis = [
       { n: c.length, l: '本期记录', s: delta === 0 ? '与上期持平' : ('较上期 ' + (delta > 0 ? '+' + delta : delta)), cls: delta > 0 ? 'up' : (delta < 0 ? 'dn' : '') },
@@ -272,9 +267,9 @@ Page({
 
     // 本期每天：按天出条小柱（周=7、月=28~31），顺带一句概述
     const dayMap = {};
-    c.forEach(r => { const k = dayStart(r.ts); dayMap[k] = (dayMap[k] || 0) + 1; });
+    c.forEach(r => { const k = date.dayStart(r.ts); dayMap[k] = (dayMap[k] || 0) + 1; });
     const arr = [];
-    for (let t = dayStart(cur.start); t < cur.end; t += DAY) arr.push(dayMap[t] || 0);
+    for (let t = date.dayStart(cur.start); t < cur.end; t += DAY) arr.push(dayMap[t] || 0);
     const dmx = Math.max(1, ...arr);
     const trend = arr.map(n => ({ lv: n ? (n === dmx ? 3 : (n * 2 >= dmx ? 2 : 1)) : 0 }));
     const act = arr.filter(n => n).length;

@@ -1,4 +1,4 @@
-<view class="tabroot theme-{{theme}}" wx:if="{{!hidden}}">
+<view class="tabroot" style="{{themeStyle}}" wx:if="{{!hidden}}">
   <!-- 快捷记（待办 / 随记）：点「＋」球在原地弹条（不跳页）；
        面板 / 撤销条以外的任何地方（页面空白、记录、操作条、球）都收起——但键盘不收起 -->
   <!-- 遮罩上的任何操作（点按 / 上下滚动）都收起面板：不只是点击，滚动页面也算 -->

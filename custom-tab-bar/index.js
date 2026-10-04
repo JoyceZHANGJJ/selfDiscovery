@@ -1,10 +1,5 @@
 const store = require('../utils/store.js');
-
-// 快捷记待办：记录的时间只存 HH:MM（与 store.normTime 的输出一致；「今天 / 非今天」的显示交给 taskTime）
-function hhmm(ts) {
-  const d = new Date(ts);
-  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-}
+const date = require('../utils/date.js');
 
 // 快捷记（「＋」球面板）：不切换模块，而是把用户在「设置」里勾选的类别（待办类别 + 随记，最多 5 个）
 // 平铺成 chips，点哪个就在哪个类别下记。类别实时取选项池（改名 / 增删后自动跟上）；
@@ -40,6 +35,7 @@ Component({
   data: {
     selected: 0,
     theme: 'mint',
+    themeStyle: store.themeStyle('mint'),   // 主题变量（由 theme 观察器刷新）
     hidden: false,
     pulse: false,   // 回顶时图标轻弹一次
     hint: false,    // 滑到底部时图标跳动提示可回顶
@@ -61,6 +57,11 @@ Component({
     qaUndo: null,        // 刚记下的那条（给一次撤销）
     // 面板底边距：默认落在球的正上方；键盘弹出时改成键盘高度（见 attached）
     qaBottom: 'calc(178px + env(safe-area-inset-bottom, 0px))'
+  },
+
+  // theme 一变就重算注入变量（各页与切换器只需 setData({ theme })）
+  observers: {
+    theme(k) { this.setData({ themeStyle: store.themeStyle(k) }); }
   },
 
   lifetimes: {
@@ -230,7 +231,7 @@ Component({
       this._qaCancelBlurClose();   // 收起输入框本身会触发失焦：这里已经要关了，别再排一次
       const ts = Date.now();
       // 待办：把类别写进 ext（src=todoKind）；随记没有类别
-      const rec = { m: a.m, txt, ts, t: hhmm(ts), ext: a.cat ? [a.cat] : [], extSrc: a.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
+      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext: a.cat ? [a.cat] : [], extSrc: a.cat ? ['todoKind'] : [], done: false, doneAt: 0, status: '' };
       store.addRecord(rec).then(rid => {
         rec._rid = rid; rec.id = rid;
         const G = getApp().globalData;

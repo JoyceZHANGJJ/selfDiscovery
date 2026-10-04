@@ -10,7 +10,6 @@ Component({
     title: { type: String, value: '' }
   },
   data: {
-    ac: '#2F8F7B',
     name: '',
     style: ''
   },
@@ -35,21 +34,19 @@ Component({
       this.setData({ style: 'position:fixed;top:' + mb.top + 'px;right:' + right + 'px;height:' + mb.height + 'px;z-index:60;' });
     },
     applyTheme() {
-      const k = wx.getStorageSync('theme') || 'mint';
-      const t = store.THEMES.find(x => x.k === k) || store.THEMES[0];
-      this.setData({ ac: t.ac, name: t.n });
+      this.setData({ name: store.themeOf(store.curTheme()).n });
     },
     onTap() {
       if (this.data.lock) { this.triggerEvent('locked'); return; }
-      const k = wx.getStorageSync('theme') || 'mint';
-      const idx = store.THEMES.findIndex(x => x.k === k);
-      const next = store.THEMES[(idx + 1) % store.THEMES.length];
+      const list = store.themeList();
+      const idx = list.findIndex(x => x.k === store.curTheme());
+      const next = list[(idx + 1) % list.length];
       wx.setStorageSync('theme', next.k);
-      this.setData({ ac: next.ac, name: next.n });
-      // 同步当前页面（根节点 theme- 类）与底部 tabBar
+      this.setData({ name: next.n });
+      // 同步当前页面（根节点注入的主题变量）与底部 tabBar
       const pages = getCurrentPages();
       const page = pages[pages.length - 1];
-      if (page && page.setData) page.setData({ theme: next.k });
+      if (page && page.setData) page.setData({ theme: next.k, themeStyle: store.themeStyle(next.k) });
       if (page && typeof page.getTabBar === 'function' && page.getTabBar()) {
         page.getTabBar().setData({ theme: next.k });
       }

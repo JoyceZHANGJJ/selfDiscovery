@@ -13,6 +13,7 @@ Page({
   data: {
     theme: 'mint',
     statusH: 20,
+    themeStyle: store.themeStyle('mint'),
     greets: { day: [], night: [] },
     greetOpen: false,
     geEdit: null,
@@ -39,7 +40,7 @@ Page({
 
   onShow() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20 });
+    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, hidden: false, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));

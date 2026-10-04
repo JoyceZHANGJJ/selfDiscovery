@@ -4,8 +4,9 @@ const app = getApp();
 
 Page({
   data: {
-    theme: 'sand',
+    theme: store.curTheme(),
     statusH: 20,
+    themeStyle: store.themeStyle(store.curTheme()),
     group: '',
     label: '',
     opts: [],
@@ -35,9 +36,9 @@ Page({
   },
 
   onShow() {
-    const t = wx.getStorageSync('theme') || 'sand';
+    const t = store.curTheme();
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: t, statusH: info.statusBarHeight || 20 });
+    this.setData({ theme: t, statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(t) });
     this.refresh();
   },
 

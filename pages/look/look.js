@@ -2,45 +2,19 @@
 const store = require('../../utils/store.js');
 const ui = require('../../utils/ui.js');
 const swipe = require('../../utils/swipe.js');
+const date = require('../../utils/date.js');
+const vm = require('../../utils/vm.js');
 const app = getApp();
 
 function dmClass(m) {
   return ['obs', 'now', 'want', 'nope', 'done', 'todo', 'like'].indexOf(m) >= 0 ? 'dm-' + m : 'dm-custom';
 }
 
-// 某天 0 点的毫秒时间戳：用于按「天」分段（比拿日期字符串当 key 稳，跨年也不会撞在一起）
-function dayStartTs(ts) {
-  const d = new Date(ts || Date.now());
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
-// 只取 HH:MM：已完成按日期分段后，行内不再重复写「X月X日」（日期由组头给）
-function hm(ts) {
-  const d = new Date(ts);
-  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-}
-
-// 用时格式化：不足 1 天用小时（不足 1 小时用分钟，再短“片刻”）；
-// 满 1 天及以上用「天」并保留一位小数，如 1.5 天
-function fmtDur(ms) {
-  if (ms <= 0) return '';
-  const DAY = 86400000, HOUR = 3600000, MIN = 60000;
-  if (ms < DAY) {
-    const h = Math.floor(ms / HOUR);
-    if (h > 0) return h + ' 小时';
-    const m = Math.floor(ms / MIN);
-    if (m > 0) return m + ' 分钟';
-    return '片刻';
-  }
-  const d = ms / DAY;
-  return (Math.round(d * 10) / 10) + ' 天';
-}
-
 Page({
   data: {
     theme: 'mint',
     statusH: 20,
+    themeStyle: store.themeStyle('mint'),
     // 程序名彩蛋：与记页同一套（按胶囊矩形定位 + 下拉逐字浮现）
     appName: (app && app.APP_NAME) || '',
     brandTop: 0,
@@ -102,7 +76,7 @@ Page({
 
   ensureTheme() {
     const info = (wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync());
-    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20 });
+    this.setData({ theme: store.curTheme(), statusH: info.statusBarHeight || 20, themeStyle: store.themeStyle(store.curTheme()) });
   },
 
   /* 程序名藏在胶囊「背后」：按胶囊的矩形定位，平时被原生胶囊盖住，
@@ -132,9 +106,6 @@ Page({
 
   recVM(r) {
     const dt = store.buildExt(r.m, r.ext, r.extSrc);
-    // 日期前缀：今天空串，昨天 / 前天相对说法，更早给日期（跨年才带年份）
-    const d = store.datePrefix(r.ts);
-    const task = store.isTask(r.m);
     const doingDays = (r.m === 'want' && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
     // 做了 的历时：可做→做了（status=done）或历史遗留 m='done' 记录
     let fromLine = '', durLine = '';
@@ -152,24 +123,29 @@ Page({
         dur = endTs - baseTs; durLabel = '惦记了';
       }
       if (refTxt && refTxt !== r.txt) fromLine = '↳ 来自：' + refTxt;
-      const ds = fmtDur(dur);
+      const ds = date.fmtDur(dur);
       // 「片刻」本身成词，与标签连写（用了片刻）；数值时长保留空格（用了 1 天）
       if (ds) durLine = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
     }
     // 觉察：有结束时间则显示「历时」（从创建到结束）
     if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
-      const ds = fmtDur(r.endTs - r.ts);
+      const ds = date.fmtDur(r.endTs - r.ts);
       if (ds) durLine = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
     }
     // 不做 的历时：从创建到放弃（惦记了多久）
     if (r.m === 'want' && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
-      const ds = fmtDur(r.abandonedAt - r.ts);
+      const ds = date.fmtDur(r.abandonedAt - r.ts);
       if (ds) durLine = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
-    return { id: r.id, m: store.recMname(r), c: task ? store.taskColor(r) : store.mcolor(r.m), dm: dmClass(r.m), txt: r.txt, desc: r.desc || '', t: r.t, tt: r.tt || r.t, d, dt, task, done: !!r.done, doneLabel: store.doneLabel(r.doneAt),
-      doneAtText: r.doneAt ? ('完成 · ' + hm(r.doneAt)) : '已完成',
-      abandAtText: r.abandonedAt ? ('放弃 · ' + hm(r.abandonedAt)) : '已放弃',
-      reason: r.reason || '', usefor: r.usefor || '', status: r.status || '', doingDays, dur: durLine, from: fromLine };
+    const v = vm.baseVM(r);
+    v.dt = dt;
+    v.dm = dmClass(r.m);
+    v.doingDays = doingDays;
+    v.dur = durLine;
+    v.from = fromLine;
+    v.doneAtText = r.doneAt ? ('完成 · ' + date.hhmm(r.doneAt)) : '已完成';
+    v.abandAtText = r.abandonedAt ? ('放弃 · ' + date.hhmm(r.abandonedAt)) : '已放弃';
+    return v;
   },
 
   // 统计面板：默认用后端统计结果（count / 聚合，不受列表分页影响）；
@@ -344,7 +320,7 @@ Page({
   groupByDay(recs, tsOf) {
     const map = {}, order = [];
     recs.forEach(r => {
-      const k = dayStartTs(tsOf(r));
+      const k = date.dayStart(tsOf(r));
       if (!map[k]) { map[k] = { key: k, day: store.dayLabel(store.agoOf(k)), recs: [] }; order.push(k); }
       map[k].recs.push(this.recVM(r));
     });
