@@ -165,6 +165,10 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .tl-txt { display: block; font-size: 13.5px; line-height: 1.6; color: var(--ink2); }
 /* 没写印象时的占位：淡化（不用括号，原「（今天还没写印象）」太重） */
 .tl-txt.tl-none { color: var(--ink4); }
+/* 记页「最近」里的今日行：这条能量条是**主项**（占 .tvw 那个位置），
+   .tvw 是 align-items: baseline（为了「主项 + 描述」同排），而空方格没有文字基线、
+   会被按底边对齐吊高一点 —— 这里改回居中，与只读摘要 / 看页卡片的 .tl-row（align-items: center）同一观感 */
+.rec .tvw .tl-bar { align-self: center; }
 
 /* 编辑态能量条：直接复用只读 .tl-bar / .tl-cell 的样式（同视觉），只加高到 20px 方便点。
    .cur＝当前选中的那一档，加一圈描边——否则选「空」时 0 格点亮，和没点过一样看不出选中。
@@ -223,16 +227,22 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .rec .tv { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); word-break: break-all; line-height: 1.5; }
 .rec .tw { font-size: 11.5px; color: var(--ink3); flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .rec .dt { margin-top: 6px; line-height: 1.9; font-size: 12.5px; color: var(--ink); }
-/* 「归类 + 具体的描述」同排展示：归类为主（700），描述随后（次要色、过长省略）。
-   只有带描述的记录（.has-desc）才把标题也收成单行，其它记录保持原来的可折行行为 */
-.rec.tl.has-desc .tvw .tv { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rec .tvw .tdesc { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 400; color: var(--ink3); margin-left: 7px; }
+/* 「归类 / 想记的是 / 什么事（选项） + 具体的描述（可输入）」同排展示：选项为主、700，
+   描述随后、次要色、小一号。
+   **选项是必须显示全的那一半**：不给它 nowrap / overflow / ellipsis——一行放不下就折行，
+   绝不会被截断（它是必填项，读不到就读不出这条记录在说什么）。
+   **描述是可省的**：flex-basis 取 0（不是 auto），只吃选项剩下的空间——
+   位置够就跟排显示，不够就先被截成省略号，挤到没位置时整段消失。
+   以前的写法是两边都 flex:…auto：两边的内容宽度一起参与分配、按比例互相压缩，
+   于是描述越长越把选项压出省略号（就是「选项显示不全」的由来）。 */
+.rec.tl.has-desc .tvw .tv { flex: 0 1 auto; min-width: 0; }
+.rec .tvw .tdesc { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 400; color: var(--ink3); margin-left: 7px; }
 .sep { font-style: normal; font-size: 11px; color: var(--line2); margin: 0 5px; }
 .it { margin-right: 14px; }
 .it:last-child { margin-right: 0; }
 .k { color: var(--ink3); margin-right: 5px; font-size: 11.5px; }
 /* 备忘 / 购物 / 随记 / 今日：主输入框。
-   34px 太扁，写「今日印象」这类稍长的话就一行到底、看着挤——加高到 44px，
+   34px 太扁，写「电量说明」这类稍长的话就一行到底、看着挤——加高到 44px，
    文字仍垂直居中，多出来的空间让人知道这里能写点东西 */
 .plain-in { margin-top: 4px; height: 44px; min-height: 44px; line-height: 44px; padding: 0 12px; font-size: 14.5px; }
 .plain-in:first-child { margin-top: 0; }

@@ -481,6 +481,16 @@ Page(pageBase({
     }
     const v = vm.baseVM(r);
     v.dt = dt;
+    // 「今日」一日一记：**电量格是主项、那句话是附属**（用户 2026-10-05 定的口径）——
+    // 电量单独提出来给行内画 5 格条（与记页只读摘要 / 看页卡片同一套 .tl-bar / .tl-cell），
+    // 并从细节行里摘掉（否则「剩余电量 1」会在下面再冒一次，而且露的是档位码不是名字）；
+    // 那句话不再占主项位，改由 wxml 放在下面的「电量说明」那一行（见 index.wxml）
+    if (r.m === 'today') {
+      const bi = (r.extSrc || []).indexOf('todayBat');
+      const bv = bi >= 0 ? (r.ext || [])[bi] : '';
+      v.bat = { lv: bv ? store.batLevel(bv) : 0, name: store.batName(bv) };
+      v.dt = dt.filter(d => d.src !== 'todayBat');
+    }
     v.doingDays = doingDays;
     v.dur = dur;
     // 清单标题超长：隐藏原因/用途，标题独占整行自动折行（右侧只留时间）
@@ -569,7 +579,7 @@ Page(pageBase({
       }
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
     });
-    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '今日印象最想说的事 · 可不写' };
+    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '一句话说明今天的电量 · 可不写' };
     // 待办 / 随记 / 今日：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行。
     // 今日：电池（类别）摆在主输入框上方、印象（主输入框）在下方，无细节分割线（见 index.wxml 的 plain 分支）
     const plain = store.isTask(tag) || tag === 'jot' || tag === 'today';
@@ -969,18 +979,16 @@ Page(pageBase({
     // 主项：从选项池点选（对着没有「描述」的模块，也允许手填——手填只记这一条，不进选项池）
     const mainRaw = this.st.mainPick || this.st.main || '';
     rec.txt = (mainRaw || '').trim();
-    // 「具体的描述」：觉察 / 无感的主项只能从选项池点选；可做那边允许「只填这一个框」——
-    // 那时这段文字本身就是「事」（FIELDS 里用 asMain 标出来），所以先把描述提上来再校验
-    const descItem = f && (f.items || []).find(it => it.free === store.DESC_KEY);
-    if (!rec.txt && descItem && descItem.asMain) {
-      const dv = (this.st.free[store.DESC_KEY] || '').trim();
-      if (dv) {
-        rec.txt = dv;
-        this.st.free[store.DESC_KEY] = '';    // 它已经作为「事」了，别再存一份描述
-      }
+    // 主项（选项）是必填的那一半，下面那个「具体的描述」是可省的——**描述不顶替主项**：
+    // 觉察 / 此刻（想记的是）/ 可做（什么事）一个口径，主项只能从选项池点选（旧记录里手填过的主项
+    // 会以临时 chip 排在选项最前，编辑时照旧能改能留）。今日是唯一例外：只选电量不写字也行。
+    if (!rec.txt && this.st.tag !== 'today') {
+      const descItem = f && (f.items || []).find(it => it.free === store.DESC_KEY);
+      // 带「描述」的模块没有主输入框（主项只能点）→ 提示去点选项；其余模块提示写一句
+      const ml = (descItem && f && f.main && store.GLABEL[f.main]) || '';
+      wx.showToast({ title: ml ? '先选一个「' + ml + '」' : '先写点什么', icon: 'none' });
+      return;
     }
-    // 今日：可以只选电量不写字（时间线日期旁的「剩余🔋」不依赖文字）
-    if (!rec.txt && this.st.tag !== 'today') { wx.showToast({ title: this.st.tag === 'obs' ? '先选一个「归类」' : '先写点什么', icon: 'none' }); return; }
     // 今日：电量为必选
     if (this.st.tag === 'today' && (!this.st.pick['todayBat'] || !this.st.pick['todayBat'].length)) {
       wx.showToast({ title: '先选一下今天的电量', icon: 'none' });

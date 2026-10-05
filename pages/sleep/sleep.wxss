@@ -1,4 +1,4 @@
-/* pages/sleep/sleep.wxss —— 睡（睡前记一下 / 入睡统计 / 入睡时间线）
+/* pages/sleep/sleep.wxss —— 作息（起 / 睡：起床与入睡的时刻、统计、趋势、时间线）
    基础块（.sect-t / .filters / .ft / .bars / .empty-mini / .sk / .loadfail / .btn / .undo-bar）
    都来自 app.wxss，这里只补本页特有的。颜色一律走主题变量，切主题自动跟随。 */
 
@@ -9,7 +9,14 @@
 /* 内容留一个最小高度：还没记过时整页很短，留白太多也不至于滑不动 */
 .body { min-height: calc(100vh + 60px); }
 
-/* 一条都没有时整页的指引（这一页没有记录按钮，得指向右上角那个「睡」） */
+/* ---- 起 / 睡 分段切换（点选或整页左右滑动） ----
+   iOS 式分段：一条浅底轨道 + 活动段浮起（背景色块 + 轻投影），
+   不用主题色填底——它是「视图切换」不是「状态」，用主题色会跟下面统计里的强调色抢戏 */
+.segs { display: flex; margin-top: 12px; padding: 3px; border-radius: 11px; background: var(--soft); }
+.seg { flex: 1; text-align: center; padding: 8px 0; font-size: 13.5px; font-weight: 700; color: var(--ink3); border-radius: 8px; line-height: 1.2; }
+.seg.on { background: var(--bg); color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, .07); }
+
+/* 一条都没有时整段的指引（这一页没有记录按钮，得指向右上角那两个胶囊） */
 .sl-empty { font-size: 13.5px; color: var(--ink2); font-weight: 700; padding: 18px 0 0; }
 .sl-empty-s { font-size: 12.5px; color: var(--ink4); margin-top: 6px; line-height: 1.6; }
 
@@ -42,16 +49,16 @@
 /* 「入睡趋势」小节标题：在发丝线下面，压缩上边距（.sect-t 默认 16px 顶距太空） */
 .stc-tt { margin-top: 12px; }
 
-/* ---- 入睡趋势：纯 CSS 折线（与回看的剩余电量趋势同一套画法，不引 canvas） ----
-   纵轴固定 21:00（下）→ 03:00（上），**0 点线正好落在 50%**：
-   中线以下 = 0 点前（主题色点）、以上 = 0 点后（深灰点），与时间线胶囊同一套颜色 */
+/* ---- 趋势图：纯 CSS 折线（与回看的剩余电量趋势同一套画法，不引 canvas） ----
+   纵轴固定钟表时刻：睡 21:00 → 03:00、起 05:00 → 13:00。
+   「基准点」（设置 · 作息里可改，睡默认 0 点 / 起默认 6 点）在图上是一条**加重的中线**，
+   位置随设置挪；它以下 = 基准点前（主题色点）、以上 = 之后（深灰点），与时间线胶囊同一套颜色 */
 .str { position: relative; margin-top: 10px; }
-/* 左侧三个纵轴刻度（上 03:00 / 中 00:00 / 下 21:00），与图区之间留 34px */
+/* 左侧三个纵轴刻度（睡 上 03:00 / 中 00:00 / 下 21:00；起 上 13:00 / 中 09:00 / 下 05:00）*/
 .str-y { position: absolute; left: 0; top: 0; bottom: 0; width: 30px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; font-size: 9.5px; color: var(--ink4); line-height: 1; }
-.str-y0 { color: var(--ink3); }
 .str-g { position: absolute; left: 34px; right: 0; top: 0; bottom: 0; }
 .str-gl { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
-.str-gl0 { background: var(--line2); }   /* 0 点线略重：它是这张图的分界 */
+.str-gl0 { background: var(--line2); }   /* 基准点线略重：它是这张图的分界 */
 .str-plot { position: relative; height: 84px; margin-left: 34px; }
 /* 线段：几何（起点 / 长度 / 倾角）在 js 里算好，rotate 画——小程序没有 svg polyline */
 .str-seg { position: absolute; height: 2px; border-radius: 1px; background: var(--accent); opacity: .5; transform-origin: left center; }
@@ -91,3 +98,14 @@
 .sl-tag { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-variant-numeric: tabular-nums; background: var(--accent-soft); color: var(--accent); }
 .sl-tag.a { background: var(--ink3); color: #fff; }   /* 0 点后 */
 .loadmore { text-align: center; color: var(--ink4); font-size: 12px; padding: 14px 0 24px; }
+
+/* ================= 改时刻浮层（行尾左滑「改」）=================
+   两个原生选择器并排：左日期（年月日，上限今天）、右时间（时分）。
+   样式尽量轻——浮层里只有这一件事，别让它看起来像个表单 */
+.ed-row { display: flex; gap: 10px; }
+.ed-pk { flex: 1; min-width: 0; }
+.ed-pick { display: flex; align-items: center; gap: 8px; background: var(--surface, #FFFFFF); border: 1px solid var(--line); border-radius: 12px; padding: 12px 13px; }
+.ed-k { font-size: 12px; color: var(--ink4); flex: none; }
+.ed-v { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ed-c { font-size: 12px; color: var(--ink4); flex: none; }
+.ed-hint { font-size: 11.5px; color: var(--ink4); line-height: 1.7; padding: 11px 2px 0; }

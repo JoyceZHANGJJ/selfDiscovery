@@ -37,7 +37,9 @@ Page(pageBase({
     themeOpts: [],     // 主题表：每项 k / n / c（主色）/ on（当前）/ fav（常用）
     themeName: '',     // 当前主题的中文名（设置页那一行显示）
     favCount: 0,       // 常用主题已勾数量
-    favMax: store.FAVTHEMES_MAX   // 常用主题上限（store 里单一来源）
+    favMax: store.FAVTHEMES_MAX,   // 常用主题上限（store 里单一来源）
+    slAnchor: '00:00', // 「睡」的基准点（HH:MM，原生时间选择器用；见 store 的 ANCHOR_*）
+    wkAnchor: '06:00'  // 「起」的基准点（同上）
   },
 
   g: null,
@@ -47,10 +49,15 @@ Page(pageBase({
     // tabBar 的 hidden 跟着「有没有浮层」走，不能写死 false：
     // 从后台切回来也会走一次 onShow，写死就会把 tab 栏放出来、压住浮层底部的按钮（主题面板的「完成」）
     const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
-    // selected 按 app.json 的 tabBar.list 下标：记0 / 看1 / 回看2 / 睡3 / 设置4
+    // selected 按 app.json 的 tabBar.list 下标：记0 / 看1 / 回看2 / 作息3 / 设置4
     if (tb) tb.setData({ selected: 4, hidden: this._anyOverlay(), theme: wx.getStorageSync('theme') || 'mint' });
     this._rehideTabBar();   // 后台回来那一瞬间 tabBar 有自己的复位时序，过一拍再收一次
     this.buildThemeOpts();   // 主题表 / 当前 / 常用：右上圆点那边改过主题时，切回设置页要能看到最新的
+    // 作息的两个基准点是本地存储，进页时把选择器回填成当前值（HH:MM 文本，picker mode="time" 要的格式）
+    this.setData({
+      slAnchor: store.minTxt(store.getAnchor('sleep')),
+      wkAnchor: store.minTxt(store.getAnchor('wake'))
+    });
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));
       const O = app.globalData.OPT || {};
@@ -191,6 +198,19 @@ Page(pageBase({
       themeOpts: this.data.themeOpts.map(o => Object.assign({}, o, { fav: saved.indexOf(o.k) >= 0 }))
     });
     wx.showToast({ title: saved.length ? ('常用 ' + saved.length + ' 个') : '循环全部主题', icon: 'none', duration: 800 });
+  },
+
+  /* 作息 · 基准点：原生时间选择器回来的 'HH:MM' → 分钟数存进 store（本地存储，与主题同一套做法）。
+     「作息」页 onShow 会整页重算，所以这里只管写 + 更新显示，不用通知它 */
+  onSlAnchor(e) { this._saveAnchor('sleep', e); },
+  onWkAnchor(e) { this._saveAnchor('wake', e); },
+  _saveAnchor(kind, e) {
+    const t = (e && e.detail && e.detail.value) || '';
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+    if (!m) return;
+    const v = store.setAnchor(kind, (+m[1]) * 60 + (+m[2]));
+    this.setData(kind === 'sleep' ? { slAnchor: store.minTxt(v) } : { wkAnchor: store.minTxt(v) });
+    wx.showToast({ title: (kind === 'sleep' ? '睡' : '起') + '的基准点 ' + store.minTxt(v), icon: 'none', duration: 800 });
   },
 
   /* 数据：导出 / 导入 / 清空 */

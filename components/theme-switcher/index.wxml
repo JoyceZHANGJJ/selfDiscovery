@@ -1,12 +1,18 @@
 <view class="tsw" style="{{style}}" bindtap="onTap" aria-label="切换主题">
   <text wx:if="{{title}}" class="tsname">{{title}}</text>
-  <!-- 「睡」：睡前点一下，把**现在**记成入睡时刻（入口要"任何页面都能顺手点到"，
+  <!-- 「起 / 睡」：起床 / 睡前点一下，把**现在**记成起床 / 入睡时刻（入口要"任何页面都能顺手点到"，
        所以挂在圆点旁边这个本来就定位好的控件上，不另起一个悬浮元素）。
-       字**一直是「睡」**：它是个按钮，不该变成一个数字（换个时刻就变宽变窄，
+       字**一直是「起」「睡」**：它们是按钮，不该变成一串数字（换个时刻就变宽变窄，
        还会让人先读一遍时刻才认出这是按钮）。
-       记没记过靠**底**区分：未记＝空心（描边 + 主题色字）；今夜已记＝实底 + 白字，
-       不用去「睡」tab 就能一眼确认那一下记上了。
+       记没记过靠**底**区分：未记＝空心（描边 + 主题色字）；这一夜已记＝实底 + 白字，
+       不用去「作息」tab 就能一眼确认那一下记上了。
        catchtap：别让这一点冒泡到外面去切主题 -->
+  <view class="tss {{wakeOn ? 'on' : ''}}" catchtap="onWake" aria-role="button"
+        aria-label="{{wakeOn ? '今早已记过，点一下改成现在' : '记下现在的起床时间'}}">
+    <text>起</text>
+  </view>
+  <!-- 一条细竖线：把「起」和「睡」分成两个各自独立的按钮（不是一个能来回切的双态开关） -->
+  <view class="tsdv"></view>
   <view class="tss {{sleepOn ? 'on' : ''}}" catchtap="onSleep" aria-role="button"
         aria-label="{{sleepOn ? '今夜已记过，点一下改成现在' : '记下现在的入睡时间'}}">
     <text>睡</text>
@@ -14,6 +20,7 @@
   <view class="tsdot"></view>
 
   <!-- 记下后给一次撤销（与全站同一套撤销条：屏幕正中的小卡片，见 app.wxss 的 .undo-bar）。
+       起 / 睡共用这一条（后一次操作盖前一次），撤销按刚才记的是哪一边分派。
        撤销条和圆点都在这个控件里，得 catchtap 拦住，否则点「撤销」会顺手切一次主题 -->
   <view wx:if="{{slUndo}}" class="toastline undo-bar" catchtap="onSlNoop">
     <view class="tx">{{slUndo.msg}}</view>

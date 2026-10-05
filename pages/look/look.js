@@ -410,7 +410,7 @@ Page(pageBase({
     // 「全部」的时间线不看待办、也不看「睡」，所以查询里就把它们排掉：
     // 否则一页 20 条被待办占满，时间线只显示几条、页面短到滚不动，上拉加载更多点了没反应
     // （memo / buy 是合并前的老数据，一并排掉，避免迁移没跑完时混进时间线）
-    const mNot = (this.data.filter === 'all') ? ['todo', 'memo', 'buy', 'sleep'] : null;
+    const mNot = (this.data.filter === 'all') ? ['todo', 'memo', 'buy', 'sleep', 'wake'] : null;
     return { m, state, extTags, mNot };
   },
   // 重置并加载第一页 + 统计总数

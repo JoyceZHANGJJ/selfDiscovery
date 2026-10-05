@@ -1,7 +1,11 @@
 <view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
   <view class="statusbar-mask"></view>
-  <!-- 整页页面级滚动（与记 / 看 / 回看 一致）：原生下拉刷新、回顶都走同一套 -->
-  <view class="screen">
+  <!-- 整页页面级滚动（与记 / 看 / 回看 一致）：原生下拉刷新、回顶都走同一套。
+       左右滑动切起 / 睡的手势挂在 **.screen** 这一层（不是 .body，也不是那两块内容）——
+       .screen 是 height:100% 的那层，永远铺满整屏；.body 内容不满一屏时只有内容那么高，
+       挂它上面就收不到下面那片空白的 touch（这就是「空白处滑不动」的原因）。
+       浮层 .sheet 在 .screen 之外，所以滑浮层不会误切段 -->
+  <view class="screen" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
     <view class="body">
       <!-- 取数失败：给一句说明 + 一个能点的重试 -->
       <block wx:if="{{loadFail}}">
@@ -22,100 +26,215 @@
         </view>
       </block>
       <block wx:else>
-      <view class="sect-t">睡</view>
+      <view class="sect-t">作息</view>
 
-      <!-- 还没记过：整页换成一句指引（这里没有记录按钮，得告诉人去点右上角那个「睡」） -->
-      <block wx:if="{{!hasAny}}">
-        <view class="sl-empty">还没有入睡记录</view>
-        <view class="sl-empty-s">睡前点一下右上角的「睡」，就记下那一刻</view>
-      </block>
-
-      <block wx:else>
-      <!-- ============ 入睡统计 ============ -->
-      <view class="sect-t">入睡统计</view>
-      <view class="filters">
-        <view class="ft {{range==='30'?'on':''}}" data-r="30" bindtap="onRange">近 30 天</view>
-        <view class="ft {{range==='all'?'on':''}}" data-r="all" bindtap="onRange">全部</view>
+      <!-- 起 / 睡 切换：点胶囊，或整页左右滑动（手势识别见 utils/swipe.js，与看 / 回看同一套）。
+           默认「起」——早上记完起床，顺手就能看见昨晚睡得多晚 -->
+      <view class="segs">
+        <view class="seg {{seg==='wake'?'on':''}}" data-s="wake" bindtap="onSeg" aria-role="button" aria-label="看起床">起</view>
+        <view class="seg {{seg==='sleep'?'on':''}}" data-s="sleep" bindtap="onSeg" aria-role="button" aria-label="看入睡">睡</view>
       </view>
 
-      <block wx:if="{{stats.days}}">
-        <!-- 统计块不用 .bars 白卡：这一页的时间线是扁平的，套一张白卡反而突兀
-             （项目最近的方向也是去卡片，见 changelog 的「今日摘要改扁平」）。
-             结构：平均入睡（大字 + 结论）→ 0 点前/后两栏 → 占比条 → 明细 → 趋势图 -->
-        <view class="stc">
-          <!-- 平均入睡时间：口径见 sleep.js 顶部（跨 0 点在「从中午 12:00 起算」的轴上求平均） -->
-          <view class="stc-lab">平均入睡</view>
-          <view class="stc-row">
-            <text class="stc-n">{{stats.avgTxt}}</text>
-            <text class="stc-c">{{stats.gapTxt}}</text>
-          </view>
-          <!-- 0 点前 / 后：两栏并排（原来的竖排小字把右边全空着了） -->
-          <view class="stc-cols">
-            <view class="stc-col">
-              <view class="stc-cv">{{stats.before}}<text class="stc-u">天</text></view>
-              <view class="stc-ck"><view class="stc-dot b"></view><text>0 点前睡</text></view>
-            </view>
-            <view class="stc-col">
-              <view class="stc-cv">{{stats.after}}<text class="stc-u">天</text></view>
-              <view class="stc-ck"><view class="stc-dot a"></view><text>0 点后睡</text></view>
-            </view>
-          </view>
-          <view class="stc-split">
-            <view wx:if="{{stats.beforePct>0}}" class="stc-sb" style="width:{{stats.beforePct}}%"></view>
-            <view wx:if="{{stats.beforePct<100}}" class="stc-sa" style="width:{{100-stats.beforePct}}%"></view>
-          </view>
-          <view class="stc-meta">记了 {{stats.days}} 夜 · 最早 {{stats.earlyTxt}} · 最晚 {{stats.lateTxt}}</view>
+      <!-- 分段内容：起 / 睡两块都算好渲染，滑过去就是现成的 -->
+      <view>
+        <!-- 范围两段共用一份：切「近 30 天 / 全部」起睡一起换 -->
+        <view class="filters" style="margin-top:14px">
+          <view class="ft {{range==='30'?'on':''}}" data-r="30" bindtap="onRange">近 30 天</view>
+          <view class="ft {{range==='all'?'on':''}}" data-r="all" bindtap="onRange">全部</view>
+        </view>
 
-          <!-- ============ 入睡趋势（只看近 30 天）============
-               每晚一个点连成折线。纵轴固定 21:00 → 03:00，**0 点线正好在中间**：
-               中线以下 = 0 点前（主题色点）、以上 = 0 点后（深灰点），与时间线胶囊同一套颜色。
-               没记的夜断开不连线（补值会画出「睡得极早 / 极晚」的假象，与电量趋势同一口径）。
-               「全部」的夜数太长画不成线，切到「全部」时这块收起来 -->
-          <block wx:if="{{trend.has}}">
-            <view class="stc-hr"></view>
-            <view class="sect-t stc-tt">入睡趋势</view>
-            <view class="str">
-              <view class="str-y"><text>03:00</text><text class="str-y0">00:00</text><text>21:00</text></view>
-              <view class="str-g">
-                <view class="str-gl" style="bottom:16.7%"></view>
-                <view class="str-gl str-gl0" style="bottom:50%"></view>
-                <view class="str-gl" style="bottom:83.3%"></view>
-              </view>
-              <view class="str-plot">
-                <view wx:for="{{trend.seg}}" wx:key="k" class="str-seg"
-                      style="left:{{item.x0}}%;bottom:{{item.y0}}%;width:{{item.w}}rpx;transform:rotate({{item.rot}}deg)"></view>
-                <view wx:for="{{trend.pts}}" wx:key="i" class="str-pt {{item.after?'a':''}}"
-                      style="left:{{item.pct}}%;bottom:{{item.pct2}}%"></view>
-              </view>
-            </view>
-            <view class="str-axis"><text>{{trend.first}}</text><text>今夜</text></view>
-            <view class="str-sum">{{trend.sum}} · 越靠上睡得越晚（0 点线在中间）</view>
+        <!-- ============ 起 ============ -->
+        <block wx:if="{{seg==='wake'}}">
+          <!-- 还没记过：整段换成一句指引（这里没有记录按钮，得告诉人去点右上角那个「起」） -->
+          <block wx:if="{{!hasWake}}">
+            <view class="sl-empty">还没有起床记录</view>
+            <view class="sl-empty-s">起床后点一下右上角的「起」，就记下那一刻</view>
           </block>
-        </view>
-      </block>
-      <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有入睡记录' : '还没有入睡记录'}}</view>
+          <block wx:else>
+            <!-- 起床统计（与入睡同一套 .stc）：两栏 = 基准点前 / 后各多少天（默认 6 点前起 / 6 点后起） -->
+            <view class="sect-t">起床统计</view>
+            <block wx:if="{{wk.days}}">
+              <view class="stc">
+                <view class="stc-lab">平均起床</view>
+                <view class="stc-row">
+                  <text class="stc-n">{{wk.avgTxt}}</text>
+                  <text class="stc-c">记了 {{wk.days}} 天</text>
+                </view>
+                <view class="stc-cols">
+                  <view class="stc-col">
+                    <view class="stc-cv">{{wk.before}}<text class="stc-u">天</text></view>
+                    <view class="stc-ck"><view class="stc-dot b"></view><text>{{wk.anchorTxt}}前起</text></view>
+                  </view>
+                  <view class="stc-col">
+                    <view class="stc-cv">{{wk.after}}<text class="stc-u">天</text></view>
+                    <view class="stc-ck"><view class="stc-dot a"></view><text>{{wk.anchorTxt}}后起</text></view>
+                  </view>
+                </view>
+                <view class="stc-split">
+                  <view wx:if="{{wk.beforePct>0}}" class="stc-sb" style="width:{{wk.beforePct}}%"></view>
+                  <view wx:if="{{wk.beforePct<100}}" class="stc-sa" style="width:{{100-wk.beforePct}}%"></view>
+                </view>
+                <view class="stc-meta">最早 {{wk.earlyTxt}} · 最晚 {{wk.lateTxt}}</view>
 
-      <!-- ============ 入睡时间线 ============
-           一行一夜（夜倒序）。不沿用 .rec.tl：那一套是为「一段文字内容」设计的（标题 13.5px），
-           这里每行唯一的内容就是一个时刻——时刻才是主角，单独一套行（.slt/.sli，见 sleep.wxss）：
-           左侧仍是轴线 + 圆点（与全站时间线同一视觉语言），行内改成
-           「大时刻 + 夜标签 …… 右侧一个胶囊（0 点前/后 + 离 0 点多远，一句话说完）」，
-           胶囊右对齐成一列，顺着往下扫就是「这几天睡得越来越晚还是越来越早」。
-           长按某一夜可以删掉（误点记错的那天不用一直挂在统计里） -->
-      <view class="sect-t">入睡时间线</view>
-      <block wx:if="{{list.length}}">
-        <view class="slt">
-          <view wx:for="{{list}}" wx:key="key" class="sli" data-id="{{item.id}}" bindlongpress="onNightLongPress">
-            <text class="sli-t">{{item.t}}</text>
-            <text class="sli-d">{{item.d}}</text>
-            <view class="sli-x"><text class="sl-tag {{item.after ? 'a' : ''}}">{{item.rel}}</text></view>
-          </view>
-        </view>
-        <view wx:if="{{moreN}}" class="loadmore" bindtap="onMore"><text>显示更早的 {{moreN}} 夜</text></view>
+                <!-- ============ 起床趋势（只看近 30 天）============
+                     纵轴固定 05:00 → 13:00（钟表时刻）；基准点（默认 6 点，可改）画成一条加重的中线，
+                     落在纵轴外就不画。点的颜色跟时间线胶囊同一套：基准点前＝主题色、之后＝深灰。
+                     没记的天断开不连线（与电量趋势同一口径）；「全部」收起 -->
+                <block wx:if="{{wtrend.has}}">
+                  <view class="stc-hr"></view>
+                  <view class="sect-t stc-tt">起床趋势</view>
+                  <view class="str">
+                    <view class="str-y"><text>13:00</text><text>09:00</text><text>05:00</text></view>
+                    <view class="str-g">
+                      <view class="str-gl" style="bottom:16.7%"></view>
+                      <view class="str-gl" style="bottom:50%"></view>
+                      <view class="str-gl" style="bottom:83.3%"></view>
+                      <view wx:if="{{wtrend.hasEdge}}" class="str-gl str-gl0" style="bottom:{{wtrend.anchorPct}}%"></view>
+                    </view>
+                    <view class="str-plot">
+                      <view wx:for="{{wtrend.seg}}" wx:key="k" class="str-seg"
+                            style="left:{{item.x0}}%;bottom:{{item.y0}}%;width:{{item.w}}rpx;transform:rotate({{item.rot}}deg)"></view>
+                      <view wx:for="{{wtrend.pts}}" wx:key="i" class="str-pt {{item.after?'a':''}}"
+                            style="left:{{item.pct}}%;bottom:{{item.pct2}}%"></view>
+                    </view>
+                  </view>
+                  <view class="str-axis"><text>{{wtrend.first}}</text><text>今早</text></view>
+                  <view class="str-sum">{{wtrend.sum}} · {{wtrend.sub}}</view>
+                </block>
+              </view>
+            </block>
+            <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有起床记录' : '还没有起床记录'}}</view>
+
+            <!-- ============ 起床时间线 ============
+                 与入睡同一套行（.slt/.sli）：大时刻 + 日标签（今早 / 昨天 / 10月2日）+
+                 右侧胶囊「6 点前 / 后多久」（基准点可在设置里改）。长按某一行可以删掉 -->
+            <view class="sect-t">起床时间线</view>
+            <block wx:if="{{wlist.length}}">
+              <view class="slt">
+                <view wx:for="{{wlist}}" wx:key="key" class="sli" data-id="{{item.id}}"
+                      bindlongpress="onNightLongPress"
+                      bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
+                  <text class="sli-t">{{item.t}}</text>
+                  <text class="sli-d">{{item.d}}</text>
+                  <view class="sli-x"><text class="sl-tag {{item.after ? 'a' : ''}}">{{item.rel}}</text></view>
+                </view>
+              </view>
+              <view wx:if="{{wmoreN}}" class="loadmore" bindtap="onWMore"><text>显示更早的 {{wmoreN}} 天</text></view>
+            </block>
+            <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有记过' : '还没有记过'}}</view>
+          </block>
+        </block>
+
+        <!-- ============ 睡 ============ -->
+        <block wx:else>
+          <block wx:if="{{!hasSleep}}">
+            <view class="sl-empty">还没有入睡记录</view>
+            <view class="sl-empty-s">睡前点一下右上角的「睡」，就记下那一刻</view>
+          </block>
+          <block wx:else>
+          <!-- ============ 入睡统计 ============ -->
+          <view class="sect-t">入睡统计</view>
+          <block wx:if="{{st.days}}">
+            <!-- 统计块不用 .bars 白卡：这一页的时间线是扁平的，套一张白卡反而突兀。
+                 结构：平均入睡（大字 + 结论）→ 0 点前/后两栏 → 占比条 → 明细 → 趋势图 -->
+            <view class="stc">
+              <!-- 平均入睡时间：口径见 sleep.js 顶部（跨 0 点在「从分割点起算」的轴上求平均） -->
+              <view class="stc-lab">平均入睡</view>
+              <view class="stc-row">
+                <text class="stc-n">{{st.avgTxt}}</text>
+                <text class="stc-c">{{st.gapTxt}}</text>
+              </view>
+              <!-- 0 点前 / 后：两栏并排（「基准点」在设置里可改，默认 0 点；文案跟着它走） -->
+              <view class="stc-cols">
+                <view class="stc-col">
+                  <view class="stc-cv">{{st.before}}<text class="stc-u">天</text></view>
+                  <view class="stc-ck"><view class="stc-dot b"></view><text>{{st.anchorTxt}}前睡</text></view>
+                </view>
+                <view class="stc-col">
+                  <view class="stc-cv">{{st.after}}<text class="stc-u">天</text></view>
+                  <view class="stc-ck"><view class="stc-dot a"></view><text>{{st.anchorTxt}}后睡</text></view>
+                </view>
+              </view>
+              <view class="stc-split">
+                <view wx:if="{{st.beforePct>0}}" class="stc-sb" style="width:{{st.beforePct}}%"></view>
+                <view wx:if="{{st.beforePct<100}}" class="stc-sa" style="width:{{100-st.beforePct}}%"></view>
+              </view>
+              <view class="stc-meta">记了 {{st.days}} 夜 · 最早 {{st.earlyTxt}} · 最晚 {{st.lateTxt}}</view>
+
+              <!-- ============ 入睡趋势（只看近 30 天）============
+                   纵轴固定 21:00 → 03:00，基准点（默认 0 点，可改）画成一条**加重的中线**：
+                   中线以下 = 基准点前（主题色点）、以上 = 之后（深灰点），与时间线胶囊同一套颜色；
+                   基准点改成 23 点，这条线就往左挪一格（设在纵轴范围外时不画）。
+                   没记的夜断开不连线；「全部」的夜数太长画不成线，切到「全部」时这块收起来 -->
+              <block wx:if="{{trend.has}}">
+                <view class="stc-hr"></view>
+                <view class="sect-t stc-tt">入睡趋势</view>
+                <view class="str">
+                  <view class="str-y"><text>03:00</text><text>00:00</text><text>21:00</text></view>
+                  <view class="str-g">
+                    <view class="str-gl" style="bottom:16.7%"></view>
+                    <view class="str-gl" style="bottom:50%"></view>
+                    <view class="str-gl" style="bottom:83.3%"></view>
+                    <view wx:if="{{trend.hasEdge}}" class="str-gl str-gl0" style="bottom:{{trend.anchorPct}}%"></view>
+                  </view>
+                  <view class="str-plot">
+                    <view wx:for="{{trend.seg}}" wx:key="k" class="str-seg"
+                          style="left:{{item.x0}}%;bottom:{{item.y0}}%;width:{{item.w}}rpx;transform:rotate({{item.rot}}deg)"></view>
+                    <view wx:for="{{trend.pts}}" wx:key="i" class="str-pt {{item.after?'a':''}}"
+                          style="left:{{item.pct}}%;bottom:{{item.pct2}}%"></view>
+                  </view>
+                </view>
+                <view class="str-axis"><text>{{trend.first}}</text><text>今夜</text></view>
+                <view class="str-sum">{{trend.sum}} · {{trend.sub}}</view>
+              </block>
+            </view>
+          </block>
+          <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有入睡记录' : '还没有入睡记录'}}</view>
+
+          <!-- ============ 入睡时间线 ============
+               一行一夜（夜倒序），「大时刻 + 夜标签 …… 右对齐胶囊（基准点前/后 + 离它多远）」，
+               胶囊右对齐成一列，顺着往下扫就是「这几天睡得越来越晚还是越来越早」。
+               长按某一夜可以删掉（误点记错的那天不用一直挂在统计里） -->
+          <view class="sect-t">入睡时间线</view>
+          <block wx:if="{{list.length}}">
+            <view class="slt">
+              <view wx:for="{{list}}" wx:key="key" class="sli" data-id="{{item.id}}"
+                    bindlongpress="onNightLongPress"
+                    bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
+                <text class="sli-t">{{item.t}}</text>
+                <text class="sli-d">{{item.d}}</text>
+                <view class="sli-x"><text class="sl-tag {{item.after ? 'a' : ''}}">{{item.rel}}</text></view>
+              </view>
+            </view>
+            <view wx:if="{{moreN}}" class="loadmore" bindtap="onMore"><text>显示更早的 {{moreN}} 夜</text></view>
+          </block>
+          <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有记过' : '还没有记过'}}</view>
+          </block>
+        </block>
+      </view>
       </block>
-      <view wx:else class="empty-mini">{{range==='30' ? '近 30 天还没有记过' : '还没有记过'}}</view>
-      </block>
-      </block>
+    </view>
+  </view>
+
+  <!-- 改时刻浮层（时间线里行尾左滑「改」进来）：年月日 + 时分两个原生选择器。
+       可以改到过去的任何一天；那一天 / 那一夜已经有同类记录时不会被覆盖（保存时拦下并提示） -->
+  <view wx:if="{{ed}}" class="sheet">
+    <view class="sh-h"><view class="st">{{ed.title}}</view><view class="sx" bindtap="closeEd" aria-label="关闭">✕</view></view>
+    <view class="sh-sub">原来是 {{ed.oldT}} · 改成下面这一天、这个时刻</view>
+    <view class="sh-list">
+      <view class="ed-row">
+        <picker class="ed-pk" mode="date" value="{{ed.date}}" end="{{ed.max}}" bindchange="onEdDate">
+          <view class="ed-pick"><text class="ed-k">日期</text><text class="ed-v">{{ed.date}}</text><text class="ed-c">▸</text></view>
+        </picker>
+        <picker class="ed-pk" mode="time" value="{{ed.time}}" bindchange="onEdTime">
+          <view class="ed-pick"><text class="ed-k">时间</text><text class="ed-v">{{ed.time}}</text><text class="ed-c">▸</text></view>
+        </picker>
+      </view>
+      <view class="ed-hint">{{ed.hint}}</view>
+    </view>
+    <view class="sh-foot">
+      <view class="btn gh" bindtap="closeEd">取消</view>
+      <view class="btn" bindtap="onEdSave">保存</view>
     </view>
   </view>
 

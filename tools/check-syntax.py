@@ -10,6 +10,9 @@
 # 整个小程序白屏）。这里用最土但最稳的办法先兜住最常见的两类事故：
 #   1) js：括号 / 引号没配对（会连带产生「module 未定义」这类看不懂的报错）
 #   2) wxml：标签没配对（会连带产生「渲染层错误」或整页空白）
+#   3) wxml：内层 wx:for 没写 wx:for-item，把外层的 item 顶掉（同时还在用 item.*）
+#      —— 这类不会报错，只是表达式悄悄算成 undefined：出过一次「5 格电量条一格都不亮」，
+#      模板里 `{{index<item.bat.lv?'on':''}}` 取到的是内层循环的数字 0..4，不是那条记录
 # 它不是完整的解析器（不做语法树、不查语义），真正的语法错误仍然以微信开发者工具为准；
 # 能做的只是「提交 / 编译前先花一秒扫一遍」，把这类低级错误挡在前面。
 #
@@ -17,6 +20,7 @@
 
 import io
 import os
+import re
 import sys
 
 SKIP_DIRS = ('node_modules', 'miniprogram_npm', '.git', '.cloudbase')
@@ -130,8 +134,19 @@ def _skip_regex(src, i):
 
 
 # -------------------------------------------------------------- wxml：标签配对
+def _attr(text, name):
+    """从标签属性串里取某个属性的值；没有返回 None。够用即可：只认 name="..." / name='...'"""
+    m = re.search(r'(?:^|\s)' + re.escape(name) + r'\s*=\s*(["\'])(.*?)\1', text, re.S)
+    return m.group(2) if m else None
+
+
+# 模板表达式里用到 item.xxx / item[0]（前面不是单词字符，避免 data-item. 这类误判）
+ITEM_REF = re.compile(r'(?<![\w.\-])item\s*[.\[]')
+
+
 def check_wxml(path):
-    """返回问题列表：标签是否配对（自闭合的、允许空标签的都不算问题）。"""
+    """返回问题列表：标签是否配对（自闭合的、允许空标签的都不算问题），
+    以及内层 wx:for 顶掉外层 item 的写法。"""
     src = read(path)
     stack, i, n = [], 0, len(src)
     out = []
@@ -156,6 +171,7 @@ def check_wxml(path):
         while j < n and (src[j].isalnum() or src[j] in '_-:'):
             j += 1
         name = src[name_start:j]
+        name_end = j
         # 扫到这个标签的 '>'：属性里的引号要跳过（wx:if="{{a > b}}" 里的 > 不能当结束）
         q = None
         while j < n:
@@ -168,6 +184,7 @@ def check_wxml(path):
             elif ch == '>':
                 break
             j += 1
+        attrs = src[name_end:j]        # 属性串（wx:for / class / style …），不含标签名与结尾的 >
         self_closed = (j > i + 1 and src[j - 1] == '/')
         if closing:
             if not stack:
@@ -179,10 +196,18 @@ def check_wxml(path):
             else:
                 stack.pop()
         elif not self_closed and name not in WXML_VOID:
-            stack.append((i, name, line_of(src, i)))
+            # 这一层自己开了 wx:for，但没写 wx:for-item（内层默认也叫 item）
+            own_default_for = (('wx:for' in attrs) and _attr(attrs, 'wx:for-item') is None)
+            if own_default_for:
+                # 祖先里也有没改名的 wx:for → 外层的 item 被顶掉；这一层又真的在用 item.*
+                if any(e[4] for e in stack) and ITEM_REF.search(attrs):
+                    out.append('%s:%d  wx:for 没写 wx:for-item，会顶掉外层循环的 item；'
+                               '同一标签里用的 item.* 取到的是内层那个（表达式不会报错，只会算成 undefined）'
+                               % (path, line_of(src, i)))
+            stack.append((i, name, line_of(src, i), attrs, own_default_for))
         i = j + 1
 
-    for _, name, ln in stack:
+    for _, name, ln, _a, _f in stack:
         out.append('%s:%d  未闭合的 <%s>' % (path, ln, name))
     return out
 

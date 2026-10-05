@@ -21,9 +21,9 @@
   letter-spacing: .04em;
   white-space: nowrap;
 }
-/* 「睡」：圆点左边的胶囊，睡前点一下记入睡时刻。
-   字一直是「睡」（它是个按钮，不该变成数字——见图 wxml 的说明）；
-   未记＝空心（描边 + 主题色字）；今夜已记＝实底主题色 + 白字，不用去「睡」tab 就能确认。
+/* 「起 / 睡」：圆点左边的两个胶囊，起床 / 睡前点一下记时刻。
+   字一直不变（它们是按钮，不该变成数字——见 wxml 的说明）；
+   未记＝空心（描边 + 主题色字）；这一夜已记＝实底主题色 + 白字，不用去「作息」tab 就能确认。
    z-index: 2 → 压在 .tsw::after 那层命中扩展之上（见上），否则收不到点击 */
 .tss {
   position: relative;
@@ -50,6 +50,19 @@
   color: #fff;
 }
 .tss:active { opacity: .62; }
+/* 「起」与「睡」之间的一条发丝竖线：两个按钮各自独立（不是一个能来回切的双态开关）。
+   负外边距把它摆进两个胶囊之间原有的 8px 间隙里，不额外占横向空间；
+   z-index 与胶囊同层（压在 .tsw::after 命中扩展之上）——点它等于点了一下空白，仍会切主题 */
+.tsdv {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  width: 1px;
+  height: 13px;
+  background: var(--line);
+  margin-left: -4px;
+  margin-right: 4px;
+}
 /* 它自己的命中区：22px 高太小 → 上下各扩到约 40px（与圆点那块各管各的，互不重叠） */
 .tss::after {
   content: '';

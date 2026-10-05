@@ -12,7 +12,8 @@ const datePrefix = date.datePrefix;
 // 可选维度。无感 / 悦己已并入觉察（见 migrateNopeLikeIntoObs），不再是可选维度，
 // 只会在迁移完成前短暂地存在于历史数据里
 const MODULES = [
-  // 「今日」：一日一记，记当天剩余电量（5 格能量条，1 很低 … 5 满）+ 今日印象最想说的一句话。
+  // 「今日」：一日一记，**主项是当天剩余电量**（5 格能量条，1 很低 … 5 满），
+  // 「电量说明」的那句话是**附属内容**（可不写）——记录行里电量格在上、那句话在下；
   // 放在第一个（用户一进记页最先看到），但默认选中维度仍是「觉察」（见 index 的 resetToInitial）；
   // 不进时间线行——内容显示在所在日期行的旁边（见 look 的 groupByDay / grp.today）
   { k: 'today', n: '今日', c: '#B08968' },
@@ -28,7 +29,12 @@ const MODULES = [
   // quiet：它确实是一条记录，但**不进记录流**——不出现在维度栏、时间线、复盘各维度、
   // 记页「最近」里，只在自己的页面里出现。一天只有一条时间点的记录，混进内容流只会干扰回看
   // （凡是要"列维度 / 列记录"的地方都得先过 isQuiet，见该函数说明）。
-  { k: 'sleep', n: '睡', c: '#6E8CB0', quiet: true }
+  { k: 'sleep', n: '睡', c: '#6E8CB0', quiet: true },
+  // 「起」：起床点一下，只记一个起床时刻（入口在「睡」胶囊旁边，见 components/theme-switcher；
+  // 「作息」tab 里看统计与时间线）。同样 quiet：不进记录流。
+  // 一个「一夜」（见下方分界说明）最多一条，重复点＝覆盖——一夜＝睡一次 + 起一次，正好一对，
+  // 所以「起」的分夜键与「睡」共用同一把（sleepNightKey），改分割点两边一起重算
+  { k: 'wake', n: '起', c: '#C98A57', quiet: true }
 ];
 // 「静默」维度：有记录、能统计，但不参与任何"记录流"展示（维度栏 / 时间线 / 复盘各维度 /
 // 记页最近 / 待办清单）。新增展示入口时记得用它过滤，否则它会被当成普通内容维度露出来
@@ -67,12 +73,14 @@ const OPT = {
 // 「归类」：觉察 / 无感已把「什么事」解耦成「归类（名词性、可归类）+ 具体的描述（自由、不可归类）」。
 // 叫「归类」而不是「什么事 / 触动的点」，是因为池子里装的不一定是事——也可能是一个概念（自由）
 // 或一个物件（猫），所以标签只描述它的作用：从池里点选的那个用来归类的词。
-// 可做 / 此刻 也已解耦，那边主项叫「什么事 / 想记的是」（只填描述时它本身就是「事」）；悦己等还没迁
+// 可做 / 此刻 也已解耦，那边主项叫「什么事 / 想记的是」。**主项一律从池里点选（必填）**，
+// 下面那个「具体的描述」只是补充、可留空——它对不对得上归类不该由描述顶替（口径见 index 的 doSave）；
+// 悦己等还没迁
 const GLABEL = {
   obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
   genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶',
   doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
-  todayItem: '今日印象', todayBat: '剩余电量'
+  todayItem: '电量说明', todayBat: '剩余电量'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
@@ -139,13 +147,46 @@ function batLevel(v) {
 /* 只存 ts（点的那一下就是入睡时刻），txt 放一份 'HH:MM' ——
    一是导出/导入时主项不为空（导入按「维度 | 内容」解析，空主项会被当成坏行丢掉），
    二是复制/展示时不用再算一遍。ext 为空。 */
-/* 一夜的定义：**以中午 12:00 为分界**。12:00–23:59 点的算「今夜」，00:00–11:59 点的算「昨夜」
-   （熬到凌晨才睡 / 半夜补记）。这样 23:47 与次日 00:20 落在同一夜，统计「多少天」不会
-   一天既算 0 点前又算 0 点后。一夜最多一条：重复点＝覆盖（见 sleepRecOf 与 sleepNow）。 */
-const SLEEP_CUT_MS = 12 * 3600000;
-const SLEEP_EDGE = 1440;   // 0 点在「入睡轴」上的位置（见 sleepMin）
-// 这条入睡属于哪一夜 → 返回那一夜「白天」那天的 0 点（当唯一键用）
-function sleepNightKey(ts) { return date.dayStart((ts || Date.now()) - SLEEP_CUT_MS); }
+/* 一夜的定义：**以中午 12:00 为分界**（写死，与统计的「基准点」无关）。12:00–23:59 点的算
+   「今夜」，00:00–11:59 点的算「昨夜」（熬到凌晨才睡 / 半夜补记）。这样 23:47 与次日 00:20
+   落在同一夜，统计「多少天」不会一天既算前又算后。一夜最多一条：重复点＝覆盖
+   （见 sleepRecOf 与 sleepNow）。「起」与「睡」共用这把尺子，一夜＝睡一次 + 起一次正好配对 */
+const NIGHT_CUT_MS = 12 * 3600000;
+function sleepNightKey(ts) { return date.dayStart((ts || Date.now()) - NIGHT_CUT_MS); }
+
+/* ---------------- 统计的「基准点」（设置 · 作息里可改） ----------------
+   它**不是分夜边界**——夜还是按中午 12:00 分。基准点是拿来比较的那条线：
+   「睡 → 多少个夜里是在 X 点之后才睡、多少个夜里在 X 点之前」（默认 X = 0 点），
+   「起 → 多少个早上在 X 点之前起、多少个在 X 点之后起」（默认 X = 6 点）。
+   改成 23 点，就是「23 点后睡 / 23 点前睡」重新算一遍——统计本来就是「按现在的口径看历史」。
+   时分都可调（设置页走原生时间选择器），本地存储（与主题同一套做法）。 */
+const ANCHOR_LS = { sleep: 'self_anchor_sleep_v1', wake: 'self_anchor_wake_v1' };
+const ANCHOR_DEFAULT = { sleep: 0, wake: 6 * 60 };   // 睡默认 00:00、起默认 06:00
+function getAnchor(kind) {
+  const def = ANCHOR_DEFAULT[kind];
+  try {
+    const v = wx.getStorageSync(ANCHOR_LS[kind]);
+    if (typeof v === 'number' && v >= 0 && v < 1440) return v;
+  } catch (e) {}
+  return def;
+}
+function setAnchor(kind, m) {
+  const def = ANCHOR_DEFAULT[kind];
+  let v = Number(m);
+  if (!isFinite(v)) v = def;
+  v = Math.max(0, Math.min(1439, Math.round(v)));
+  try { wx.setStorageSync(ANCHOR_LS[kind], v); } catch (e) {}
+  return v;
+}
+/* 基准点的口语说法：整点说「0 点 / 23 点 / 6 点」，带分说「6:30」（与用户描述同一套说法） */
+function anchorTxt(m) {
+  const n = ((Math.round(m) % 1440) + 1440) % 1440;
+  const h = Math.floor(n / 60), mi = n % 60;
+  return mi ? h + ':' + ('0' + mi).slice(-2) : h + ' 点';
+}
+// 拼句子时要不要在基准点后面补个空格：「0 点」这类自带空格，别再补；
+// 「6:30」是紧的，得补一个（否则「比 6:30早」挤在一起）
+function atSp(AT) { return /点$/.test(AT) ? '' : ' '; }
 /* 入睡时刻 → 「从中午 12:00 起算」的分钟数：12:00=720 / 23:59=1439 / 0:00=1440 / 6:00=1800。
    跨 0 点直接接在后面，**求平均才不会被 0 点截断**——23:30 与 0:30 的平均是 0:00（1440），
    若按 0..1439 直接平均会得到一个荒谬的 12:00。 */
@@ -153,6 +194,16 @@ function sleepMin(ts) {
   const d = new Date(ts || Date.now());
   const h = d.getHours();
   return (h >= 12 ? h : h + 24) * 60 + d.getMinutes();
+}
+// 「睡」的基准点在入睡轴上的位置：0:00 → 1440、23:00 → 1380（12 点前的钟点整体 +24 小时）
+function sleepAnchor() { const a = getAnchor('sleep'); return a < 720 ? a + 1440 : a; }
+// 起床时刻：**按钟表 0:00 起算的分钟数**（不做任何折回）。
+// 起和睡不一样——起床都集中在清晨到上午这一个连续段里，没有跨 0 点的歧义，
+// 于是基准点直接跟钟表比较（8 点基准：07:30=450 < 480 → 「8 点前起」；13:00=780 → 「8 点后起」），
+// 平均、最早最晚也都在这一条轴上算，不会绕圈
+function wakeMin(ts) {
+  const d = new Date(ts || Date.now());
+  return d.getHours() * 60 + d.getMinutes();
 }
 // 入睡轴上的分钟数 → 'HH:MM'（超过 24:00 的部分折回，1440 → '00:00'）
 function minTxt(m) {
@@ -240,6 +291,26 @@ function sleepRemove(rec) {
   return deleteRecord(rec).then(() => copy).catch(() => { if (i >= 0) list.splice(i, 0, rec); return null; });
 }
 
+/* ---- 改一条作息记录的时刻（「作息」页时间线里行尾左滑「改」）----
+   允许改到过去（补记、记错时间都靠它），但**不许顶掉别人的记录**：
+   目标时刻落在的那一夜 / 那一天如果已经有同类的另一条，就拦下来（页面提示去改它或删它）。
+   两条规则都在这里，页面只负责显示结果——校验只有一份，改哪里都不会漏 */
+function slotTaken(rec, ts) {
+  if (!rec || !ts) return null;
+  const k = sleepNightKey(ts);
+  return (G.records || []).find(x =>
+    x && x.m === rec.m && x.id !== rec.id && x.ts && sleepNightKey(x.ts) === k
+  ) || null;
+}
+// 把一条记录改到另一个时刻：主项（txt）跟着写成新的 'HH:MM'。
+// 内存先改（页面读的就是它），云端写失败也不回滚——与 sleepNow / sleepUndo 同一套乐观口径
+function moveRec(rec, ts) {
+  if (!rec || !ts) return Promise.resolve();
+  const t = date.hhmm(ts);
+  Object.assign(rec, { ts, t, txt: t });
+  return updateRecord(rec).catch(() => {});
+}
+
 /* 入睡统计：把一批 sleep 记录收成一份可渲染的统计
    · 同一夜多条只留最后一次（与写入的覆盖口径一致，历史脏数据也能收敛）
    · 只统计 startTs（含）之后的那几夜，null = 全部
@@ -258,36 +329,154 @@ function sleepStats(recs, opts) {
     if (!old || r.ts > old.ts) byKey[k] = r;
   });
   const keys = Object.keys(byKey).map(Number).sort((a, b) => b - a);   // 夜倒序
+  const EDGE = sleepAnchor();
+  const AT = anchorTxt(getAnchor('sleep'));                            // 「0 点」/「23 点」/「23:30」
   const nights = keys.map(k => {
     const r = byKey[k], off = sleepMin(r.ts);
-    // 离 0 点多远（含方向）：时间线每一行右侧的胶囊文案「0 点前 19 分钟 / 0 点后 1 小时 20 分钟」。
-    // 正好 0 点那一分单独给一句（不写成「0 点后 0 分钟」）
-    const df = off - SLEEP_EDGE;
+    // 离基准点多远（含方向）：时间线每一行右侧的胶囊文案「0 点前 19 分钟 / 23 点后 1 小时 20 分钟」。
+    // 正好落在基准点那一分单独给一句（不写成「0 点后 0 分钟」）
+    const df = off - EDGE;
     return {
       key: k, id: r.id, ts: r.ts, off,
       t: minTxt(off),
-      after: off >= SLEEP_EDGE,          // 0 点后（含正好 0 点那一分）
+      after: off >= EDGE,                // 基准点之后（含正好那一分）
       d: sleepNightLabel(k),
-      rel: df === 0 ? '正好 0 点' : (df > 0 ? '0 点后 ' : '0 点前 ') + gapTxt(Math.abs(df))
+      rel: df === 0 ? '正好' + atSp(AT) + AT : AT + atSp(AT) + (df > 0 ? '后 ' : '前 ') + gapTxt(Math.abs(df))
     };
   });
   const nums = nights.map(n => n.off);
-  const before = nums.filter(v => v < SLEEP_EDGE).length;
+  const before = nums.filter(v => v < EDGE).length;
   const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
   const avgMin = Math.round(avg);
   return {
     nights,
     days: nights.length,
+    anchorTxt: AT,
     before, after: nights.length - before,
     beforePct: nights.length ? Math.round(before / nights.length * 100) : 0,
     avgTxt: nums.length ? minTxt(avgMin) : '',
-    avgAfter: avg >= SLEEP_EDGE,
-    /* 「比 0 点早/晚多久」的结论。不带「平均」二字——页面上它摆在大数字旁边，
+    avgAfter: avg >= EDGE,
+    /* 「比基准点早/晚多久」的结论。不带「平均」二字——页面上它摆在大数字旁边，
        上方已有「平均入睡」的小标签，再写一遍「平均」就重复了 */
     gapTxt: nums.length
-      ? (avgMin === SLEEP_EDGE ? '正好 0 点入睡'
-        : (avgMin >= SLEEP_EDGE ? '比 0 点晚 ' : '比 0 点早 ') + gapTxt(avgMin - SLEEP_EDGE))
+      ? (avgMin === EDGE ? '正好' + atSp(AT) + AT + ' 入睡'
+        : '比 ' + AT + atSp(AT) + (avgMin >= EDGE ? '晚 ' : '早 ') + gapTxt(avgMin - EDGE))
       : '',
+    earlyTxt: nums.length ? minTxt(Math.min.apply(null, nums)) : '',
+    lateTxt: nums.length ? minTxt(Math.max.apply(null, nums)) : ''
+  };
+}
+
+/* ---------------- 「起」：记一个起床时刻 ----------------
+   与「睡」完全同一套结构（一夜一条、重复点＝覆盖、可撤销可删），只有两处不同：
+   ① 行标签按「起的那天早上」说（今早 / 昨天 / 10月2日），不按夜说——下午两三点才起
+      也算「今早」，按夜键会被说成「昨夜起」，反直觉；
+   ② 统计的基准点是**清晨的钟点**（默认 6 点，设置里可改时分）：算「多少个早上在 6 点前起、
+      多少个早上在 6 点后起」，时间线胶囊也跟着说「6 点前 20 分钟」。起落在一个连续的
+      清晨段里，所以直接跟钟表比较，不像「睡」那样需要在跨 0 点的轴上绕 */
+// 某个时刻所在的这一夜，已有的「起」（覆盖用）；口径与 sleepRecOf 完全一致
+function wakeRecOf(list, ts) {
+  const k = sleepNightKey(ts);
+  let hit = null;
+  (list || []).forEach(r => {
+    if (!r || r.m !== 'wake' || sleepNightKey(r.ts) !== k) return;
+    if (!hit || r.ts > hit.ts) hit = r;
+  });
+  return hit;
+}
+/* 记下「现在」这次起床。写入规则与 sleepNow 同一份（一夜一条，重复＝改）：
+   成功返回 { kind:'new'|'over', rec, back }。直接维护 G.records（页面读的就是它） */
+function wakeNow(ts) {
+  const now = ts || Date.now();
+  const t = date.hhmm(now);
+  const list = G.records || [];
+  const old = wakeRecOf(list, now);
+  if (old) {
+    const back = { ts: old.ts, t: old.txt || date.hhmm(old.ts) };
+    return updateRecord(Object.assign({}, old, { txt: t, t, ts: now })).then(() => {
+      Object.assign(old, { txt: t, t, ts: now });
+      return { kind: 'over', rec: old, back };
+    });
+  }
+  const rec = { m: 'wake', txt: t, ts: now, t, ext: [], extSrc: [], done: false, doneAt: 0, status: '' };
+  return addRecord(rec).then(rid => {
+    rec._rid = rid; rec.id = rid;
+    const d = decorate(rec);
+    list.unshift(d);
+    return { kind: 'new', rec: d, back: null };
+  });
+}
+// 撤销一次 wakeNow：新建的那条删掉；覆盖过的那次把时间改回去（与 sleepUndo 同一份逻辑）
+function wakeUndo(res) {
+  if (!res || !res.rec) return Promise.resolve();
+  const r = res.rec;
+  if (res.kind === 'new') {
+    const list = G.records || [];
+    const i = list.indexOf(r);
+    if (i >= 0) list.splice(i, 1);
+    return deleteRecord(r).catch(() => {});
+  }
+  const b = res.back || {};
+  Object.assign(r, { ts: b.ts, t: b.t, txt: b.t });
+  return updateRecord(Object.assign({}, r, { ts: b.ts, t: b.t, txt: b.t })).catch(() => {});
+}
+// 删掉某一天的起床记录（时间线里的长按删除）；返回删除前的副本，便于需要时撤销
+function wakeRemove(rec) {
+  if (!rec) return Promise.resolve(null);
+  const list = G.records || [];
+  const i = list.indexOf(rec);
+  const copy = Object.assign({}, rec);
+  if (i >= 0) list.splice(i, 1);
+  return deleteRecord(rec).then(() => copy).catch(() => { if (i >= 0) list.splice(i, 0, rec); return null; });
+}
+// 起床那天的叫法：按**自然日**差算（起在哪个日历日就说哪天），不用夜键
+function wakeDayLabel(ts) {
+  const ago = date.agoOf(ts);
+  if (ago <= 0) return '今早';
+  if (ago === 1) return '昨天';
+  const d = new Date(ts || Date.now());
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+/* 起床统计：结构与 sleepStats 对齐（平均 → 基准点前/后多少天 → 最早/最晚），
+   只是基准点是清晨的钟点（默认 6 点），在「钟表轴」上直接比较。
+   返回：nights 逐日明细（新→旧）/ days 记了多少天 / anchorTxt 基准点说法 /
+        before·after 基准点前·后各多少天 / beforePct 占比 / avgTxt 平均起床 /
+        early·late 最早·最晚的一次 */
+function wakeStats(recs, opts) {
+  const o = opts || {};
+  const startTs = o.startTs != null ? o.startTs : null;
+  const byKey = {};
+  (recs || []).forEach(r => {
+    if (!r || r.m !== 'wake' || !r.ts) return;
+    const k = sleepNightKey(r.ts);
+    if (startTs != null && k < startTs) return;
+    const old = byKey[k];
+    if (!old || r.ts > old.ts) byKey[k] = r;
+  });
+  const keys = Object.keys(byKey).map(Number).sort((a, b) => b - a);
+  const EDGE = getAnchor('wake');
+  const AT = anchorTxt(EDGE);
+  const nights = keys.map(k => {
+    const r = byKey[k], off = wakeMin(r.ts);
+    const df = off - EDGE;
+    return {
+      key: k, id: r.id, ts: r.ts, off,
+      t: minTxt(off),
+      after: off >= EDGE,                                  // 基准点之后（含正好那一分）
+      d: wakeDayLabel(r.ts),
+      rel: df === 0 ? '正好' + atSp(AT) + AT : AT + atSp(AT) + (df > 0 ? '后 ' : '前 ') + gapTxt(Math.abs(df))
+    };
+  });
+  const nums = nights.map(n => n.off);
+  const before = nums.filter(v => v < EDGE).length;
+  const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+  return {
+    nights,
+    days: nights.length,
+    anchorTxt: AT,
+    before, after: nights.length - before,
+    beforePct: nights.length ? Math.round(before / nights.length * 100) : 0,
+    avgTxt: nums.length ? minTxt(Math.round(avg)) : '',
     earlyTxt: nums.length ? minTxt(Math.min.apply(null, nums)) : '',
     lateTxt: nums.length ? minTxt(Math.max.apply(null, nums)) : ''
   };
@@ -336,9 +525,9 @@ const FIELDS = {
     { g: 'obsDeg', single: true, noInput: true, sub: true },
     { free: 'obsfeel', label: '', ph: '有什么想抒发的？', ta: true },
     { g: 'genWant', single: true },
-    // 「具体的描述」：与「想记的是」解耦，逻辑与可做那套一致（只填它时它本身就是「事」）。
+    // 「具体的描述」：与「想记的是」解耦（主项可归类、描述不可归类），可留空。
     // 固定放最后一位，导出/导入的按顺序对齐不受影响
-    { free: 'desc', label: '', ph: '也可以直接写「事」；选了上面就是补充', ta: true, asMain: true }
+    { free: 'desc', label: '', ph: '再补一句也行，可不填', ta: true }
   ] },
   want: { main: 'wantItem', items: [
     { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },
@@ -354,10 +543,10 @@ const FIELDS = {
     { free: 'doneGain', label: '收获', ph: '这次有什么收获，随便写', ta: true },
     // 「为什么不做了」仅点「放弃」或编辑「不做」记录时显示（由 index 编辑态按状态过滤）
     { free: 'abandonWhy', label: '为什么不做了', ph: '为什么不想做了？随便写', ta: true },
-    // 「具体的描述」：与「什么事」解耦（事可归类、描述不可归类）。固定放最后一位，导出/导入顺序不变。
-    // asMain：可做允许「只填这一个框」——那时这段文字本身就是「事」（见 index 的 doSave）；
-    // 觉察 / 无感没有这个标记，因为那边的「归类」只从选项池点选
-    { free: 'desc', label: '', ph: '也可以直接写「事」；选了上面就是补充', ta: true, asMain: true }
+    // 「具体的描述」：与「什么事」解耦（事可归类、描述不可归类），可留空。
+    // 固定放最后一位，导出/导入顺序不变。
+    // 「什么事」与觉察的「归类」同一口径：**必须从选项池点选**，描述不顶替主项（见 index 的 doSave）
+    { free: 'desc', label: '', ph: '再补一句也行，可不填', ta: true }
   ] },
   /* 待办（备忘 / 购物 合并后）：类别 + 一句话。
      类别（todoKind）默认 备忘 / 购物，可在「✎ 管理」里加新类别；
@@ -375,9 +564,12 @@ const FIELDS = {
   jot:  { main: 'jotItem',  items: [
     { g: 'jotKind', single: true, noInput: true, required: true }
   ] },
-  /* 今日：主项=手填「今日印象」（todayItem 池为空，纯手填），细节只有一个电池档位（必选）。
+  /* 今日：**主项＝剩余电量**（todayBat，5 格能量条，必选其一；池为空、纯档位），
+     附属＝手填「电量说明」那句话（todayItem 池为空，纯手填，可不写）。
+     注：存储上 txt 仍是「电量说明」那句话——它是唯一有文字的字段，导出/导入要靠它非空；
+     「主项」说的是**展示口径**（行里电量格在上、文字在下），见 index 的 recVM 与 copyRec。
      一日一记的行为（当天已记 → 直接载入编辑）在 index 的 onTag / doSave 里做，
-     展示不走细节行——看页把它拼在日期行旁（look 的 grp.today），复制在 pageBase.copyRec 特判 */
+     看页把它拼在日期行旁（look 的 grp.today） */
   today: { main: 'todayItem', items: [
     { g: 'todayBat', single: true, noInput: true }
   ] }
@@ -1708,6 +1900,19 @@ const G = {
 /* ---------------- 启动加载 ---------------- */
 let _loading = false;
 let _loadFail = false;
+/* 「首次取数完成」的订阅口。冷启动时数据是异步来的（app.js 已经在拉，但要点时间），
+   在这之前读 G.records 只会拿到空列表 —— 顶部「起 / 睡」胶囊就踩过这个：开程序时
+   明明这一夜已经记过，「起」却是空心，切一次 tab 才补上。
+   用法：store.onLoaded(fn)。已经加载完（或已经订阅过、这轮稍后完成）都会回调**一次**，
+   回调后订阅即作废（不会每次加载都重复触发）。取数失败不会回调——
+   下次重试成功时同样会补上（订阅留着，直到真的成功）。
+   订阅方抛错不该把「取数成功」变成失败，所以这里逐个 try 住。 */
+const _loadedCbs = [];
+function onLoaded(fn) {
+  if (typeof fn !== 'function') return;
+  if (G.loaded) { fn(); return; }
+  _loadedCbs.push(fn);
+}
 // 返回 true = 数据就绪，false = 这一轮没拉到（云环境没开 / 网络问题）。
 // 以前失败只在 catch 里重置 _loading，页面拿不到任何信号：记页永远停在骨架屏、看页整屏空白；
 // 而且「排在后面的那些调用」会一直轮询 G.loaded 也永远等不到（失败不置 loaded）——现在一并给个结果
@@ -1739,7 +1944,13 @@ function ensureAll() {
       .then(() => migrateObsKind())
       .then(() => migrateJotKind())
       .then(() => migrateTodoRecords());
-  }).then(() => { _loading = false; _loadFail = false; return true; })
+  }).then(() => {
+    _loading = false; _loadFail = false;
+    // 首次就绪：通知订阅方（顶部「起 / 睡」胶囊重算一次），订阅随即作废
+    const cbs = _loadedCbs.splice(0, _loadedCbs.length);
+    cbs.forEach(fn => { try { fn(); } catch (e) { log.warn('store.onLoaded', e); } });
+    return true;
+  })
     .catch(() => { _loading = false; _loadFail = true; return false; });
 }
 
@@ -1770,11 +1981,13 @@ function reload(opts) {
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, syncWindowBg,
   BATTERIES, batName, batValOf, batLevel,
-  isQuiet, sleepNightKey, sleepMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove, SLEEP_EDGE,
+  isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
+  getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
+  slotTaken, moveRec,
   dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, migrateTodoRecords, takeRenameMap,
   isDefault, addDelDef, clearDelDef, markOptCustom,
-  loadDims, saveDims, loadGreets, saveGreets, ensureAll, reload, regDim, unregDim,
+  loadDims, saveDims, loadGreets, saveGreets, ensureAll, onLoaded, reload, regDim, unregDim,
   globalData: G
 };

@@ -81,6 +81,20 @@
       </view>
       <view class="qc-hint">从「待办类别 + 随记类别」里选，最多 {{quickMax}} 个（面板里多了会自动换行）。新增类别去记页相应维度的「✎ 管理」。</view>
 
+      <!-- 作息：统计的基准点。「睡」按它算多少夜在它之后 / 之前入睡（默认 0 点），
+           「起」按它算多少个早上在它之前 / 之后起（默认 6 点）。时分都能改（原生时间选择器）。
+           本地存储（与主题同一套做法），改完「作息」页下次 onShow 整页重算 -->
+      <view class="sect-t" style="margin-top:18px">作息</view>
+      <view class="srow">
+        <view class="sl">「睡」的基准点</view>
+        <picker mode="time" value="{{slAnchor}}" bindchange="onSlAnchor"><view class="sv">{{slAnchor}} ▸</view></picker>
+      </view>
+      <view class="srow">
+        <view class="sl">「起」的基准点</view>
+        <picker mode="time" value="{{wkAnchor}}" bindchange="onWkAnchor"><view class="sv">{{wkAnchor}} ▸</view></picker>
+      </view>
+      <view class="qc-hint">「作息」页按这两条线算：多少个夜在「睡」的基准点之后才睡、多少个早上在「起」的基准点之前起来。改成 23:00 / 08:00，统计与趋势图里那条中线都跟着重算（夜本身仍按中午 12:00 分）。</view>
+
       <!-- 数据 -->
       <view class="sect-t" style="margin-top:18px">数据</view>
       <view class="srow"><view class="sl">导出全部记录</view><view class="sr" bindtap="onExport">复制</view></view>

@@ -52,8 +52,9 @@ Component({
       { pagePath: '/pages/index/index', text: '记', icon: '✎' },
       { pagePath: '/pages/look/look', text: '看', icon: '☰' },
       { pagePath: '/pages/review/review', text: '回看', icon: '◎' },
-      // 「睡」排在回看与设置之间（与 app.json 的 tabBar.list 同序，selected 索引不能错位）
-      { pagePath: '/pages/sleep/sleep', text: '睡', icon: '☾' },
+      // 「作息」排在回看与设置之间（与 app.json 的 tabBar.list 同序，selected 索引不能错位）。
+      // 图标 ◐＝半个亮半个暗：一页里装着「起 / 睡」两半，昼夜各半正好是这个 tab 的意思
+      { pagePath: '/pages/sleep/sleep', text: '作息', icon: '◐' },
       { pagePath: '/pages/set/set', text: '设置', icon: '⚙' }
     ],
     // 快捷记（「＋」球）：点球就在原地弹条，不跳页；长按球才进清单页
