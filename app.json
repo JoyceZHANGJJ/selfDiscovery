@@ -21,8 +21,8 @@
     "list": [
       { "pagePath": "pages/index/index", "text": "记" },
       { "pagePath": "pages/look/look", "text": "看" },
-      { "pagePath": "pages/review/review", "text": "回看" },
       { "pagePath": "pages/sleep/sleep", "text": "作息" },
+      { "pagePath": "pages/review/review", "text": "回看" },
       { "pagePath": "pages/set/set", "text": "设置" }
     ]
   },

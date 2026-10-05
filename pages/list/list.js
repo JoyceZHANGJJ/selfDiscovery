@@ -20,7 +20,7 @@ Page(pageBase({
     seg: 'all',            // 默认停在「全部」
     allKind: 'todo',       // 「全部」下的二级筛选：'todo'（默认）| 'jot'——同一时刻只显示一种，不上下叠着
     subs: [],              // 上面那行二级筛选的 chips（待办 / 随记）
-    segs: [],              // 一级筛选行（单行横向滚动）：全部 + 各待办类别 + 随记 + 各随记类别
+    segs: [],              // 一级筛选行（单行横向滚动）：全部 + 各待办类别 + 各随记类别（没有「随记」那一格，见 rebuild）
     segFade: false,        // 筛选行右侧是否还有内容（超出时给一点渐隐提示，与记卡维度行同一套）
     segFadeL: false,       // 左侧是否有内容没露出来（往回滚过就提示，见 _applySegFade）
     segInto: '',           // 当前选中的 chip：切段后把它滚进视野（滚出屏外的 tab 也看得见、够得着）
@@ -153,14 +153,15 @@ Page(pageBase({
       { k: 'jot', n: '随记', c: store.mcolor('jot'), on: this.data.allKind === 'jot' }
     ];
     // 一级筛选行（单行横向滚动，超出时给渐隐提示，与记卡维度行同一套）：
-    // 全部 + 各待办类别 + 随记 + 各随记类别——随记的类别直接排在待办类别后面；
+    // 全部 + 各待办类别 + 各随记类别——随记的类别直接排在待办类别后面。
+    // 这里**不再放「随记」这一格**：看全部随记统一走「全部 → 二级筛选 随记」，
+    // 免得两个入口（一级的「随记」与二级的「随记」）看着重复、切换后又不同步。
     // 点一个随记类别＝切到「随记」段并只看这一类。实时取选项池，加新类别后自动多一项
     const segs = [{ k: 'all', n: '全部', c: '', on: isAll }]
       .concat(store.getOPT('todoKind').map(v => {
         const k = todoSeg(v);
         return { k, n: v, c: store.catColor(v), on: seg === k };
       }))
-      .concat([{ k: 'jot', n: '随记', c: store.mcolor('jot'), on: isJot && this.data.jf === 'all' }])
       .concat((store.getOPT('jotKind') || []).map(v => ({
         k: 'j:' + v, n: v, c: store.jotColor(v), on: isJot && this.data.jf === v
       })));
@@ -237,7 +238,8 @@ Page(pageBase({
     });
   },
 
-  /* 筛选行：'all'（待办全部）/ 'k:<待办类别>' / 'jot'（随记全部）/ 'j:<随记类别>'（切到随记段并筛这一类） */
+  /* 筛选行：'all'（全部：下分待办 / 随记）/ 'k:<待办类别>' / 'j:<随记类别>'（切到随记段并筛这一类）。
+     一级不再排「随记全部」那一格——看全部随记走「全部」下的二级筛选（见 onAllKind） */
   onSeg(e) {
     if (this.guardEdit()) return;   // 就地编辑中：点 chip 切段也拦下（滑动那条见 stepDim）
     const k = e.currentTarget.dataset.s || 'all';

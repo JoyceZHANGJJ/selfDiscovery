@@ -12,8 +12,8 @@ const datePrefix = date.datePrefix;
 // 可选维度。无感 / 悦己已并入觉察（见 migrateNopeLikeIntoObs），不再是可选维度，
 // 只会在迁移完成前短暂地存在于历史数据里
 const MODULES = [
-  // 「今日」：一日一记，**主项是当天剩余电量**（5 格能量条，1 很低 … 5 满），
-  // 「电量说明」的那句话是**附属内容**（可不写）——记录行里电量格在上、那句话在下；
+  // 「今日」：一日一记，**主项是当天剩余能量**（5 格能量条，1 很低 … 5 满），
+  // 「能量说明」的那句话是**附属内容**（可不写）——记录行里能量格在上、那句话在下；
   // 放在第一个（用户一进记页最先看到），但默认选中维度仍是「觉察」（见 index 的 resetToInitial）；
   // 不进时间线行——内容显示在所在日期行的旁边（见 look 的 groupByDay / grp.today）
   { k: 'today', n: '今日', c: '#B08968' },
@@ -80,7 +80,7 @@ const GLABEL = {
   obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
   genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶',
   doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
-  todayItem: '电量说明', todayBat: '剩余电量'
+  todayItem: '能量说明', todayBat: '剩余能量'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
@@ -98,7 +98,7 @@ const OPTGROUPS = [
 
 /* 「今日」电池：纯图示档位（一日一记，必选其一）。
    值存档位 v（'0'..'4'），渲染时用内嵌 SVG（base64 data URI）现画——不依赖任何外部图片文件，
-   颜色取**当前主题**（外壳/空槽用文字色系、电量用 accent），所以切主题自动跟随。
+   颜色取**当前主题**（外壳/空槽用文字色系、能量用 accent），所以切主题自动跟随。
    这组档位不进选项池、不在「✎ 管理」里增删（FIELDS.today 直接引用 todayBat，存到 ext），
    所以编辑/展示都只认 BATTERIES，不认 OPT.todayBat（已留空）。
    BAT_EMOJI 是旧数据兼容：早期档位存的是 emoji，按同序映射回档位。 */
@@ -288,7 +288,9 @@ function sleepRemove(rec) {
   const i = list.indexOf(rec);
   const copy = Object.assign({}, rec);
   if (i >= 0) list.splice(i, 1);
-  return deleteRecord(rec).then(() => copy).catch(() => { if (i >= 0) list.splice(i, 0, rec); return null; });
+  // 删掉了＝这一夜可能从「已记」变回「没记」：告诉顶部胶囊重对一次（见 emitRecChange 的说明）
+  emitRecChange();
+  return deleteRecord(rec).then(() => copy).catch(() => { if (i >= 0) list.splice(i, 0, rec); emitRecChange(); return null; });
 }
 
 /* ---- 改一条作息记录的时刻（「作息」页时间线里行尾左滑「改」）----
@@ -308,6 +310,8 @@ function moveRec(rec, ts) {
   if (!rec || !ts) return Promise.resolve();
   const t = date.hhmm(ts);
   Object.assign(rec, { ts, t, txt: t });
+  // 改了时刻＝它可能从这一夜挪到那一夜（今晚的「已记」要灭掉），胶囊同样重对一次
+  emitRecChange();
   return updateRecord(rec).catch(() => {});
 }
 
@@ -427,7 +431,8 @@ function wakeRemove(rec) {
   const i = list.indexOf(rec);
   const copy = Object.assign({}, rec);
   if (i >= 0) list.splice(i, 1);
-  return deleteRecord(rec).then(() => copy).catch(() => { if (i >= 0) list.splice(i, 0, rec); return null; });
+  emitRecChange();   // 同上：删了「起」，胶囊的标记要跟着灭
+  return deleteRecord(rec).then(() => copy).catch(() => { if (i >= 0) list.splice(i, 0, rec); emitRecChange(); return null; });
 }
 // 起床那天的叫法：按**自然日**差算（起在哪个日历日就说哪天），不用夜键
 function wakeDayLabel(ts) {
@@ -531,10 +536,12 @@ const FIELDS = {
   ] },
   want: { main: 'wantItem', items: [
     { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },
-    // 「怎么做」：紧跟在分类下方，写打算怎么做（可跳过）。
+    // 「原因」（原「是什么让你想做」）：紧跟在分类下方，写是什么让你想做（可跳过）。
+    // 记录里那一栏也叫「原因」（见 COLMAP），创建与回看一个叫法。
     // 注意 srcList 是「按标签匹配」导入的，插在中间不会打乱旧文本的详情对齐
+    { free: 'trigger', label: '原因', ph: '刚看到别人晒成果，有点不甘心' },
+    // 「怎么做」挪到「原因」下面：先说清为什么想做，再写打算怎么做
     { free: 'howto', label: '怎么做', ph: '要怎么做？', ta: true },
-    { free: 'trigger', label: '是什么让你想做', ph: '刚看到别人晒成果，有点不甘心' },
     { free: 'hope', label: '希望最终变成什么样', ph: '变成每天稳定的习惯' },
     // 「进行中感受」仅在做中/点「开始」后显示（由 index 编辑态按状态过滤）
     { free: 'doingNote', label: '进行中感受', ph: '做的过程中冒出来的感受，随便写', ta: true },
@@ -564,10 +571,10 @@ const FIELDS = {
   jot:  { main: 'jotItem',  items: [
     { g: 'jotKind', single: true, noInput: true, required: true }
   ] },
-  /* 今日：**主项＝剩余电量**（todayBat，5 格能量条，必选其一；池为空、纯档位），
-     附属＝手填「电量说明」那句话（todayItem 池为空，纯手填，可不写）。
-     注：存储上 txt 仍是「电量说明」那句话——它是唯一有文字的字段，导出/导入要靠它非空；
-     「主项」说的是**展示口径**（行里电量格在上、文字在下），见 index 的 recVM 与 copyRec。
+  /* 今日：**主项＝剩余能量**（todayBat，5 格能量条，必选其一；池为空、纯档位），
+     附属＝手填「能量说明」那句话（todayItem 池为空，纯手填，可不写）。
+     注：存储上 txt 仍是「能量说明」那句话——它是唯一有文字的字段，导出/导入要靠它非空；
+     「主项」说的是**展示口径**（行里能量格在上、文字在下），见 index 的 recVM 与 copyRec。
      一日一记的行为（当天已记 → 直接载入编辑）在 index 的 onTag / doSave 里做，
      看页把它拼在日期行旁（look 的 grp.today） */
   today: { main: 'todayItem', items: [
@@ -654,13 +661,13 @@ const COLMAP = {
   obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
   'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:tasknote': '原因', 'free:memonote': '原因', 'free:buynote': '干什么用',
   'free:desc': '描述',
-  'free:trigger': '诱因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
+  'free:trigger': '原因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受',
   'free:howto': '怎么做',
-  todayBat: '剩余电量'
+  todayBat: '剩余能量'
 };
-const FALLBACK = { obs: '感受', want: '诱因', nope: '感受', now: '感受', like: '当时感受' };
+const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
 
 /* ---------------- 纯计算 ---------------- */
 function mname(k) {
@@ -1472,6 +1479,17 @@ function renameOption(g, ov, nv) {
   });
 }
 
+/* 一次性迁移写标记的统一口径（2026-10-05）：**跑过一次就写**，跑没跑完、有没有失败都写。
+   以前是「跑完才写」，而这类迁移改的是**值**（某个旧词），用户以后完全可以把那个词再加回来
+   （比如新加一个随记类别叫「想法」）——本地标记一丢（清缓存 / 换设备 / 开发者工具清数据），
+   下次启动就再跑一遍，把新加的词也改掉。「备忘 → 识己」那次就是这么反复重跑，
+   把之后新记的备忘一并并掉了（已作废删除，见下方说明）。
+   取舍：宁可留下没迁完的旧数据（旧词照旧显示），也不能反复改写用户的记录。
+   注：只适用于**按值改名**的迁移；migrateTasksToTodo / migrateNopeLikeIntoObs 是按「旧模块名」
+   （m='memo'/'buy'/'nope'/'like'）匹配的，新记录永远不会是这些值，重跑无害，
+   所以它们仍保留「没迁完下次接着迁」的写法。 */
+function markMigDone(key) { try { wx.setStorageSync(key, 1); } catch (e) {} }
+
 // 一次性迁移：分类「可做」→「可试」（2026-10 模块改名“可做”后避免与分类重名）
 // 步骤：① 翻页改所有 m='want' 且 wantKind=可做 的记录；② 选项池（云端+本地）重命名；③ 同步内存 G.records
 const MIG_WANTKIND_KEY = 'self_mig_wantkind_202610';
@@ -1517,10 +1535,12 @@ function migrateWantKind() {
             if (i >= 0 && r.ext[i] === '可做') r.ext[i] = '可试';
           }
         });
-        wx.setStorageSync(MIG_WANTKIND_KEY, 1);
+        markMigDone(MIG_WANTKIND_KEY);
         resolve(true);
       });
-    });
+    })
+      // 跑不完 / 失败也不再重试（口径见 markMigDone）：下次启动重跑会把新加回来的「可做」又改成「可试」
+      .catch(e => { console.warn('[mig] 可做分类改名未跑完（不再重试）：', e); markMigDone(MIG_WANTKIND_KEY); resolve(true); });
   });
 }
 
@@ -1550,10 +1570,15 @@ function migrateObsKind() {
         const es = r.extSrc || [], ex = r.ext || [];
         for (let i = 0; i < es.length; i++) if (es[i] === 'obsKind' && OBSKIND_RENAME[ex[i]]) ex[i] = OBSKIND_RENAME[ex[i]];
       });
-      wx.setStorageSync(MIG_OBSKIND_KEY, 1);
+      markMigDone(MIG_OBSKIND_KEY);
       console.log('[mig] 觉察「喜恶」改名：有趣→感兴趣 / 没兴趣→无感 / 不喜欢、厌恶→讨厌');
       resolve(true);
-    }).catch(e => { console.warn('[mig] 觉察喜恶改名失败（下次启动重试）：', e); resolve(false); });
+    }).catch(e => {
+      // 同上：失败也写标记，不再重试——重跑会把以后新加的「有趣 / 不喜欢」这些词又改掉
+      console.warn('[mig] 觉察喜恶改名未跑完（不再重试）：', e);
+      markMigDone(MIG_OBSKIND_KEY);
+      resolve(true);
+    });
   });
 }
 
@@ -1594,55 +1619,27 @@ function migrateJotKind() {
         const es = r.extSrc || [], ex = r.ext || [];
         for (let i = 0; i < es.length; i++) if (es[i] === 'jotKind' && ex[i] === JOTKIND_OV) ex[i] = JOTKIND_NV;
       });
-      wx.setStorageSync(MIG_JOTKIND_KEY, 1);
+      markMigDone(MIG_JOTKIND_KEY);
       console.log('[mig] 随记「类别」改名：想法 → 念头');
       resolve(true);
-    }).catch(e => { console.warn('[mig] 随记类别改名失败（下次启动重试）：', e); resolve(false); });
+    }).catch(e => {
+      // 同上：失败也写标记，不再重试——重跑会把以后新加的「想法」类别又改成「念头」
+      console.warn('[mig] 随记类别改名未跑完（不再重试）：', e);
+      markMigDone(MIG_JOTKIND_KEY);
+      resolve(true);
+    });
   });
 }
 
-/* 一次性迁移：把历史记录里类别是「备忘」的待办并到「识己」（2026-10）
-   **只改记录，两个类别都留着**：「识己」是本地用的主类别，但「备忘」以后还想用，
-   所以选项池里的「备忘」不能少（上一版曾误把它一起改掉，这里缺了就补回来）。
-   ・记录：走 renameInRecords（不像 renameOption，它不碰选项池），按 extSrc==='todoKind' 精确核对
-   ・补回「备忘」：与「✎ 管理」里新增一项同一套写法（顺序 + 云端 + 清删除标记 + 归用户自己管）
-   ・内存里已加载的记录同步改一遍，本会话不用刷新就能看到
-   ・目标类别「识己」不在池子里时不动记录（免得记录挂在不存在的类别上），只打日志 */
-const MIG_TODOREC_KEY = 'self_mig_todorec_202610';
-const TODOREC_OV = '备忘', TODOREC_NV = '识己';
+/* 已删除的一次性迁移：历史记录里类别是「备忘」的待办 → 「识己」（2026-10）。
+   **2026-10-05 停用并删掉**，原因：它只在本地 storage 里写一个标记（self_mig_todorec_202610）来防重跑，
+   而①清缓存 / 换设备 / 开发者工具「清数据缓存」都会让标记消失，②标记又只在 renameInRecords 跑完时才写，
+   ③「识己」不在选项池里时更是直接 return、压根不写标记——三种情况都会让它在之后的某次启动再跑一遍，
+   于是**那之后新记的「备忘」也被并到「识己」**（就是那个「偶发把备忘的待办改成识己」的问题，对不上操作所以难复现）。
+   「备忘」是还要继续用的类别（默认池里就有它），不再往「识己」并，所以这次迁移整体作废：
+   记录不再动，选项池也不再自动补（缺了就在「✎ 管理」里加一项，与加其它类别同一入口）。
+   教训：一次性迁移不能只靠「本地标记」，标记没写或丢了就会反复跑；宁可让旧数据留着，也不要反复改写用户的记录。 */
 /* 注：档位从 0..4 改成 1..5 后，老记录里 todayBat 存的仍是 0..4。数据量小，进「今日」的编辑态重新点一次能量条即可覆盖保存（走的还是原来那条 update），所以这里**不做一次性迁移**——老值1..4 与新值域完全重叠、运行时无法区分新老，任何自动换算都会把已经记对的记录也搞错。 */
-
-function migrateTodoRecords() {
-  return new Promise((resolve) => {
-    if (wx.getStorageSync(MIG_TODOREC_KEY)) { resolve(true); return; }
-    // ① 选项池里补回「备忘」（缺了才补）
-    if (G.OPT && G.OPT.todoKind && G.OPT.todoKind.indexOf(TODOREC_OV) < 0) {
-      G.OPT.todoKind.unshift(TODOREC_OV);
-      setOptOrder('todoKind', G.OPT.todoKind);
-      addOption('todoKind', TODOREC_OV);
-      if (isDefault('todoKind', TODOREC_OV)) clearDelDef('todoKind', TODOREC_OV);
-      markOptCustom('todoKind', G.OPT.todoKind);
-      console.log('[mig] 待办类别补回「备忘」（以后还能用它记）');
-    }
-    // ② 目标类别不在池子里就不动记录：宁可不改，也不要让记录挂到一个不存在的类别上
-    if ((getOPT('todoKind') || []).indexOf(TODOREC_NV) < 0) {
-      console.warn('[mig] 待办记录未合并：选项池里没有「' + TODOREC_NV + '」，先在「✎ 管理」里加上它');
-      resolve(true);
-      return;
-    }
-    // ③ 历史记录：备忘 → 识己（跑不完（量太大）就不写标记，下次启动接着跑）
-    renameInRecords('todoKind', TODOREC_OV, TODOREC_NV).then((ok) => {
-      (G.records || []).forEach(r => {
-        if (!isTask(r.m)) return;
-        const src = r.extSrc || [], ex = r.ext || [];
-        for (let i = 0; i < src.length; i++) if (src[i] === 'todoKind' && ex[i] === TODOREC_OV) ex[i] = TODOREC_NV;
-      });
-      if (ok) wx.setStorageSync(MIG_TODOREC_KEY, 1);
-      console.log('[mig] 待办记录并到「识己」：备忘 → 识己' + (ok ? '（类别都保留）' : '：未跑完，下次启动继续'));
-      resolve(true);
-    }).catch(e => { console.warn('[mig] 待办记录合并失败（下次启动重试）：', e); resolve(false); });
-  });
-}
 
 /* ---------------- 一次性迁移：无感 / 悦己 并入觉察（2026-10） ----------------
    选项池的合并已经固化进 OPT 常量（那两个组本身已删除），这里只做记录迁移：
@@ -1913,6 +1910,22 @@ function onLoaded(fn) {
   if (G.loaded) { fn(); return; }
   _loadedCbs.push(fn);
 }
+
+/* 「起 / 睡」记录被**别处**改动了的订阅口。
+   顶部那两个胶囊（components/theme-switcher）在每个页面各挂了一份实例，页面之间
+   没有互相通知的路子：作息页删掉 / 改掉一条，胶囊的「已记」标记还是旧的，
+   要切一次 tab（走组件的 pageLifetimes.show）才补上——看着就是「删了还亮着」。
+   所以谁改了这类记录就 emitRecChange() 一下，所有挂着的胶囊自己重对一次。
+   用法：const off = store.onRecChange(fn)；组件销毁时 off() 退订（避免泄漏）。 */
+const _recCbs = [];
+function onRecChange(fn) {
+  if (typeof fn !== 'function') return function () {};
+  _recCbs.push(fn);
+  return function () { const i = _recCbs.indexOf(fn); if (i >= 0) _recCbs.splice(i, 1); };
+}
+function emitRecChange() {
+  _recCbs.slice().forEach(fn => { try { fn(); } catch (e) { log.warn('store.onRecChange', e); } });
+}
 // 返回 true = 数据就绪，false = 这一轮没拉到（云环境没开 / 网络问题）。
 // 以前失败只在 catch 里重置 _loading，页面拿不到任何信号：记页永远停在骨架屏、看页整屏空白；
 // 而且「排在后面的那些调用」会一直轮询 G.loaded 也永远等不到（失败不置 loaded）——现在一并给个结果
@@ -1942,8 +1955,7 @@ function ensureAll() {
       .then(() => migrateTasksToTodo())
       // 喜恶改名放在「无感 / 悦己 并入觉察」之后：那一步会把旧词带进觉察，这里一并改掉
       .then(() => migrateObsKind())
-      .then(() => migrateJotKind())
-      .then(() => migrateTodoRecords());
+      .then(() => migrateJotKind());   // 备忘 → 识己 那次迁移已作废（见上方说明），不再调用
   }).then(() => {
     _loading = false; _loadFail = false;
     // 首次就绪：通知订阅方（顶部「起 / 睡」胶囊重算一次），订阅随即作废
@@ -1986,8 +1998,8 @@ module.exports = {
   slotTaken, moveRec,
   dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
-  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, migrateTodoRecords, takeRenameMap,
+  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,
-  loadDims, saveDims, loadGreets, saveGreets, ensureAll, onLoaded, reload, regDim, unregDim,
+  loadDims, saveDims, loadGreets, saveGreets, ensureAll, onLoaded, onRecChange, emitRecChange, reload, regDim, unregDim,
   globalData: G
 };

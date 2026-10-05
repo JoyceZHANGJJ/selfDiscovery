@@ -61,7 +61,7 @@ function periodOf(unit, offset) {
   return { start, end, label, rel, unit, offset };
 }
 
-// 电量趋势的一句话概述：平均档位 + 记了几天
+// 能量趋势的一句话概述：平均档位 + 记了几天
 function batTrendSum(vals, totalDays, unit) {
   if (!vals.length) return '';
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -76,7 +76,7 @@ Page(pageBase({
     offset: 0,
     curLabel: '', curRel: '', preText: '',
     kpis: [], dims: [], flow: [], tops: [], trend: [], trendSum: '',
-    // 剩余电量趋势（周 / 月）：has=本期有没有记过「今日」；pts=有值的点（n 档位、pct 横坐标%）
+    // 剩余能量趋势（周 / 月）：has=本期有没有记过「今日」；pts=有值的点（n 档位、pct 横坐标%）
     batTrend: { has: false, pts: [], avg: 0, sum: '' },
     // —— 全部：主题档案 ——
     docSort: 'n',        // n（最常出现）| recent（最近出现）
@@ -92,7 +92,7 @@ Page(pageBase({
   onShow() {
     this.ensureTheme();
     this.layoutBrand();
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: wx.getStorageSync('theme') || 'mint' });
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, theme: wx.getStorageSync('theme') || 'mint' });
     store.ensureAll().then(ok => {
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       this.setData({ ready: true });
@@ -315,6 +315,9 @@ Page(pageBase({
     };
     const tops = [];
     store.MODULES.filter(m => !m.quiet).forEach(m => {
+      // 「今日」不进「记得最多的」：它一日一记、主项是能量条，那句话只是附属（还经常不写），
+      // 按内容排只会冒出「（未填）×N」这种没信息量的行；能量看下面的「剩余能量」趋势，这里不重复
+      if (m.k === 'today') return;
       const items = store.isTask(m.k)
         ? topCat(c.filter(r => store.isTask(r.m)), r => store.taskCat(r), store.catColor)
         : (m.k === 'jot'
@@ -333,8 +336,8 @@ Page(pageBase({
     const act = arr.filter(n => n).length;
     const trendSum = act ? ('有记录 ' + act + ' 天 · 最多一天 ' + dmx + ' 条') : '本期还没有记录';
 
-    /* 剩余电量趋势：本期每天一条「今日」记录的电量（1..5），画成折线看走势。
-       没有的��子不补0、也不连线——断开更诚实（补0会画出「电量掉到 0」的假象）。
+    /* 剩余能量趋势：本期每天一条「今日」记录的能量（1..5），画成折线看走势。
+       没有的��子不补0、也不连线——断开更诚实（补0会画出「能量掉到 0」的假象）。
        单位与上面「本期每天」一致（周=7 天，月=28~31 天），x 轴按 index等分。 */
     const batOf = (r) => {
       if (!r || r.m !== 'today') return 0;

@@ -481,10 +481,10 @@ Page(pageBase({
     }
     const v = vm.baseVM(r);
     v.dt = dt;
-    // 「今日」一日一记：**电量格是主项、那句话是附属**（用户 2026-10-05 定的口径）——
-    // 电量单独提出来给行内画 5 格条（与记页只读摘要 / 看页卡片同一套 .tl-bar / .tl-cell），
-    // 并从细节行里摘掉（否则「剩余电量 1」会在下面再冒一次，而且露的是档位码不是名字）；
-    // 那句话不再占主项位，改由 wxml 放在下面的「电量说明」那一行（见 index.wxml）
+    // 「今日」一日一记：**能量格是主项、那句话是附属**（用户 2026-10-05 定的口径）——
+    // 能量单独提出来给行内画 5 格条（与记页只读摘要 / 看页卡片同一套 .tl-bar / .tl-cell），
+    // 并从细节行里摘掉（否则「剩余能量 1」会在下面再冒一次，而且露的是档位码不是名字）；
+    // 那句话不再占主项位，改由 wxml 放在下面的「能量说明」那一行（见 index.wxml）
     if (r.m === 'today') {
       const bi = (r.extSrc || []).indexOf('todayBat');
       const bv = bi >= 0 ? (r.ext || [])[bi] : '';
@@ -579,7 +579,7 @@ Page(pageBase({
       }
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
     });
-    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '一句话说明今天的电量 · 可不写' };
+    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '说说今天的能量使用情况吧～' };
     // 待办 / 随记 / 今日：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行。
     // 今日：电池（类别）摆在主输入框上方、印象（主输入框）在下方，无细节分割线（见 index.wxml 的 plain 分支）
     const plain = store.isTask(tag) || tag === 'jot' || tag === 'today';
@@ -981,7 +981,7 @@ Page(pageBase({
     rec.txt = (mainRaw || '').trim();
     // 主项（选项）是必填的那一半，下面那个「具体的描述」是可省的——**描述不顶替主项**：
     // 觉察 / 此刻（想记的是）/ 可做（什么事）一个口径，主项只能从选项池点选（旧记录里手填过的主项
-    // 会以临时 chip 排在选项最前，编辑时照旧能改能留）。今日是唯一例外：只选电量不写字也行。
+    // 会以临时 chip 排在选项最前，编辑时照旧能改能留）。今日是唯一例外：只选能量不写字也行。
     if (!rec.txt && this.st.tag !== 'today') {
       const descItem = f && (f.items || []).find(it => it.free === store.DESC_KEY);
       // 带「描述」的模块没有主输入框（主项只能点）→ 提示去点选项；其余模块提示写一句
@@ -989,9 +989,9 @@ Page(pageBase({
       wx.showToast({ title: ml ? '先选一个「' + ml + '」' : '先写点什么', icon: 'none' });
       return;
     }
-    // 今日：电量为必选
+    // 今日：能量为必选
     if (this.st.tag === 'today' && (!this.st.pick['todayBat'] || !this.st.pick['todayBat'].length)) {
-      wx.showToast({ title: '先选一下今天的电量', icon: 'none' });
+      wx.showToast({ title: '先选一下今天的能量', icon: 'none' });
       return;
     }
     // 今日一日一记：同一天只允许一条。
@@ -1108,11 +1108,27 @@ Page(pageBase({
     this.recompute();
   },
   onEditCancel() {
-    const locked = this.st.todayLocked;   // 编辑的是「今日已填」记录：取消回到锁定态，不丢当天那条
+    const rec = this.st.edit;
+    // 取消的是「今日」记录：按「今天到底记没记过」重新判定锁定态。
+    // 不只取 st.todayLocked——编辑也可能从别的页直接进来（最近列表的操作条「改」、看页的今日卡片），
+    // 那条路没走过 onTag（只有 onTag 会写 todayLocked），取消就会掉回新建态：
+    // 又能选一次剩余能量、再写一句，而今天其实已经记过了（保存时才不会重复，取消却露出空表单）。
+    // 这里与 afterSave 同一口径：今天有「今日」记录 → 回只读锁定态，显示已记的那条
+    const locked = (rec && rec.m === 'today') ? this._todayLockedNow(rec) : this.st.todayLocked;
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.ensureModuleDefaults();   // 取消编辑后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
+    this.st.todayLocked = locked;   // 与展示同步：接下来的判定（点 chip、切维度）都按这一份
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', todayLocked: locked });
     this.recompute();
+  },
+  /* 退出编辑（或保存）后「今日」该不该是只读锁定态：今天库里已有「今日」记录就包成只读视图，否则 null。
+     按**库里**那条取，不按编辑中那条——编辑时可能已经把日期改到别的天，而取消不该把未保存的改动当真 */
+  _todayLockedNow(rec) {
+    const start = date.dayStart(Date.now());
+    const end = start + date.DAY;
+    const dup = (app.globalData.records || []).find(r => r.m === 'today' && r.ts >= start && r.ts < end);
+    const r = dup || (rec && rec.m === 'today' && rec.ts >= start && rec.ts < end ? rec : null);
+    return r ? this._todayLockedOf(r) : null;
   },
 
   /* ---------------- 长按记录：复制这句话 ----------------

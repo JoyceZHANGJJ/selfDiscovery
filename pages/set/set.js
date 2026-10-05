@@ -49,7 +49,7 @@ Page(pageBase({
     // tabBar 的 hidden 跟着「有没有浮层」走，不能写死 false：
     // 从后台切回来也会走一次 onShow，写死就会把 tab 栏放出来、压住浮层底部的按钮（主题面板的「完成」）
     const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
-    // selected 按 app.json 的 tabBar.list 下标：记0 / 看1 / 回看2 / 作息3 / 设置4
+    // selected 按 app.json 的 tabBar.list 下标：记0 / 看1 / 作息2 / 回看3 / 设置4
     if (tb) tb.setData({ selected: 4, hidden: this._anyOverlay(), theme: wx.getStorageSync('theme') || 'mint' });
     this._rehideTabBar();   // 后台回来那一瞬间 tabBar 有自己的复位时序，过一拍再收一次
     this.buildThemeOpts();   // 主题表 / 当前 / 常用：右上圆点那边改过主题时，切回设置页要能看到最新的

@@ -54,11 +54,11 @@
 
         <!-- 「今日」已填：顶部只读摘要（内容禁填，点整块进编辑）。编辑态不显示。
              用 5 格能量条代替电池图形：一眼看出能量高低，也比小图更好点。
-             下方两组表单（plain 分支的剩余电量选择器、else 分支的电量说明+细节）都已隐藏，
+             下方两组表单（plain 分支的剩余能量选择器、else 分支的能量说明+细节）都已隐藏，
              内容由这一块全权代表，不重复占位 -->
         <view wx:if="{{tag==='today' && todayLocked && !editing}}" class="today-locked" bindtap="onTodayEdit">
           <view class="tl-row">
-            <text class="tl-lab">剩余电量</text>
+            <text class="tl-lab">剩余能量</text>
             <view class="tl-bar">
               <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-cell {{index<todayLocked.lv?'on':''}}"></view>
             </view>
@@ -66,21 +66,21 @@
             <text class="tl-when">{{todayLocked.d}}{{todayLocked.t}}</text>
           </view>
           <text wx:if="{{todayLocked.txt}}" class="tl-txt">{{todayLocked.txt}}</text>
-          <text wx:else class="tl-txt tl-none">今天还没写电量说明</text>
+          <text wx:else class="tl-txt tl-none">今天还没写能量说明</text>
         </view>
 
         <!-- 待办 / 随记：纯主输入框（不要主项标题）。
              类别（待办类别 todoKind / 随记类别 jotKind，可从 ✎ 管理 加新类别）摆在输入框**上方**：
              先定类别，再写内容；其余细节行（如待办的「原因」）仍在输入框下方 -->
         <!-- 待办 / 随记 / 今日已填的只读态：都不渲染下方表单。
-             「今日」已记过时，内容由上面那块只读摘要（能量条 + 电量说明）全权代表，
-             这里再显示一遍「剩余电量」选择器和禁用的输入框就是纯重复、还让人以为能改 -->
+             「今日」已记过时，内容由上面那块只读摘要（能量条 + 能量说明）全权代表，
+             这里再显示一遍「剩余能量」选择器和禁用的输入框就是纯重复、还让人以为能改 -->
         <block wx:if="{{composer.plain && !(tag==='today' && todayLocked && !editing)}}">
           <view wx:for="{{composer.catItems}}" wx:key="index" wx:for-item="it" class="extra cattop">
             <view class="qrow"><view class="ql">{{it.label}}</view><view wx:if="{{it.group!=='todayBat'}}" class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
             <view class="chips">
               <!-- 「今日」能量：与只读摘要同一套 5 格条（同一个 .tl-bar/.tl-cell 的视觉），只是这里可点。
-                   点第 N 格＝选 N 格电量（1 很低 / 2 低 / 3 一般 / 4 较高 / 5 满）。
+                   点第 N 格＝选 N 格能量（1 很低 / 2 低 / 3 一般 / 4 较高 / 5 满）。
                    未选时（新建）一格都不亮，必须自己点一下才算选过。
                    cur==当前档位，用 .cur 标出来，方便看清落在哪一格 -->
               <block wx:if="{{it.group==='todayBat'}}">
@@ -98,13 +98,17 @@
               </block>
             </view>
           </view>
-          <input class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{tag==='today' && todayLocked && !editing}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
+          <!-- 今日的「能量说明」：这句话写长了要能折行、跟着内容自己变高，所以用 textarea（auto-height）——
+               其余类别（备忘 / 购物 / 随记）仍是一行的 input：一句话就够，不需要换行。
+               注：textarea 没有键盘上的「完成」键（回车＝换行），保存走底部「记下 / 保存修改」 -->
+          <textarea wx:if="{{tag==='today'}}" class="big-in plain-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{todayLocked && !editing}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindinput="onMainInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
+          <input wx:else class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{tag==='today' && todayLocked && !editing}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
             <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
           </view>
         </block>
-        <!-- 今日已填且只读：这个分支（电量说明 / 细节·都可跳过）也一并藏掉。
+        <!-- 今日已填且只读：这个分支（能量说明 / 细节·都可跳过）也一并藏掉。
              内容和上方只读摘要完全重复，留着只是让人以为还能改 -->
         <block wx:elif="{{!(tag==='today' && todayLocked && !editing)}}">
         <view class="ehead"><view class="et">{{composer.mainLabel}}</view><view class="mg" data-g="{{composer.main}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
@@ -219,10 +223,10 @@
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
           <text class="mn" style="color:{{item.c}}">{{item.m}}</text>
           <text wx:if="{{item.doingDays}}" class="tag doing">第{{item.doingDays}}天</text>
-          <!-- 「今日」一日一记：**电量格是主项**（与记页只读摘要 / 看页卡片同一套 5 格条），
-               那句话是附属内容、挪到下面「电量说明」那一行（见下面的 .dt） -->
+          <!-- 「今日」一日一记：**能量格是主项**（与记页只读摘要 / 看页卡片同一套 5 格条），
+               那句话是附属内容、挪到下面「能量说明」那一行（见下面的 .dt） -->
           <view wx:if="{{item.bat}}" class="tvw">
-            <text class="tl-lab">剩余电量</text>
+            <text class="tl-lab">剩余能量</text>
             <view class="tl-bar">
               <!-- wx:for-item="c" 必须写：这一层嵌在 recent 的循环里，
                    不改名的话内层会把外层的 item 顶掉，item.bat.lv 就取不到了（格子全不亮） -->
@@ -233,9 +237,9 @@
           <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           <text wx:else class="tw">{{item.d}}{{item.t}}</text>
         </view>
-        <!-- 「今日」：附属内容＝电量说明那句话（没写就不占这一行——只留电量格是正常的） -->
+        <!-- 「今日」：附属内容＝能量说明那句话（没写就不占这一行——只留能量格是正常的） -->
         <view wx:if="{{item.bat}}" class="dt">
-          <text wx:if="{{item.txt}}" class="it"><text class="k">电量说明</text>{{item.txt}}</text>
+          <text wx:if="{{item.txt}}" class="it"><text class="k">能量说明</text>{{item.txt}}</text>
         </view>
         <view wx:elif="{{!item.task}}" class="dt">
           <text wx:for="{{item.dt}}" wx:for-item="d" wx:key="index" class="it"><text class="k" wx:if="{{d.lbl}}">{{d.lbl}}</text>{{d.v}}</text>

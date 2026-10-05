@@ -78,7 +78,7 @@ function pageBase(extra) {
       if (!r) return;
       let txt = '';
       if (r.m === 'today') {
-        // 「今日」一日一记：与时间线日期旁同一文案——剩余<档位名>·电量说明
+        // 「今日」一日一记：与时间线日期旁同一文案——剩余<档位名>·能量说明
         // 剪贴板放不了图片，电池用档位文字名（空/低/中/高/满）
         const bi = (r.extSrc || []).indexOf('todayBat');
         const bat = bi >= 0 ? store.batName((r.ext || [])[bi] || '') : '';

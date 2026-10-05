@@ -48,7 +48,7 @@
            走 .sumline 轻量行；其余维度仍用 .bars（有构成图，卡片是合理的） -->
       <view wx:if="{{stats.onlySum}}" class="sumline">共 <b>{{stats.total}}</b> 条{{filterName}}</view>
       <view wx:elif="{{!stats.hide}}" class="bars">
-        <view class="sect-t" style="margin:0 0 8px">统计 · {{filter==='all'?'全部':filterName}}</view>
+        <view class="sect-t" style="margin:0 0 8px">统计 · {{statName}}</view>
         <view wx:if="{{stats.all}}" class="st-sum">共 <b>{{stats.total}}</b> 条</view>
         <view wx:else class="st-sum">{{stats.lead}}</view>
         <view wx:for="{{stats.bars}}" wx:key="n" class="barrow">
@@ -112,7 +112,7 @@
           <!-- 日期行：只放日期本身。「今日」的电池 + 印象另起一块（见下面 .todaycard）——
                挤在日期后面时电池偏大、印象又总被截断，所以独立成块，信息完整可读 -->
           <view class="daylab">{{grp.day}}</view>
-          <!-- 「今日」一日一记：与记页同一套视觉——左侧主题色细竖线 +「剩余电量」能量条 + 电量说明。
+          <!-- 「今日」一日一记：与记页同一套视觉——左侧主题色细竖线 +「剩余能量」能量条 + 能量说明。
                手势与下面的时间线行一致：左滑进记页改这一条（onRowSwipe → editInCard），
                点一下出操作条（onTodayTap）。所以需要 grp.today.id / .ts / .m 才能查回记录 -->
           <view wx:if="{{grp.today}}" class="todaycard {{sel===grp.today.id?'sel':''}}"
@@ -120,7 +120,7 @@
                 catchtap="onTodayTap"
                 bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
             <view class="tl-row">
-              <text class="tl-lab">剩余电量</text>
+              <text class="tl-lab">剩余能量</text>
               <view class="tl-bar">
                 <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-cell {{index<grp.today.lv?'on':''}}"></view>
               </view>
@@ -128,7 +128,7 @@
               <text class="tl-when">{{grp.today.d}}{{grp.today.t}}</text>
             </view>
             <text wx:if="{{grp.today.txt}}" class="todaycard-txt">{{grp.today.txt}}</text>
-            <text wx:else class="todaycard-txt is-none">今天还没写电量说明</text>
+            <text wx:else class="todaycard-txt is-none">今天还没写能量说明</text>
           </view>
           <!-- 手势：点一下出操作条 / 左滑进记卡改 / 长按复制（行内横滑优先，见 onRowTouchend） -->
           <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{r.desc?'has-desc':''}} {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">

@@ -242,10 +242,14 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .it:last-child { margin-right: 0; }
 .k { color: var(--ink3); margin-right: 5px; font-size: 11.5px; }
 /* 备忘 / 购物 / 随记 / 今日：主输入框。
-   34px 太扁，写「电量说明」这类稍长的话就一行到底、看着挤——加高到 44px，
+   34px 太扁，写「能量说明」这类稍长的话就一行到底、看着挤——加高到 44px，
    文字仍垂直居中，多出来的空间让人知道这里能写点东西 */
 .plain-in { margin-top: 4px; height: 44px; min-height: 44px; line-height: 44px; padding: 0 12px; font-size: 14.5px; }
 .plain-in:first-child { margin-top: 0; }
+/* 今日的「能量说明」是 textarea（auto-height）：height 必须交给 auto，
+   写死 44px 会把自动变高压回一行（折行了也看不见）；min-height 保留原来的 44px 观感，
+   文字改为多行行高 + 上下留白（21 + 11×2 = 44，空着时和以前一模一样） */
+textarea.plain-in { height: auto; min-height: 44px; line-height: 21px; padding: 11px 12px; }
 
 /* 自由文本框（感受 / 原因 / 补充…）：从 34px 加高到 44px。
    这些框 auto-height，写多了会自己变高，起步高度只影响「空着时」的那一瞥。

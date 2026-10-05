@@ -103,9 +103,9 @@
           </view>
         </view>
 
-        <!-- 剩余电量趋势：本期每天一条「今日」的电量（1..5）画折线。没记过的日子断开不补0 -->
+        <!-- 剩余能量趋势：本期每天一条「今日」的能量（1..5）画折线。没记过的日子断开不补0 -->
         <view wx:if="{{batTrend.has}}" class="bars">
-          <view class="sect-t" style="margin:0 0 4px">剩余电量</view>
+          <view class="sect-t" style="margin:0 0 4px">剩余能量</view>
           <view class="btrend">
             <!-- 横向参考线：1 / 3 / 5 档（0.2 / 0.6 / 1.0） -->
             <view class="bt-g"><view class="bt-gline" style="bottom:20%"></view><view class="bt-gline" style="bottom:60%"></view><view class="bt-gline bt-gtop" style="bottom:100%"></view></view>

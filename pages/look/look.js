@@ -12,6 +12,7 @@ Page(pageBase({
     modules: [],
     filter: 'all',
     filterName: '全部',
+    statName: '全部',       // 统计块的标题（与 filterName 分家：随记不跟二级类别走，见 rebuild）
     stateFilter: 'all',
     q: '',
     // 觉察专用：喜恶筛选（喜欢 / 感兴趣 / 无感 / 讨厌，取选项池），与「可做」的流转状态筛选同一个位置
@@ -144,13 +145,15 @@ Page(pageBase({
     return Object.assign({}, stats, { pads });
   },
 
-  buildStats(filter, list, useClient) {
+  // rawList：没过二级类别筛的那一份（＝「全部」时的口径），只有随记的类别统计会用它
+  //（统计不跟二级类别走，理由见 loadStats 的 jot 分支）
+  buildStats(filter, list, useClient, rawList) {
     // 待办（备忘 / 购物）不展示统计，只在下面清单里看
     if (filter === 'todo') return { hide: true };
     // 「今日」一日一记：只报总数，不画条形/占比——一条维度线、分不出「构成」，
     // 硬凑一张图反而是噪音。onlySum 让 wxml 藏掉「统计 · 今日」标题，只留「共 N 条」
     if (filter === 'today') return { all: true, onlySum: true, total: list.length, bars: [], pads: [] };
-    if (useClient) return this.buildStatsFromList(filter, list);
+    if (useClient) return this.buildStatsFromList(filter, list, rawList);
     const stat = this.data.stat || {};
     // 「可做」维度：统计各流转状态（未做 / 在做 / 做了 / 不做）
     if (filter === 'want') {
@@ -196,7 +199,7 @@ Page(pageBase({
   },
 
   // 客户端统计（搜索态专用：list 是搜索后的全量结果）
-  buildStatsFromList(filter, list) {
+  buildStatsFromList(filter, list, rawList) {
     if (filter === 'want') {
       const cnt = { todo: 0, doing: 0, done: 0, abandon: 0 };
       list.forEach(r => {
@@ -216,12 +219,14 @@ Page(pageBase({
       const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
       return { all: false, title: '可做 · 流转', lead: `共 ${list.length} 条`, bars, extra: '' };
     }
-    // 「随记」：与 buildStats 同一套（搜索态就在客户端数各类别的条数）
+    // 「随记」：与 buildStats 同一套（搜索态就在客户端数各类别的条数），
+    // 同样不跟二级类别走——用没过类别筛的那份（rawList），跟「全部」时一个数字
     if (filter === 'jot') {
+      const src = rawList || list;
       const cats = store.getOPT('jotKind') || [];
       const byCat = {};
-      list.forEach(r => { const c = store.jotCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
-      return this.jotStatsVM(byCat, list.length);
+      src.forEach(r => { const c = store.jotCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
+      return this.jotStatsVM(byCat, src.length);
     }
     // 「全部」统计不计备忘/购物、也不计「睡」（静默维度，只有它的 tab 里统计）
     const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m) && !store.isQuiet(r.m)) : list;
@@ -329,7 +334,7 @@ Page(pageBase({
       if (tr) {
         const bi = (tr.extSrc || []).indexOf('todayBat');
         const bv = bi >= 0 ? (tr.ext || [])[bi] || '' : '';
-        // 「今日」电量：与记页同一套能量条（wxml 的 .tl-bar/.tl-cell），lv=点亮几格（1..5）
+        // 「今日」能量：与记页同一套能量条（wxml 的 .tl-bar/.tl-cell），lv=点亮几格（1..5）
         // id/m 一并带上：今日块也要能左滑进记页改、能点出操作条（靠 id 查回记录）
         g.today = {
           id: tr.id != null ? tr.id : tr._rid, m: tr.m,
@@ -339,17 +344,24 @@ Page(pageBase({
       }
       return g;
     });
-    const stats = this._padStats(this.buildStats(effM, list, !!q), effM);
+    // all＝本屏已加载的全部（模块 / 时间范围 / 搜索词都过了，但**没过二级类别筛**）——
+    // 随记的统计要的就是这一份，换类别时数字才和「全部」时一样（见 buildStatsFromList）
+    const stats = this._padStats(this.buildStats(effM, list, !!q, all), effM);
     // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别时，标题也带上它——
     // 避免列表筛过了、标题却说整个模块
     const kn = (['obs', 'todo', 'jot'].indexOf(effM) >= 0 && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
+    const filterName = effM === 'all' ? '全部' : (store.mname(effM) + kn);
+    // 统计块的标题与列表标题分家：**随记不跟二级类别走**（换类别时统计本来就是整模块的口径，
+    // 数字不变，标题也不该从「统计 · 随记」变成「统计 · 随记 · 念头」——看着像换了另一份统计）。
+    // 觉察的喜恶是另一回事：它的统计确实落在筛过的那批上，跟着写才对得上线上的列表
+    const statName = effM === 'all' ? '全部' : (effM === 'jot' ? store.mname(effM) : filterName);
     this.setData({
       modules: this.modulesVM(),
       // 子筛选取项池：觉察是「喜恶」，待办是「类别」，随记是「类别」——
       // 用户在选项管理里增删后这里自动跟上
       kinds: effM === 'todo' ? store.getOPT('todoKind')
         : (effM === 'jot' ? store.getOPT('jotKind') : store.getOPT('obsKind')),
-      filterName: effM === 'all' ? '全部' : (store.mname(effM) + kn),
+      filterName, statName,
       days: groups,
       tasks: this.buildTasks(tasks),
       empty: groups.length === 0 && tasks.length === 0,
@@ -529,12 +541,13 @@ Page(pageBase({
       return;
     }
     // 随记：按类别数数量（类别取自选项池，可增删）——和待办一样只看数量，不做文本 Top。
-    // 已经筛了某个类别时，数量也落在同一个筛选里（与觉察的喜恶同一套口径）
+    // **统计不跟二级类别走**：换类别时这块数字要跟「全部」时一模一样。
+    // 统计本身就是「各类别各多少条」，再被当前类别筛一遍＝只剩自己那一行、总数也缩到那一条，
+    // 看着就像数字丢了（觉察的喜恶是另一回事：它不是类别分布，跟着筛才对得上线上的列表）
     if (f === 'jot') {
       const cats = store.getOPT('jotKind') || [];
-      const base = this.data.kindFilter !== 'all' ? [this.data.kindFilter] : null;
-      const jobs = cats.map(c => store.countRecords({ m: 'jot', startTs, extTags: base ? base.concat([c]) : [c] }));
-      jobs.push(store.countRecords({ m: 'jot', startTs, extTags: base }));   // 最后一个＝总数（各类别之和可能漏掉未分类的）
+      const jobs = cats.map(c => store.countRecords({ m: 'jot', startTs, extTags: [c] }));
+      jobs.push(store.countRecords({ m: 'jot', startTs }));   // 最后一个＝总数（各类别之和可能漏掉未分类的）
       Promise.all(jobs).then(arr => {
         const total = arr[arr.length - 1] || 0;
         const byCat = {};

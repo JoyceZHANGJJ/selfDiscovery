@@ -57,7 +57,7 @@ Page(pageBase({
     this.ensureTheme();
     this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 3, theme: store.curTheme() });
+      this.getTabBar().setData({ selected: 2, theme: store.curTheme() });
     }
     this._setTabBar(!!this.data.ed);   // 编辑面板开着时（从后台回来）tab 栏要保持收起
     this._startClock();
@@ -126,12 +126,12 @@ Page(pageBase({
   },
 
   /* 趋势图：近 30 天每天一个点连成折线（睡按夜、起按天）。
-     · x 轴 = 30 个槽（没记的断开不连线——补值会画出「极早 / 极晚」的假象，与电量趋势同一口径）；
+     · x 轴 = 30 个槽（没记的断开不连线——补值会画出「极早 / 极晚」的假象，与能量趋势同一口径）；
      · 纵轴固定**钟表时刻**：睡 21:00 → 03:00（纵轴值按「从中午 12:00 起算」，跨 0 点接在后面）、
        起 05:00 → 13:00（直接是钟表分钟）；
      · 基准点（睡默认 0 点 / 起默认 6 点）在图上画成一条**加重的中线**：
        它的位置随设置挪，落在纵轴范围外时那条线不画（anchorPct = null）；
-     · 线段用 rotate 画（小程序没有 svg polyline，与电量趋势同一套最省的办法）；
+     · 线段用 rotate 画（小程序没有 svg polyline，与能量趋势同一套最省的办法）；
      · 只在「近 30 天」给：「全部」的点太长，挤成一团读不出走势。
        nights 是倒序（新→旧），这里按时间正序（旧→新）铺 x 轴 */
   buildTrend(nights, isSleep) {

@@ -78,7 +78,7 @@
 .topi .tt { flex: 1; min-width: 0; word-break: break-word; }
 .topi .tn { color: var(--ink3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
-/* ================= 剩余电量趋势（周 / 月） =================
+/* ================= 剩余能量趋势（周 / 月） =================
    折线用「绝对定位的细条 + rotate」画：小程序 wxml 没有 svg polyline，这样最省。
    几何（起点 left/bottom、长度 rpx、倾角 deg）全部由 review.js 的 buildPeriod 算好。 */
 .btrend { position: relative; height: 72px; margin-top: 12px; }

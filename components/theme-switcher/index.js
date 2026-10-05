@@ -39,8 +39,15 @@ Component({
       // 这里订阅「取数就绪」：已经就绪就立刻回调，还在路上就等它完成，回调后订阅作废。
       // 组件先于页面被销毁时（_dead）不再 setData
       store.onLoaded(() => { if (!this._dead) this.syncRec(); });
+      // 作息页删掉 / 改掉一条「起 / 睡」时，别处改的数据这边也要跟上（不然标记要到下一
+      // 次 onShow 才灭——表现就是「删了还亮着，重进才消除」）。见 store.emitRecChange
+      this._offRec = store.onRecChange(() => { if (!this._dead) this.syncRec(); });
     },
-    detached() { this._dead = true; }
+    detached() {
+      this._dead = true;
+      // 退订：每进一页都会挂一份新实例，不退订会把已销毁的实例越攒越多
+      if (this._offRec) { this._offRec(); this._offRec = null; }
+    }
   },
   pageLifetimes: {
     show() {

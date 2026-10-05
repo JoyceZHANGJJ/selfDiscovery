@@ -1,8 +1,17 @@
 .tsw {
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 8px;
   position: relative;
+  /* **实底胶囊**：这行是悬浮的，页面滚动时内容会从它底下穿过——透明的话字就从
+     「起 / 睡」的缝里钻出来（清单页的提示行 / 筛选行最明显）。给它一个与窗口同色
+     （var(--bg)）的实底 + 细边 + 轻投影，观感与右边原生胶囊一致，穿过的内容被挡住。
+     为什么不做整条顶栏遮罩：看 / 设置 / 复盘 / 作息页的内容起点就在胶囊这一行
+     （.body 的 padding-top 只留到状态栏下 12px），整栏遮住会把它们的第一行也盖掉；
+     实底只挡自己脚下，各页排版都不用动 */
+  background: var(--bg);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--line), 0 1px 4px rgba(0, 0, 0, .06);
 }
 /* 命中区补齐：圆点只有 22px → 撑到约 41px。
    **只向上 / 左右扩**（向下只扩 2px）：它在页面 DOM 的最后、绘制在最上层，

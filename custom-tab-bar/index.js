@@ -51,10 +51,11 @@ Component({
     list: [
       { pagePath: '/pages/index/index', text: '记', icon: '✎' },
       { pagePath: '/pages/look/look', text: '看', icon: '☰' },
-      { pagePath: '/pages/review/review', text: '回看', icon: '◎' },
-      // 「作息」排在回看与设置之间（与 app.json 的 tabBar.list 同序，selected 索引不能错位）。
+      // 「作息」排在「看」与「回看」之间（与 app.json 的 tabBar.list 同序，selected 索引不能错位）：
+      // 记 / 看 / 作息 是每天都要看的（作息一天两回：起床、入睡），回看是周 / 月的复盘，往后放。
       // 图标 ◐＝半个亮半个暗：一页里装着「起 / 睡」两半，昼夜各半正好是这个 tab 的意思
       { pagePath: '/pages/sleep/sleep', text: '作息', icon: '◐' },
+      { pagePath: '/pages/review/review', text: '回看', icon: '◎' },
       { pagePath: '/pages/set/set', text: '设置', icon: '⚙' }
     ],
     // 快捷记（「＋」球）：点球就在原地弹条，不跳页；长按球才进清单页
@@ -201,7 +202,20 @@ Component({
       wx.navigateTo({ url: '/pages/list/list' });
     },
 
+    /* 收掉当前页自己的浮层（记录操作条 / 删除撤销条）：两套浮层互不知情，
+       面板弹开时页面收不到这次点击（球在遮罩之上），操作条会留在原地——
+       「任何一个失焦都收起」的心智要求它们互斥。各页收浮层的入口：
+       记 / 看 / 回看是 clearFloats()，清单页是 onBodyTap()（同一件事，名字没统一） */
+    closePageFloats() {
+      const pages = getCurrentPages();
+      const page = pages[pages.length - 1];
+      if (!page) return;
+      if (typeof page.clearFloats === 'function') page.clearFloats();
+      else if (typeof page.onBodyTap === 'function') page.onBodyTap();
+    },
+
     openQa() {
+      this.closePageFloats();   // 先收掉页面的操作条 / 撤销条，别和面板叠在一起
       this._qaStopUndoTimer();
       // 不重置 qaTxt：上一次没写完的草稿要继续能写（只有主动收起才清，见 closeQa）
       // 也**不自动聚焦**：弹键盘会顶动页面、打断正在看的内容；要输的时候点一下输入框就够了
