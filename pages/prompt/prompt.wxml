@@ -62,7 +62,8 @@
 
       <!-- 历史 -->
       <view class="sect-t" style="margin-top:18px">历史试跑 <text style="font-weight:400;color:var(--ink3);font-size:11.5px">（留着对比哪一版更好）</text></view>
-      <view wx:if="{{list.length===0}}" class="qhint">还没有试跑记录。</view>
+      <view wx:if="{{listErr}}" class="err">历史读不到：{{listErr}}</view>
+      <view wx:elif="{{list.length===0}}" class="qhint">还没有试跑记录。</view>
       <view wx:for="{{list}}" wx:key="_id" wx:for-item="a" wx:for-index="i"
             class="hrow {{detailIdx===i?'open':''}}" data-i="{{i}}" bindtap="onItemTap">
         <view class="hr-l">

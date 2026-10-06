@@ -1007,7 +1007,9 @@ exports.main = async (event) => {
   if (event && event.action === 'ptestList') {
     if (!openid) return { error: 'no openid' };
     const q = ptestCol().where({ openid });
-    const list = (event.type ? q.where({ type: event.type }) : q)
+    // ⚠️ 这里必须 await：.get() 返回 Promise，漏了 await 时list.data 恒为 undefined，
+    // 会被下面的 `|| []` 兜成空数组 → 库里明明有记录，页面却永远显示「还没有试跑记录」。
+    const list = await (event.type ? q.where({ type: event.type }) : q)
       .orderBy('createdAt', 'desc').limit(50).get();
     // 列表只要摘要：结果正文很大，全量回传既慢又撑爆小程序的数据量
     return {

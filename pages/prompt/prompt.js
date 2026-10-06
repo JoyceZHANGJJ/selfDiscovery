@@ -70,6 +70,7 @@ Page(pageBase({
     lastResult: null,     // 本次跑出来的 { nodes, meta }
     errText: '',
     list: [],             // 历史试跑（摘要）
+    listErr: '',          // 历史列表读不到时的真实原因（别把失败显示成「没有记录」）
     detail: null,         // 展开看的那一条（含完整结果）
     detailIdx: -1
   },
@@ -147,9 +148,10 @@ Page(pageBase({
   loadList() {
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'ptestList' } })
       .then(res => {
-        this.setData({ list: (res.result && res.result.list) || [] });
+        const r = res.result || {};
+        this.setData({ list: (r.list || []), listErr: r.error || '' });
       })
-      .catch(() => { /* 集合还没建 / 网络问题：历史留空，不阻断试跑 */ });
+      .catch(() => { this.setData({ listErr: '调用失败（网络或云函数报错）' }); });
   },
 
   onItemTap(e) {
