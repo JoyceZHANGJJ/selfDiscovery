@@ -212,7 +212,7 @@ Page(pageBase({
     // 这一下已经按成长按删除（确认框弹出来了）→ 手指抬起时的移动不再算「改时刻」，
     // 但起点要吃掉：否则整页那次 end 会拿它去切段（框还在上面就切了页）
     if (this._rowLong) { this._rowLong = false; swipe.end(this, e); return; }
-    if (edge && ds.id != null && swipe.dir(this, e) === 'left') {
+    if (edge && ds.id != null && swipe.rowLeft(this, e)) {
       swipe.end(this, e);   // 这一下归行内：吃掉起点，整页那次 end 就什么也拿不到
       const r = (app.globalData.records || []).find(x => x.id === ds.id);
       if (r) this.openEd(r);

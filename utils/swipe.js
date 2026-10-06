@@ -7,8 +7,16 @@
 const MIN_DX = 45;   // 横向至少滑动这么多像素才算
 const RATIO = 1.3;   // 横向位移至少要达到纵向位移的这个倍数
 // 行内左滑的「起手区」宽度（px）：只有从行尾这一小段起手的横滑才判给行内（改这一条），
-// 其余横滑留给上层（切 最近/待办/已完成、切维度）——行铺满屏幕，不这样分层上层就没法触发
-const EDGE_W = 88;
+// 其余横滑留给上层（切 最近/待办/已完成、切维度）——行铺满屏幕，不这样分层上层就没法触发。
+// 88 → 56 → 72：收到 56 后「改这一条」基本触发不出来（手指常落在离右边 60~80 的地方），
+// 放宽回 72（约屏宽 19%），配合下面的距离门槛一起区分
+const EDGE_W = 72;
+// 行级动作（左滑改这一条 / 改时刻）的额外门槛：比切 tab 划得更远。
+// 光靠收窄起手区不够——切 tab 与改这一条都是「往左滑」，同一个门槛必然打架；
+// 短促一挥（<56px）＝切 tab，慢慢划过一段（≥56px）＝改这一条。
+// 平整度不再另设一档（与页面级同为 1.3）：手指天然带点纵向偏移，1.6 太挑手势
+const ROW_MIN_DX = 56;
+const ROW_RATIO = 1.3;
 
 function start(ctx, e) {
   const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
@@ -17,14 +25,16 @@ function start(ctx, e) {
   ctx._swY = t.clientY;
 }
 
-// 只算方向、不动起点：行内滑动要「先看一眼是不是自己的，不是就原样留给上层」时用
-function dir(ctx, e) {
+// 只算方向、不动起点：行内滑动要「先看一眼是不是自己的，不是就原样留给上层」时用。
+// minDx / ratio 可覆盖（行级动作走 ROW_* 那一档，见 rowLeft）
+function dir(ctx, e, minDx, ratio) {
   if (ctx._swX == null) return '';
   // e 允许缺省（如代码里「兜底再试一次」的调用）：没有坐标就当没滑
   const t = e && ((e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]));
   if (!t) return '';
   const dx = t.clientX - ctx._swX, dy = t.clientY - ctx._swY;
-  if (Math.abs(dx) < MIN_DX || Math.abs(dx) < Math.abs(dy) * RATIO) return '';
+  const md = minDx == null ? MIN_DX : minDx, rt = ratio == null ? RATIO : ratio;
+  if (Math.abs(dx) < md || Math.abs(dx) < Math.abs(dy) * rt) return '';
   return dx < 0 ? 'left' : 'right';
 }
 
@@ -34,6 +44,10 @@ function end(ctx, e) {
   ctx._swX = ctx._swY = null;
   return d;
 }
+
+// 行级动作（左滑改这一条 / 改时刻）：够远够平的左滑才算，判成自己的再调 end 吃掉起点。
+// 没达到这一档的横滑原样留给上层（切 tab），不再被行内吃掉
+function rowLeft(ctx, e) { return dir(ctx, e, ROW_MIN_DX, ROW_RATIO) === 'left'; }
 
 // 这次触摸的起点 x（视口坐标：页面级滚动下横向不滚，clientX 就是行内位置）
 function touchX(e) {
@@ -48,4 +62,4 @@ function winW() {
 // 起点是否落在「行尾」那一小段（行尾起手才把横滑判给行内）
 function atEdge(e) { const x = touchX(e); return x != null && x >= winW() - EDGE_W; }
 
-module.exports = { start, end, dir, atEdge, EDGE_W };
+module.exports = { start, end, dir, rowLeft, atEdge, EDGE_W, ROW_MIN_DX, ROW_RATIO };

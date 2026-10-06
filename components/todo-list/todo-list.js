@@ -67,9 +67,11 @@ Component({
     onTouchStart(e) { this._rowEdge = swipe.atEdge(e); swipe.start(this, e); },
     onTouchCancel() { this._swX = null; this._swY = null; this.triggerEvent('touchend'); },
     onTouchEnd(e) {
-      const d = swipe.end(this, e);
-      // 左滑＝就地改，属于「管理」动作：只有行尾起手算，概览态（看页）也不派发
-      if (d === 'left' && this._rowEdge && this.data.manage) {
+      // 左滑＝就地改，属于「管理」动作：只有行尾起手算，概览态（看页）也不派发。
+      // 门槛比切 tab 高一档（swipe.rowLeft：划得更远更平），短促一挥归页面切 tab
+      const row = this.data.manage && this._rowEdge && swipe.rowLeft(this, e);
+      swipe.end(this, e);
+      if (row) {
         this.triggerEvent('swipeleft', { id: e.currentTarget.dataset.id });
         return;
       }

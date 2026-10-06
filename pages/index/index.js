@@ -736,6 +736,9 @@ Page(pageBase({
   onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
   stepDim(dir) {
     if (this.data.editing) return;   // 编辑态不切维度（与 onTag 的守卫一致）
+    // 记卡已经填了 / 选了内容：切维度会把整块内容清掉（onTag 会重置 st），
+    // 而滑动是「不小心就划一下」的手势，所以这里拦下并提示——点维度标签是明确意图，不受影响
+    if (this._composerDirty()) { this.tipDirty(); return; }
     const mods = this.data.modules || this.modulesVM();
     const i = mods.findIndex(m => m.k === this.st.tag);
     if (i < 0) return;
@@ -895,6 +898,43 @@ Page(pageBase({
   tipSaveFirst() {
     if (wx.hideToast) wx.hideToast();
     wx.showToast({ title: '请先保存修改或取消', icon: 'none', duration: 800 });
+  },
+
+  /* 记卡里是否已经有「用户填的 / 选的」内容。
+     自动补的默认值不算：进 可做 / 待办 / 随记 / 觉察 时会替你把 分类 / 类别 / 怎么开始的
+     选上第一个（见 ensureModuleDefaults），那是系统选的不是你选的——算进去的话，
+     一进这些维度就永远切不动了。 */
+  _composerDirty() {
+    const s = this.st;
+    if ((s.main || '').trim()) return true;
+    if (s.mainPick) return true;
+    const def = this._defaultPicks();
+    const pk = s.pick || {};
+    for (const g in pk) {
+      const arr = pk[g] || [];
+      if (!arr.length) continue;
+      if (def[g] != null && arr.length === 1 && String(arr[0]) === String(def[g])) continue;  // 只是默认值
+      return true;
+    }
+    const td = s.typed || {};
+    for (const g in td) if ((td[g] || '').trim()) return true;
+    const fr = s.free || {};
+    for (const k in fr) if ((fr[k] || '').trim()) return true;
+    return false;
+  },
+  // 各维度自动补上的那一个选项（「不算用户选的」的白名单）
+  _defaultPicks() {
+    const t = this.st.tag, d = {};
+    if (t === 'want' && store.wantKindDefault) d.wantKind = (store.wantKindDefault() || [])[0];
+    if (t === 'todo' && store.todoKindDefault) d.todoKind = (store.todoKindDefault() || [])[0];
+    if (t === 'jot' && store.jotKindDefault) d.jotKind = (store.jotKindDefault() || [])[0];
+    if (t === 'obs' && store.obsStartDefault) d.obsStart = (store.obsStartDefault() || [])[0];
+    return d;
+  },
+  // 记卡里有内容时不切维度（切了整块内容就没了，且没有撤销），提示先处理掉
+  tipDirty() {
+    if (wx.hideToast) wx.hideToast();
+    wx.showToast({ title: '记卡里有内容，先记下再切', icon: 'none', duration: 1000 });
   },
 
   // 主题切换在编辑态被锁：提示先处理当前编辑（与页面内其它无效操作一致）
@@ -1196,7 +1236,9 @@ Page(pageBase({
     this._openQ(id, txt, true);
   },
 
-  /* 最近里的行级手势。**只有「行尾起手 + 向左滑」才算行内动作**（改这一条）：
+  /* 最近里的行级手势。**只有「行尾起手 + 向左滑（且划得比切 tab 更远更平）」才算行内动作**（改这一条）：
+     两道门槛都在 utils/swipe.js（EDGE_W 收窄到 56、rowLeft 要 72px 且更平）——
+     改这一条与切 tab 都是往左滑，同门槛必然打架，所以让改更「刻意」一点。
      行铺满整个列表区，若把行上所有横滑都收走，「切 最近/待办/已完成」就没法触发了。
      判成行内时才调 swipe.end 吃掉起点（列表区那次 end 就什么也拿不到）；其余情况原样不动，
      交给列表区切三段 / 根节点切维度。纵向滑动照旧交给页面滚动（swipe 只认横向明显更大的那下） */
@@ -1205,7 +1247,7 @@ Page(pageBase({
   onRowTouchend(e) {
     const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
     const edge = this._rowEdge; this._rowEdge = false;
-    if (edge && ds.id != null && swipe.dir(this, e) === 'left') {
+    if (edge && ds.id != null && swipe.rowLeft(this, e)) {
       swipe.end(this, e);   // 这一下归行内：吃掉起点，上层那两次 end 就什么也拿不到
       const r = (app.globalData.records || []).find(x => x.id === ds.id);
       if (r && !this.guardEdit()) {

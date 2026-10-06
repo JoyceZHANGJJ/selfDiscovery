@@ -493,7 +493,7 @@ Page(pageBase({
   onRowTouchend(e) {
     const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
     const edge = this._rowEdge; this._rowEdge = false;
-    if (edge && ds.id != null && swipe.dir(this, e) === 'left') {
+    if (edge && ds.id != null && swipe.rowLeft(this, e)) {
       swipe.end(this, e);   // 这一下归行内：吃掉起点，根节点那一次 end 就什么也拿不到
       this.onRowSwipe({ detail: { id: ds.id } });
       return;
