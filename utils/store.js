@@ -59,6 +59,9 @@ const OPT = {
   wantKind: ['想做', '可试', '喜欢'],
   // 待办：类别（备忘 / 购物，可在「✎ 管理」里加新类别）；主项就是记事本身，不进选项池
   todoKind: ['备忘', '购物'],
+  // 待办：优先级（紧急 / 重要 四象限，见下方 PRIO_*）。顺序即轻重（前＝先做），
+  // 末位「不紧急不重要」是默认档——默认那档在列表里不显示标记，只有真正挑过的才显眼
+  todoPrio: ['紧急重要', '重要不紧急', '紧急不重要', '不紧急不重要'],
   // 随记：类别（念头 / 灵感，可在「✎ 管理」里加新类别）。默认「念头」，
   // 与待办类别同一套：只从选项池点选、摆在主输入框上方
   jotKind: ['念头', '灵感'],
@@ -79,7 +82,7 @@ const OPT = {
 const GLABEL = {
   obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
   genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶',
-  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
+  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', todoPrio: '优先级', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
   todayItem: '能量说明', todayBat: '剩余能量'
 };
 
@@ -92,7 +95,7 @@ const OPTGROUPS = [
   // 此刻不再列 genFeel：情绪 / 程度整块复用觉察的 obsMood / obsDeg，选项在觉察的「✎ 管理」里维护
   { m: 'now', gs: ['genDoing', 'genWant'] },
   { m: 'want', gs: ['wantItem', 'wantKind'] },
-  { m: 'todo', gs: ['todoKind'] },
+  { m: 'todo', gs: ['todoKind', 'todoPrio'] },
   { m: 'jot', gs: ['jotKind'] }
 ];
 
@@ -560,6 +563,12 @@ const FIELDS = {
      「原因」合并了原先 备忘的「原因」与 购物的「干什么用」（迁移时统一成 free:tasknote） */
   todo: { main: 'todoItem', items: [
     { g: 'todoKind', single: true, noInput: true, required: true },
+    // 「优先级」紧跟类别：先定是什么（类别），再定多紧要。四象限按「紧急 / 重要」两轴分，
+    // 顺序由重到轻，默认落在末位「不紧急不重要」（见 PRIO_DEFAULT）——
+    // 只有真正挑过的档位才在列表里显示标记，默认档不显示，免得每行都挂一个标签。
+    // hideDetail：行尾已经有色点 + 文字，详情区不再重复一行（与类别同一口径）。
+    // 插在中间不影响旧记录：导入按标签匹配（见 srcList），不按位置
+    { g: 'todoPrio', single: true, noInput: true, hideDetail: true },
     { free: 'tasknote', label: '原因', ph: '为什么记这条？可不填', ta: true },
     // 「放弃原因」仅点「放弃」或编辑「已放弃」记录时显示（由 index 编辑态按状态过滤，
     // 与可做那边同一个键名 free:abandonWhy，保存/恢复/导出的处理都复用同一套）
@@ -665,7 +674,7 @@ const COLMAP = {
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受',
   'free:howto': '怎么做',
-  todayBat: '剩余能量'
+  todayBat: '剩余能量', todoPrio: '优先级'
 };
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
 
@@ -925,6 +934,35 @@ function decorate(r) {
 // 待办型记录（备忘 / 购物 已合并为 todo；memo / buy 只用于兼容迁移前的老数据）
 function isTask(m) { return m === 'todo' || m === 'memo' || m === 'buy'; }
 
+/* 待办的「优先级」：紧急 / 重要 四象限（艾森豪威尔）。
+   ・默认档＝「不紧急不重要」：新建待办不点也有值（和类别一样是必选组），
+     但**默认档在列表里不显示标记**——显示出来就是每行都挂一个标签，等于没筛出信息。
+   ・颜色取 CAT_PALETTE 里的低饱和色（与类别色同源，不用高亮红绿，免得整页都在报警）：
+     紧急重要＝最重、重要不紧急＝该安排、紧急不重要＝多是别人的急事。
+   ・四象限的词可以在「✎ 管理」里改；改完颜色仍按**名字**认，改名后落到兜底色。 */
+const PRIO_DEFAULT = '不紧急不重要';
+const PRIO_COLORS = { '紧急重要': '#B4544E', '重要不紧急': '#C08552', '紧急不重要': '#6E8CB0' };
+// 列表里要不要显示这一档的标记：默认档（不紧急不重要）不显示，没值也不显示
+function prioShow(v) { return !!v && v !== PRIO_DEFAULT; }
+function prioColor(v) {
+  if (!v) return mcolor('todo');
+  return PRIO_COLORS[v] || (getOPT('todoPrio').indexOf(v) >= 0 ? mcolor('todo') : '#8A8F94');
+}
+// 默认优先级：优先锁定值「不紧急不重要」（不随选项顺序变化），池子里没有就退末位
+function todoPrioDefault() {
+  const k = getOPT('todoPrio');
+  const def = k.indexOf(PRIO_DEFAULT) >= 0 ? PRIO_DEFAULT : (k[k.length - 1] || PRIO_DEFAULT);
+  return [def];
+}
+// 某条待办的优先级：取 ext 里的 todoPrio（与 taskCat / jotCat / wantCat 同一套写法）。
+// 老记录与「＋」球快捷创建的那批没有这一格，返回空串＝按默认档处理（列表不显示标记）
+function taskPrio(r) {
+  if (!r) return '';
+  const es = r.extSrc || [], ex = r.ext || [];
+  const i = es.indexOf('todoPrio');
+  return i >= 0 ? (ex[i] || '') : '';
+}
+
 // 待办的「类别」：新记录取 ext 里的 todoKind；迁移前的老记录按原模块兜底。
 //
 // 「类别色」是与「维度色」分开的另一族，两边不重复（维度色见 MODULES：
@@ -969,7 +1007,6 @@ function jotCat(r) {
   const i = es.indexOf('jotKind');
   return i >= 0 ? (ex[i] || '') : '';
 }
-
 // 可做的「分类」：取 ext 里的 wantKind（与 jotCat / taskCat 同一套写法）。
 // 看页的「可做」二级筛选要用它——分类存在 ext 里，值取自选项池 wantKind
 function wantCat(r) {
@@ -2006,7 +2043,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, PRIO_DEFAULT, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

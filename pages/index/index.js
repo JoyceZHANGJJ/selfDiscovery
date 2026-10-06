@@ -8,7 +8,8 @@ const app = getApp();
 
 // 「有默认值」的选项组：见 ensureModuleDefaults——这几个组进入对应维度时会自动补一个默认值，
 // 既然有默认值就不该被点空（再点已选中的那一个＝什么也没发生，保持必选）
-const REQUIRED_PICK = { wantKind: 1, todoKind: 1, jotKind: 1, obsStart: 1, todayBat: 1 };
+// 待办的「优先级」也在内：它与类别一样有默认值，不该被点空（参见 PRIO_DEFAULT）
+const REQUIRED_PICK = { wantKind: 1, todoKind: 1, todoPrio: 1, jotKind: 1, obsStart: 1, todayBat: 1 };
 
 function nowStr() {
   const d = new Date();
@@ -927,6 +928,7 @@ Page(pageBase({
     const t = this.st.tag, d = {};
     if (t === 'want' && store.wantKindDefault) d.wantKind = (store.wantKindDefault() || [])[0];
     if (t === 'todo' && store.todoKindDefault) d.todoKind = (store.todoKindDefault() || [])[0];
+    if (t === 'todo' && store.todoPrioDefault) d.todoPrio = (store.todoPrioDefault() || [])[0];
     if (t === 'jot' && store.jotKindDefault) d.jotKind = (store.jotKindDefault() || [])[0];
     if (t === 'obs' && store.obsStartDefault) d.obsStart = (store.obsStartDefault() || [])[0];
     return d;
@@ -1107,6 +1109,8 @@ Page(pageBase({
     const t = tag || this.st.tag;
     if (t === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
     if (t === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
+    // 优先级默认「不紧急不重要」：新建待办不点也有值，但列表里不显示标记（见 store.prioShow）
+    if (t === 'todo' && !this.st.pick['todoPrio']) this.st.pick['todoPrio'] = store.todoPrioDefault();
     if (t === 'jot' && !this.st.pick['jotKind']) this.st.pick['jotKind'] = store.jotKindDefault();
     if (t === 'obs' && !this.st.pick['obsStart']) this.st.pick['obsStart'] = store.obsStartDefault();
   },

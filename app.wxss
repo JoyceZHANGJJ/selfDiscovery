@@ -222,6 +222,17 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 维度名（觉察/无感…）：11px 下 700 在手机上不够明显，提到 800（与问候/小节标题同级强调）；
    标题折成两行时别跟着首行基线吊在上边——独立垂直居中（与勾选框一致） */
 .rec .mn { font-size: 11px; font-weight: 800; align-self: center; }
+/* 待办行的优先级：小色点 + 文字（紧急 / 重要 四象限）。色点用 currentColor——
+   颜色按档位由行数据给（见 store.prioColor），所以只写一处就能整条跟着变；
+   默认档「不紧急不重要」与老记录都不渲染这一格（见 vm.js 的 pn），不能每行都挂标签 */
+.rec .prio {
+  font-size: 11px; font-weight: 700; color: var(--ink3);
+  align-self: center; flex-shrink: 0; display: inline-flex; align-items: center;
+}
+.rec .prio::before {
+  content: ''; width: 6px; height: 6px; border-radius: 99px;
+  background: currentColor; margin-right: 4px; flex-shrink: 0;
+}
 /* 事件项（主内容）加重：用 700 而不是 600——手机端中文字体常缺 600 这一档，
    WebView 不合成中间字重时会回落到 400，导致加重看不出来；700 各端都能稳定渲染 */
 .rec .tv { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); word-break: break-all; line-height: 1.5; }

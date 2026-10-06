@@ -26,6 +26,7 @@
         <view class="hd">
           <view class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onCheck" aria-role="checkbox" aria-checked="{{item.done}}" aria-label="标记完成"></view>
           <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
+          <text class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}">{{item.pn}}</text>
           <text class="tv">{{item.txt}}</text>
           <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
         </view>
@@ -50,6 +51,7 @@
           <view class="hd">
             <view class="ck on" data-id="{{item.id}}" catchtap="onCheck" aria-role="checkbox" aria-checked="{{true}}" aria-label="取消完成"></view>
             <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
+            <text class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}">{{item.pn}}</text>
             <text class="tv">{{item.txt}}</text>
             <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
           </view>
@@ -76,6 +78,7 @@
             <!-- 圈里画 × 且不可点：完成要走操作条里的「恢复」，不是直接勾掉 -->
             <view class="ck" aria-label="已放弃"></view>
             <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
+            <text class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}">{{item.pn}}</text>
             <text class="tv">{{item.txt}}</text>
             <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
           </view>

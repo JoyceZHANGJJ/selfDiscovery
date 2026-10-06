@@ -7,6 +7,10 @@ const store = require('./store.js');
 // 注：dt（细节行）、doingDays、dur 等各页按需再加，避免清单页为用不到的字段白算一遍
 function baseVM(r) {
   const task = store.isTask(r.m);
+  // 待办的优先级：只有「真正挑过的档」才有值（默认档「不紧急不重要」与老记录都不显示，
+  // 见 store.prioShow）——否则每一行都挂一个标签，等于没筛出信息。pc 是该档的色
+  const prio = task ? store.taskPrio(r) : '';
+  const showPrio = store.prioShow(prio);
   return {
     id: r.id,
     m: store.recMname(r),
@@ -23,7 +27,9 @@ function baseVM(r) {
     doneLabel: store.doneLabel(r.doneAt),
     reason: r.reason || '',
     usefor: r.usefor || '',
-    status: r.status || ''
+    status: r.status || '',
+    pn: showPrio ? prio : '',
+    pc: showPrio ? store.prioColor(prio) : ''
   };
 }
 
