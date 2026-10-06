@@ -985,6 +985,11 @@ Page(pageBase({
     // 保留流转相关字段（状态 / 开始时间 / 来源），避免编辑时被丢
     rec.status = er.status || '';
     rec.startedAt = startedAt;
+    // 计划完成 / 已推日历：记卡里没有这两格（改它们走行尾胶囊与左滑面板），
+    // 但保存后内存里那条会用 decorate 重建一次——不把原值搬过来就会被归 0，
+    // 行尾胶囊当场消失、得等下次刷新才回来
+    rec.dueTs = er.dueTs || 0;
+    rec.calTs = er.calTs || 0;
     // 「开始」流转进入：保存时才落「进行中感受」这一刻——状态置在做、开始时间记当前
     if (this.st.startMode) { rec.status = 'doing'; rec.startedAt = Date.now(); }
     // 「完成」流转进入：保存时才置「做了」并记录完成时间（默认现在）
@@ -1503,7 +1508,8 @@ Page(pageBase({
     this._stopDelTimer();
     const dump = u.dump;
     // 删除后撤销：忠实还原原记录，保留状态（未做/在做/做了/不做）、开始时间与放弃时间
-    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0, status: dump.status || '', startedAt: dump.startedAt || 0, abandonedAt: dump.abandonedAt || 0 };
+    // （计划完成 / 已推日历也在 dumps 里，一起还原，否则撤销后那道胶囊就没了）
+    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0, status: dump.status || '', startedAt: dump.startedAt || 0, abandonedAt: dump.abandonedAt || 0, dueTs: dump.dueTs || 0, calTs: dump.calTs || 0 };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       app.globalData.records.unshift(store.decorate(rec));

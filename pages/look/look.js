@@ -975,7 +975,8 @@ Page(pageBase({
       ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0,
       status: dump.status || '',
       startedAt: dump.startedAt || 0,
-      abandonedAt: dump.abandonedAt || 0
+      abandonedAt: dump.abandonedAt || 0,
+      dueTs: dump.dueTs || 0, calTs: dump.calTs || 0   // 计划完成 / 已推日历：撤销后照原样回来
     };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;

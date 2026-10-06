@@ -895,6 +895,24 @@ function taskTime(ts, t) {
   const md = (d.getMonth() + 1) + '月' + d.getDate() + '日';
   return d.getFullYear() === now.getFullYear() ? md : (d.getFullYear() + '年' + md);
 }
+/* 记录的「顶层字段」清单（m / t / txt / ext / extSrc / ts / done 这几个每条都有，不在此列）。
+   下面四处必须完全一致，所以不再各抄一遍，统一照这两份清单生成：
+     · decorate      云端 / 内存里的记录读回来，补默认值
+     · decorateDoc   云端**文档** -> 记录的唯一入口（冷启动、下拉刷新、翻页、迁移都走它）
+     · addRecord     新建写云
+     · updateRecord  改动写云
+   以前正是四处手抄，漏过一次：dueTs 写云带上了、decorateDoc 没带，
+   于是「每次重新打开，之前设的计划完成时间就没了」。加字段只改这一份清单。 */
+// 时间类：数值，0＝没有这一刻（0 不写云，读回来补 0）
+const TIME_FIELDS = [
+  'doneAt', 'startedAt', 'refTs', 'endTs', 'abandonedAt',
+  'dueTs',   // 计划完成（待办专用）：0＝没计划，是常态
+  'calTs'    // 最后一次「推到手机日历」（0＝没推过）：只作回显，小程序读不回系统日历
+];
+// 文本类：字符串，'' ＝没填
+const TEXT_FIELDS = ['status', 'ref', 'refTxt'];
+const EXTRA_FIELDS = TEXT_FIELDS.concat(TIME_FIELDS);   // 写云时按同一份清单带上
+
 // 给一条记录补上 ago / day
 function decorate(r) {
   const o = Object.assign({}, r);
@@ -904,15 +922,9 @@ function decorate(r) {
   o.tt = taskTime(o.ts, o.t);   // 待办行专用：今天＝时刻，非今天＝简洁日期
   o.extSrc = fixExtSrc(o.m, o.ext, o.extSrc);
   o.done = !!o.done;
-  o.doneAt = o.doneAt || 0;
-  o.status = r.status || '';
-  o.ref = r.ref || '';
-  o.refTxt = r.refTxt || '';
-  o.startedAt = r.startedAt || 0;
-  o.abandonedAt = r.abandonedAt || 0;
-  o.endTs = r.endTs || 0;
-  o.dueTs = r.dueTs || 0;   // 计划完成（待办专用）：0＝没计划，是常态
-  o.calTs = r.calTs || 0;   // 最后一次推到手机日历的时间（0＝没推过）；只作回显，见 pushToCal 的说明
+  // 顶层字段补默认（清单见上：改字段只需改那两行）
+  TEXT_FIELDS.forEach(f => { o[f] = r[f] || ''; });
+  TIME_FIELDS.forEach(f => { o[f] = r[f] || 0; });
   // 待办：类别（todoKind）+「原因」自由字段。
   // 「原因」合并了原先 备忘的「原因」与 购物的「干什么用」（旧的 two 个来源也一并兼容，供迁移前数据回显）
   o.cat = '';
@@ -1232,14 +1244,16 @@ function loadCfg(type) {
 
 // 记录按微信用户（_openid）隔离：云数据库默认「仅创建者可读写」，
 // 不同用户创建的文档彼此不可见，这里无需手动加 openid 过滤。
-// 文档 -> 装饰记录（与旧 loadRecords 的字段映射保持一致）
+// 文档 -> 装饰记录。**这是云端文档回到内存的唯一入口**（冷启动、下拉刷新、翻页、迁移都走它），
+// 顶层字段直接照上面的清单搬——漏带一个，那条数据就会「写进去了但重新打开就没」。
 function decorateDoc(d) {
-  return decorate({
+  const o = {
     id: d._id, _rid: d._id, m: d.m, t: d.t, txt: d.txt,
-    ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts,
-    done: !!d.done, doneAt: d.doneAt || 0,
-    status: d.status || '', ref: d.ref || '', refTxt: d.refTxt || '', startedAt: d.startedAt || 0, refTs: d.refTs || 0, endTs: d.endTs || 0, abandonedAt: d.abandonedAt || 0
-  });
+    ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, done: !!d.done
+  };
+  TEXT_FIELDS.forEach(f => { o[f] = d[f] || ''; });
+  TIME_FIELDS.forEach(f => { o[f] = d[f] || 0; });
+  return decorate(o);
 }
 // 组装查询条件：模块过滤 + 时间范围（startTs <= ts < before）+ 状态（仅 want 模块用）+ 细节值筛选
 // state: 'all'(未做+在做+做了+不做) / 'todo' / 'doing' / 'done' / 'abandon'
@@ -1371,32 +1385,17 @@ function countByTxt({ m = null, startTs = null, top = 8, extTags = null } = {}) 
 // opts.onFirstPage：渐进加载钩子，见 loadAllRecords
 function loadRecords(opts) { return loadAllRecords(opts || {}).then(list => list); }
 function addRecord(rec) {
-  const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0, createTime: db().serverDate() };
-  if (rec.status) data.status = rec.status;
-  if (rec.startedAt) data.startedAt = rec.startedAt;
-  if (rec.ref) data.ref = rec.ref;
-  if (rec.refTxt) data.refTxt = rec.refTxt;
-  if (rec.refTs) data.refTs = rec.refTs;
-  if (rec.endTs) data.endTs = rec.endTs;
-  if (rec.abandonedAt) data.abandonedAt = rec.abandonedAt;
-  if (rec.dueTs) data.dueTs = rec.dueTs;
-  if (rec.calTs) data.calTs = rec.calTs;
+  const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, createTime: db().serverDate() };
+  // 顶层字段照同一份清单带过去（0 / 空串不写：读回来会补默认，省一个字段）
+  EXTRA_FIELDS.forEach(f => { if (rec[f]) data[f] = rec[f]; });
   return recCol().add({ data }).then(res => res._id)
     .catch(e => { log.err('record.add', e, { m: rec.m, txt: rec.txt }); log.fail('没记上，请重试'); throw e; });
 }
 function updateRecord(rec) {
-  const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done, doneAt: rec.doneAt || 0 };
-  if (rec.status !== undefined) data.status = rec.status;
-  if (rec.startedAt !== undefined) data.startedAt = rec.startedAt;
-  if (rec.ref !== undefined) data.ref = rec.ref;
-  if (rec.refTxt !== undefined) data.refTxt = rec.refTxt;
-  if (rec.refTs !== undefined) data.refTs = rec.refTs;
-  if (rec.endTs !== undefined) data.endTs = rec.endTs;
-  if (rec.abandonedAt !== undefined) data.abandonedAt = rec.abandonedAt;
-  if (rec.dueTs !== undefined) data.dueTs = rec.dueTs;
-  // calTs：这条最后一次「推到手机日历」的时间戳（0＝没推过）。只用于回显，
-  // 小程序读不回系统日历（见 pushToCal），所以它只能说明「我推过」，不说明「日历里现在是这样」
-  if (rec.calTs !== undefined) data.calTs = rec.calTs;
+  const data = { m: rec.m, t: rec.t, txt: rec.txt, ext: rec.ext || [], extSrc: rec.extSrc || [], ts: rec.ts || Date.now(), done: !!rec.done };
+  // 单条编辑常只带一部分字段（如 left-swipe 只改 txt）：**没带的字段一律不动**，
+  // 所以这里用 !== undefined 判断，而不是像 addRecord 那样按真假值跳过
+  EXTRA_FIELDS.forEach(f => { if (rec[f] !== undefined) data[f] = rec[f]; });
   return recCol().doc(rec._rid).update({ data })
     .catch(e => { log.err('record.update', e, { m: rec.m, txt: rec.txt }); log.fail('没保存上，请重试'); throw e; });
 }

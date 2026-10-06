@@ -600,15 +600,19 @@ Page(pageBase({
   },
   /* _stopDelTimer / _startDelTimer 已收敛到 utils/pageBase.js */
 
-  /* 撤销删除：把记录原样加回来 */
+  /* 撤销删除：把记录原样加回来。
+     原来这里只还原了「那句话」，状态与几个时间字段全丢了——撤销一条「已放弃」的待办
+     会把它退回「未做」，定了计划时间的胶囊也一并消失。既然叫「撤销」，就照 dump 原样回来 */
   onUndoDel() {
     if (this.guardEdit()) return;
     const u = this.data.delUndo; if (!u) return;
     this._stopDelTimer();
     const d = u.dump;
     const rec = {
-      m: d.m, t: d.t, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts,
-      done: !!d.done, doneAt: d.doneAt || 0
+      m: d.m, t: d.t, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [],
+      ts: d.ts, done: !!d.done, doneAt: d.doneAt || 0,
+      status: d.status || '', startedAt: d.startedAt || 0, abandonedAt: d.abandonedAt || 0,
+      dueTs: d.dueTs || 0, calTs: d.calTs || 0
     };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
