@@ -164,6 +164,29 @@ const COMMON_RULES = [
   '输出严格 JSON（不要解释文字、不要代码块包裹）。'
 ].join('\n');
 
+// ---- AI 回看：两档提示词（对应用户给的参考提示词 A 完整版 / B 极简轻量版）----
+// 每日 / 每周 → 极简轻量版（快速预览，篇幅短）；每月 / 每年 → 完整版（深度复盘，适合精读）
+const REVIEW_RULES_LITE = [
+  '角色：日志复盘分析师。',
+  '任务：对日志做【日 / 周】回看，只抓模式与可落地动作；拒绝抒情、不流水复述原文。',
+  '【硬性】禁止空话套话：不许写「调整心态、多休息、好好反思」这类无效建议；推论必须依托日志内容，禁止脑补资料里没有的信息。',
+  '【硬性】事件分级：常态重复 / 短期波动 / 单次偶发——偶发事件不放大解读、不写成模式。',
+  '【硬性】行动上限：日最多 2 条、周最多 3 条；每条严格写成「动作｜执行时机或频率｜目标｜自检指标」，四段缺一不可。',
+  '【硬性】精简文字、突出重点，降低手机阅读负担；记录少就写得轻，不硬凑（没有的字段给空数组或空字符串）。'
+].join('\n');
+
+const REVIEW_RULES_FULL = [
+  '角色：日志周期复盘分析师。',
+  '任务：对日志做【月 / 年】回看复盘，重点挖掘行为、精力、情绪的长期模式，而不是简单重复写了什么。',
+  '【硬性 1】严禁大段抒情、文学化描写，禁止流水账复述原文。',
+  '【硬性 2】严格区分四类信息：客观事实 / 重复行为模式 / 合理推论 / 落地行动；推论必须有日志原文支撑，禁止无依据脑补。',
+  '【硬性 3】事件分级：【稳定常态】反复出现、【短期波动】本周期新出现、【孤立偶发】一次性事件不放大解读。',
+  '【硬性 4】行动建议上限 3 条，侧重中长期规划与方向校准，不写细碎每日小事；每条写明动作 + 执行时机或频率 + 判断是否有效的简易自检指标；拒绝空泛话术。',
+  '【硬性 5】重点识别：能量消耗场景、能量充电场景、内耗触发条件、情绪波动规律、重复踩坑点、长期偏好与价值取向。',
+  '【硬性 6】跨周期对比：只把多次重复的信号标记为风险，一次性事件不进风险；行动要有方向性、能落地、能自检。',
+  '【硬性 7】精简文字、突出重点，降低手机阅读负担；记录少就写得轻，不硬凑（没有的字段给空数组或空字符串）。'
+].join('\n');
+
 // 个人画像（人物深度分析报告）专属规则：在 COMMON_RULES 的「温暖专业 / 不引用原话 /
 // 覆盖全维度」之上，叠加用户给的硬性要求——不脑补、区分事实与推论、不鸡汤、结构固定。
 const PROFILE_RULES = [
@@ -183,20 +206,28 @@ const PROFILE_RULES = [
   '输出严格 JSON，且字段严格按下面「七章固定结构」，不要随意合并或删减板块。'
 ].join('\n');
 
-// 各粒度的输出字段说明（结构一致，指导语按粒度变）
+// 各粒度的输出字段说明。结构对齐参考提示词的「固定输出模板」六板：
+// 客观事实汇总 / 核心模式提炼 / 变化对比 / 风险预警 / 优先行动方案 / 核心课题总结
 function fieldsSpec(type) {
   const span = { day: '这一天', week: '这一周', month: '这个月', year: '这一年' }[type];
+  const actionCap = type === 'day' ? 2 : 3;                // 日 2 条；周/月/年 3 条
+  const year = type === 'year';
   const lines = [
-    'summary（40~70 字：' + span + '真正的主线是什么——用你的分析把它说透，不是把记录压短）',
-    'themes（数组 2~5 条：' + span + '反复出现的主题 / 情绪 / 张力，每条 14 字以内）',
-    'mood（' + span + '整体情绪基调，带强度与变化，如「平静偏紧，后半段明显耗竭」，25 字内）',
-    'insight（100~200 字：一个更深的自我观察——' + span + '里用户可能没意识到的模式、需求或矛盾；这是全文最要有分量的部分）',
-    'actions（数组 2~3 条：接下来具体可以试的小行动，每条 30 字以内，要可执行、有方向性，并暗含「为什么」）',
-    'detail（300~500 字：像咨询师做复盘一样展开——主线 → 模式与连接 → 盲点与张力 → 值得肯定的地方 → 调整方向。自然分段，不用小标题，不引用原话）'
+    'summary（40~70 字 · 板块6「核心课题总结（一句话）」：' + span + '最值得留意的核心矛盾 / 关键发现，要说透而不是把记录压短）',
+    'facts（数组 1~4 条 · 板块1「客观事实汇总」：只罗列' + span + '客观发生的关键事件 / 精力 / 情绪 / 健康 / 任务，每条 30 字内，不做主观渲染）',
+    'patterns（对象 · 板块2「核心模式提炼」）：',
+    '  drain（数组 1~4 条：高频消耗场景——什么任务、环境会消耗精力，触发抵触 / 疲惫 / 内耗）',
+    '  charge（数组 1~4 条：稳定充电方式——哪些活动可以恢复状态；没信号给空数组 []）',
+    '  moodRule（30~80 字：情绪规律——情绪波动一般在什么事件 / 时段后出现）',
+    '  stuck（数组 1~4 条：惯性卡点——反复出现的思维习惯、同类型陷阱）',
+    year ? '  values（数组 1~3 条 · 年度专属：长期价值偏好——一年里持续吸引你、符合你内在价值的方向）' : '  values（数组：仅年度需要填，其它周期一律给空数组 []）',
+    'compare（' + (type === 'day' ? '40~100 字 · 板块3「变化对比」：【当日特殊波动】今天和你过往常态相比，异常或特殊的波动；只看当天信号，不做长期预判'
+      : year ? '60~150 字 · 板块3「变化对比」：对比年初的状态，全年整体的演进、取舍与转变（要区分临时阶段性问题和底层长期模式）'
+        : '50~130 字 · 板块3「变化对比」：对比上一周期，变好 / 加重 / 维持原样的地方') + '）',
+    'risks（数组 0~3 条 · 板块4「风险预警」：仅列多次出现、持续下来会带来负面影响的信号，每条写清触发条件；没有就写「无明显重复风险」，孤立偶发事件不写预警' + (year ? '；年度重点识别长年反复、持续累积的内耗或健康风险' : '') + '）',
+    'actions（数组 1~' + actionCap + ' 条 · 板块5「优先行动方案」（按优先级排序）：每条严格用「【动作】｜执行时机｜目标｜自检指标」四段格式，'
+      + '自检指标必须是可观察的简易指标' + (year ? '；年度的动作是中长期方向 / 年度试验项目，自检指标为季度或半年可验证，不设每日小事' : '；拒绝「调整心态、多休息、好好反思」这类空话') + '）'
   ];
-  if (type === 'day') {
-    lines.splice(3, 0, 'highlight（' + span + '最值得记住的一个瞬间或自我发现，40 字内，可空字符串 ""）');
-  }
   return lines.map(s => '  ' + s).join('\n');
 }
 
@@ -213,8 +244,21 @@ function buildMessages(rows, type, p) {
     return (r.ds && r.ds !== p.startStr ? r.ds + ' ' : '') + '[' + mod + '] ' + parts.join(' ') + (r.t ? ' ' + r.t : '');
   }).join('\n');
 
-  const sys = COMMON_RULES + '\n\n输出 JSON 字段（' + (TYPE_LABEL[type] || type) + '回看）：\n' + fieldsSpec(type);
-  const user = '以下是用户 ' + p.startStr + ' 至 ' + p.endStr + ' 这' + span
+  // 日 / 周用极简轻量版，月 / 年用完整版
+  const lite = (type === 'day' || type === 'week');
+  const rules = lite ? REVIEW_RULES_LITE : REVIEW_RULES_FULL;
+  const focus = {
+    day: '聚焦当日波动，对比个人常态，只看当天信号，不做长期预判。',
+    week: '增加和上一周期的对比，观察阶段性变化；仅多次重复的信号标记为风险。',
+    month: '做跨周的小周期汇总，观察阶段性变化并与上个月对比；仅多次重复的信号标记为风险。',
+    year: '做跨月长周期汇总，提炼全年稳定特质与全年核心矛盾，对比年初状态，区分临时阶段性问题和底层长期模式；风险侧重长期持续累积的影响，行动偏向中长期规划与方向校准。'
+  }[type];
+
+  const sys = COMMON_RULES
+    + '\n\n本次类型：' + (TYPE_LABEL[type] || type) + '复盘。' + focus
+    + '\n\n' + rules
+    + '\n\n输出 JSON 字段（严格按下面的固定板块结构，板块名不要改）：\n' + fieldsSpec(type);
+  const user = '本次类型：' + (TYPE_LABEL[type] || type) + '复盘。\n以下是用户 ' + p.startStr + ' 至 ' + p.endStr + ' 这' + span
     + '记录的自我觉察（按时间先后，日期只在与起始日不同时标注）：\n\n'
     + (list || '（这段期间没有记录）') + '\n\n请基于这些给出这' + span + '的 AI 回看。';
   return [{ role: 'system', content: sys }, { role: 'user', content: user }];
@@ -323,7 +367,7 @@ function profileFieldsSpec() {
   ].join('\n');
 }
 
-function buildProfileMessages(rows) {
+function buildProfileMessages(rows, reviews) {
   const list = (rows || []).slice(0, 500).map(r => {
     const mod = MODULE_LABELS[r.m] || r.m || '记录';
     const parts = [];
@@ -333,6 +377,27 @@ function buildProfileMessages(rows) {
     return '[' + mod + '] ' + parts.join(' ') + (r.t ? ' ' + r.t : '');
   }).join('\n');
 
+  // 联动素材：历次日/周/月/年回看里已提炼的「稳定行为、能量模式、长期价值偏好」——
+  // 它们是跨记录归纳出来的，比原始记录更接近稳定特质，作为画像素材能提高准确度。
+  const rv = (reviews || []).slice(-24);
+  const rvLines = [];
+  rv.forEach(a => {
+    const p = a.patterns || {};
+    const bits = [];
+    const push = (label, v) => {
+      const arr = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+      if (arr.length) bits.push(label + '：' + arr.slice(0, 4).join('；'));
+    };
+    push('高频消耗场景', p.drain);
+    push('稳定充电方式', p.charge);
+    push('惯性卡点', p.stuck);
+    push('长期价值偏好', p.values);
+    if (p.moodRule) bits.push('情绪规律：' + p.moodRule);
+    if (bits.length) {
+      rvLines.push('· ' + (a.start || a.date || '') + '（' + (TYPE_LABEL[a.type] || '日') + '回看）' + bits.join('｜'));
+    }
+  });
+
   const sys = PROFILE_RULES
     + '\n\n任务：根据用户【全部历史记录】做一份「专属人物深度分析报告」——是长期稳定的'
     + '「他大概是哪种人、适合往哪走、容易卡在哪、怎么决策」，不是某一段的复盘。'
@@ -340,11 +405,20 @@ function buildProfileMessages(rows) {
     + '并把内在矛盾拆到「两边各是什么诉求 + 什么场景爆发」，不要只写标题。'
     + '\n每一条建议都要能落到「适用场景 / 执行成本 / 潜在副作用 / 判断标准」上；'
     + '写不出具体场景与判据的建议，说明它太空，应当删除换成更具体的。'
+    + (rvLines.length
+      ? '\n素材说明：除了下面的原始记录，还附上了ta 历次回看里已提炼的稳定行为、能量模式与'
+        + '长期价值偏好——这些是跨记录归纳出的稳定特质，与原始记录同等可信，'
+        + '可用于印证或修正你的判断，但不要超出它们已表述的内容。'
+      : '')
     + '\n输出严格按下面七章固定结构（不要随意合并删减板块），且严格为 JSON：\n'
     + profileFieldsSpec();
-  const user = '下面是人物资料——用户从开始使用到现在（共 ' + (rows ? rows.length : 0)
+  let user = '下面是人物资料——用户从开始使用到现在（共 ' + (rows ? rows.length : 0)
     + ' 条）的全部自我觉察记录（按时间先后）：\n\n'
-    + (list || '（没有记录）') + '\n\n请基于这些资料给出人物深度分析报告。';
+    + (list || '（没有记录）');
+  if (rvLines.length) {
+    user += '\n\n以下是从TA 历次日/周/月/年回看中提炼出的稳定模式（可作为画像素材）：\n' + rvLines.join('\n');
+  }
+  user += '\n\n请基于这些资料给出人物深度分析报告。';
   return [{ role: 'system', content: sys }, { role: 'user', content: user }];
 }
 
@@ -405,7 +479,20 @@ async function generateProfile(openid, force) {
   }));
   if (!rows.length) return { empty: true, summary: '还没有记录，先去「记」里留下一点觉察，再回来生成画像。' };
 
-  const parsed = await chatCompletion(buildProfileMessages(rows), 0.7);
+  // 联动素材：已生成的回看（最多 24 份，够覆盖近期日/周/月/年），提炼出的模式更稳定
+  let reviews = [];
+  try {
+    const rv = await analysisCol().where({ openid }).orderBy('start', 'desc').limit(24).get();
+    reviews = rv.data || [];
+  } catch (e) {
+    // 旧文档没有 start 字段时 orderBy 可能出错，退回不排序取最新
+    try {
+      const rv2 = await analysisCol().where({ openid }).limit(24).get();
+      reviews = rv2.data || [];
+    } catch (e2) { reviews = []; }
+  }
+
+  const parsed = await chatCompletion(buildProfileMessages(rows, reviews), 0.7);
   genBudget--;
   const clean = v => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
   const f = parsed.future || {};
@@ -477,24 +564,64 @@ async function generateFor(openid, type, p) {
   const parsed = await chatCompletion(buildMessages(rows, type, p));
   genBudget--;
   const clean = v => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
+  const listOf = (v, cap2) => (Array.isArray(v) ? v.map(clean).filter(Boolean).slice(0, cap2 || 5) : []);
+  const pat = (parsed.patterns && typeof parsed.patterns === 'object') ? parsed.patterns : {};
   const doc = {
     openid,
     type,                                  // day / week / month / year
-    date: p.startStr,                      // 兼容旧字段（日回看的日期；其它类型为起始日）
+    date: p.startStr,// 兼容旧字段（日回看的日期；其它类型为起始日）
     start: p.startStr,
     end: p.endStr,
+    // ---- 新版六板结构 ----
     summary: clean(parsed.summary).slice(0, 300),
-    themes: Array.isArray(parsed.themes) ? parsed.themes.map(clean).filter(Boolean).slice(0, 8) : [],
+    facts: listOf(parsed.facts, 5),
+    patterns: {
+      drain: listOf(pat.drain, 5),
+      charge: listOf(pat.charge, 5),
+      moodRule: clean(pat.moodRule).slice(0, 300),
+      stuck: listOf(pat.stuck, 5),
+      values: listOf(pat.values, 4)
+    },
+    compare: clean(parsed.compare).slice(0, 500),
+    risks: listOf(parsed.risks, 4),
+    actions: listOf(parsed.actions, 3),
+    // ---- 旧字段（历史文档仍按这个渲染，保留以便统一展示）----
+    themes: listOf(parsed.themes, 6),
     mood: clean(parsed.mood).slice(0, 200),
     highlight: clean(parsed.highlight).slice(0, 500),
     insight: clean(parsed.insight).slice(0, 1000),
-    actions: Array.isArray(parsed.actions) ? parsed.actions.map(clean).filter(Boolean).slice(0, 5) : [],
     detail: clean(parsed.detail).slice(0, 3000),
     model: LLM_MODEL,
     createdAt: Date.now()
   };
+  // 新结构为空时，用旧字段兜底出一份可读的 detail（保证前端任何情况都有内容）
+  if (!doc.detail && (doc.patterns.drain.length || doc.compare || doc.risks.length)) {
+    doc.detail = buildFallbackDetail(doc, type);
+  }
   await analysisCol().add({ data: doc });
   return { key: type + ':' + p.startStr, ok: true };
+}
+
+// 新版六板 → 一段可读文字（给前端的「复盘随想」区兜底用；老字段全空时才走这里）
+function buildFallbackDetail(doc, type) {
+  const L = [];
+  if (doc.facts && doc.facts.length) {
+    L.push('客观事实：' + doc.facts.join('；') + '。');
+  }
+  const p = doc.patterns || {};
+  const pat = [];
+  if (p.drain && p.drain.length) pat.push('高频消耗场景：' + p.drain.join('；'));
+  if (p.charge && p.charge.length) pat.push('稳定充电方式：' + p.charge.join('；'));
+  if (p.stuck && p.stuck.length) pat.push('惯性卡点：' + p.stuck.join('；'));
+  if (p.values && p.values.length) pat.push('长期价值偏好：' + p.values.join('；'));
+  if (p.moodRule) pat.push('情绪规律：' + p.moodRule);
+  if (pat.length) L.push('核心模式：\n' + pat.map(x => '· ' + x).join('\n'));
+  if (doc.compare) L.push('变化对比：' + doc.compare);
+  if (doc.risks && doc.risks.length) L.push('风险预警：' + doc.risks.join('；'));
+  if (doc.actions && doc.actions.length) {
+    L.push('优先行动：\n' + doc.actions.map(x => '· ' + x).join('\n'));
+  }
+  return L.join('\n\n').slice(0, 2000);
 }
 
 // 逐条生成并计数（错误只记日志不中断，一条失败不影响别的）

@@ -72,20 +72,35 @@ Page(pageBase({
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'list' } })
       .then(res => {
         const raw = (res.result && res.result.list) || [];
-        const all = raw.map(a => ({
-          _id: a._id,
-          type: a.type || 'day',       // 旧文档没有 type，视为日回看
-          start: a.start || a.date || '',
-          end: a.end || '',
-          summary: a.summary || '',
-          mood: a.mood || '',
-          themes: a.themes || [],
-          suggestion: a.suggestion || '',
-          highlight: a.highlight || '',
-          insight: a.insight || '',
-          actions: a.actions || [],
-          detail: a.detail || ''
-        }));
+        const all = raw.map(a => {
+          // 新版六板结构；旧文档（只有 themes/insight/detail）也照样能显示
+          const p = a.patterns || {};
+          const arr = v => (Array.isArray(v) ? v : []);
+          return {
+            _id: a._id,
+            type: a.type || 'day',       // 旧文档没有 type，视为日回看
+            start: a.start || a.date || '',
+            end: a.end || '',
+            summary: a.summary || '',
+            // 新字段
+            facts: arr(a.facts),
+            drain: arr(p.drain),
+            charge: arr(p.charge),
+            moodRule: p.moodRule || '',
+            stuck: arr(p.stuck),
+            values: arr(p.values),
+            compare: a.compare || '',
+            risks: arr(a.risks),
+            // 旧字段（历史文档）
+            mood: a.mood || '',
+            themes: arr(a.themes),
+            suggestion: a.suggestion || '',
+            highlight: a.highlight || '',
+            insight: a.insight || '',
+            actions: arr(a.actions),
+            detail: a.detail || ''
+          };
+        });
         this.setData({ all, ready: true, loading: false });
         this._loading = false;
         this.applyTab();

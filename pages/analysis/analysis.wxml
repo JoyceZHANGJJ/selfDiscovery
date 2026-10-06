@@ -48,12 +48,46 @@
           </view>
 
           <view wx:if="{{a.mood}}" class="ac-mood">{{tab==='day'?'今天':'这段'}}基调 · {{a.mood}}</view>
+          <view wx:if="{{a.moodRule}}" class="ac-mood">情绪规律 · {{a.moodRule}}</view>
 
           <view wx:if="{{a.themes.length}}" class="ac-tags">
             <text wx:for="{{a.themes}}" wx:for-item="t" wx:key="*this" class="ac-tag">{{t}}</text>
           </view>
 
+          <!-- 展开：新版六板结构（旧文档自动落到最后的「复盘随想」） -->
           <view wx:if="{{openIdx===i}}" class="ac-detail">
+            <view wx:if="{{a.facts.length}}" class="ac-sec">
+              <view class="ac-sec-l">客观事实</view>
+              <view wx:for="{{a.facts}}" wx:for-item="f" wx:key="*this" class="ac-li">· {{f}}</view>
+            </view>
+
+            <view wx:if="{{a.drain.length || a.charge.length || a.stuck.length || a.values.length}}" class="ac-sec">
+              <view class="ac-sec-l">核心模式</view>
+              <view wx:if="{{a.drain.length}}" class="ac-sub">高频消耗场景</view>
+              <view wx:for="{{a.drain}}" wx:for-item="x" wx:key="*this" class="ac-li">· {{x}}</view>
+              <view wx:if="{{a.charge.length}}" class="ac-sub">稳定充电方式</view>
+              <view wx:for="{{a.charge}}" wx:for-item="x" wx:key="*this" class="ac-li">· {{x}}</view>
+              <view wx:if="{{a.stuck.length}}" class="ac-sub">惯性卡点</view>
+              <view wx:for="{{a.stuck}}" wx:for-item="x" wx:key="*this" class="ac-li">· {{x}}</view>
+              <view wx:if="{{a.values.length}}" class="ac-sub">长期价值偏好</view>
+              <view wx:for="{{a.values}}" wx:for-item="x" wx:key="*this" class="ac-li">· {{x}}</view>
+            </view>
+
+            <view wx:if="{{a.compare}}" class="ac-sec">
+              <view class="ac-sec-l">变化对比</view>
+              <view class="ac-sec-v">{{a.compare}}</view>
+            </view>
+
+            <view wx:if="{{a.risks.length}}" class="ac-sec">
+              <view class="ac-sec-l risk">风险预警</view>
+              <view wx:for="{{a.risks}}" wx:for-item="r" wx:key="*this" class="ac-risk">{{r}}</view>
+            </view>
+
+            <view wx:if="{{a.actions.length}}" class="ac-sec">
+              <view class="ac-sec-l act">优先行动</view>
+              <view wx:for="{{a.actions}}" wx:for-item="act" wx:key="*this" class="ac-act">{{act}}</view>
+            </view>
+
             <view wx:if="{{a.highlight}}" class="ac-sec">
               <view class="ac-sec-l">值得记住</view>
               <view class="ac-sec-v">{{a.highlight}}</view>
@@ -62,13 +96,9 @@
               <view class="ac-sec-l">更深的看见</view>
               <view class="ac-sec-v">{{a.insight}}</view>
             </view>
-            <view class="ac-sec">
+            <view wx:if="{{a.detail}}" class="ac-sec">
               <view class="ac-sec-l">复盘随想</view>
               <view class="ac-sec-v">{{a.detail}}</view>
-            </view>
-            <view wx:if="{{a.actions.length}}" class="ac-acts">
-              <view class="ac-sec-l">可以试试</view>
-              <view wx:for="{{a.actions}}" wx:for-item="act" wx:key="*this" class="ac-act">· {{act}}</view>
             </view>
             <view wx:if="{{a.suggestion}}" class="ac-sug">{{tab==='day'?'明天':'接下来'}} · {{a.suggestion}}</view>
           </view>
