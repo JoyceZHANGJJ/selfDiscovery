@@ -37,10 +37,28 @@
 | `ptestDel` | 小程序（试跑页） | 是 | 否 | 是（删一条） | 删掉一条试跑记录 |
 | `profileGet` | 小程序（进页先调） | 是 | 否 | 否 | 读已存画像（秒回，不花额度） |
 | `profile` | 小程序（生成按钮）+ 控制台 | 是 | **是** | 是 | 按**全部历史记录**生成/ 覆盖个人画像（七章报告） |
+| `personaGet` | 小程序（进页先调）+ 控制台 | 是 | 否 | 否 | 读**增量画像**（③）最新版 + 历史版本摘要 |
+| `persona` | 小程序（生成按钮）+ 控制台 | 是 | **是** | 是（只写 `persona`） | 增量更新画像（③）：带上一版做增量，不设冷却 |
+| `personaVer` | 小程序（看历史版本） | 是 | 否 | 否 | 读某个历史版本的完整画像 |
+| `promptList` | 小程序（提示词管理页）+ 控制台 | 否 | 否 | 否 | 列出全部提示词槽位（分组 / rev / 是否被改过；**不含正文**） |
+| `promptGet` | 小程序（提示词管理页） | 是 | 否 | 否 | 读一个槽位的正文 + 出厂值 + 只读的输出字段契约 |
+| `promptSave` | 小程序（提示词管理页） | 是 | 否 | 否 | **保存提示词正文，立即生效**；自动给旧版留快照，rev 恒 +1 |
+| `promptReset` | 小程序（提示词管理页） | 是 | 否 | 否 | 恢复出厂默认（也是一次正常保存，同样留快照） |
+| `promptResetAll` | 小程序（提示词管理页） | 是 | 否 | 是（一次改全部） | **一键把全部被改过的槽位恢复出厂默认**；本来就是出厂值的不动 |
+| `promptVersions` | 小程序（提示词管理页） | 是 | 否 | 否 | 某槽位的历史版本列表（摘要，不含正文） |
+| `promptVersionGet` | 小程序（提示词管理页） | 是 | 否 | 否 | 取某个历史版本的正文 |
+| `promptRevert` | 小程序（提示词管理页） | 是 | 否 | 否 | 切回某个历史版本（走一次正常保存，新 rev 恒 +1） |
+| `promptAdopt` | 小程序（试跑页） | 是 | 否 | 否 | **把某次试跑用的正文设为线上生效**——试跑→线上的桥 |
 
 > `list` / `profileGet` / `ptestList` / `ptestGet` / `promptPreview` 不花大模型额度，可以随便点。
 > `gen` / `backfill` / `profile` / `promptTest` 每次真正调用大模型都算一次额度，见「额度与幂等」。
 > `promptTest` 是唯一「调模型但**不写正式文档**」的 action——试跑错多少次都不影响线上回看与画像。
+>
+> **提示词注册表**（`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptResetAll` /
+> `promptVersions` / `promptVersionGet` / `promptRevert` / `promptAdopt`）只读写 `promptset` 与
+> `promptsetver`，**不调大模型、不碰任何业务集合**，所以随便调、不花额度。
+> 提示词正文现在存在数据库里，改完保存即生效，**不用再「改代码 + 上传部署」**。
+> 详见「五、提示词注册表」。
 
 ---
 
@@ -93,7 +111,9 @@
 { "action": "promptPreview", "type": "profile", "openid": "你的openid" }
 ```
 
-`type` 可选：`profile`（默认）/ `day` / `week` / `month` / `year`。
+`type` 可选：`persona` / `profile`（默认）/ `day` / `week` / `month` / `year`。
+`persona` 时额外返回 `fromRev`，**用它确认这次是「基于第几版迭代」**——
+`fromRev:0` 说明是首次建立，带上数字才是真正的增量。
 
 返回：
 
@@ -108,11 +128,45 @@
 原始记录会被加工成这种格式再拼进去（不是裸字段）：
 
 ```
-[觉察] 加班 （喜恶：喜欢，精力：耗尽） 22:10
-[随记] 突然想到一个产品点子 2026-09-30 08:30
+## 2026-09-29 周二
+- 09:12 觉察 | 方案又推翻了 | 描述：第三方给的反馈不太行 | 感受：有点焦虑、怎么开始：自己想做、精力：累
+- 21:00 今日 | 还行吧 | 剩余能量：一般（3/5 格）
+- 22:10 觉察 | 加班 | 喜恶：不喜欢 | 感受：很空虚 | 精力：耗尽
+## 2026-09-30 周三
+- 08:30 随记·灵感 | 突然想到一个产品点子
+- 10:00 可做·想做 | 做一个小程序 | 做了（10月06日） | 原因：看到别人晒成果
+
+## 汇总
+- 天数：2 天（有记录 2026-09-29 至 2026-09-30），日均 2.5 条
+- 维度分布：觉察 2 条，今日 1 条，随记 1 条，可做 1 条
+- 可做 1 条：做了 1
+- 每日剩余能量：记录 1 天，平均 3/5 格
 ```
 
-`2026-09-30` 只在与起始日不同时才标注；时间只到分钟。
+竖线只是分隔符，各段含义固定：时间 · 维度（带分类）· 内容 · 状态（哪天做的）· 标签：值。
+末尾的「## 汇总」是跨记录的统计（天数、维度分布、可做四态、一直没做的、逾期待办、能量平均），
+和设置页「可读导出」里那段是同一份逻辑——这样你核对模型看到的资料时，看到的就是自己那份导出。
+
+**格式由 `recText.js` 单独维护**，`buildMessages` / `buildProfileMessages` / `buildPersonaMessages`
+三处都调它，**不要在index.js 里再内联拼一遍**（自查脚本 `check_no_inline_rectext` 会拦）。
+它与小程序端 `utils/exporter.js` 的可读导出必须是同一口径，两份常量（COLMAP / 维度名 / BATTERIES）
+由自查脚本 `check_rec_labels` 机械比对，改一边必须改另一边。
+
+### `RECORD_GUIDE`：怎么告诉模型读这份记录
+
+上面那份文本带了不少**只有机器能看懂的东西**——状态后缀、优先级、能量档位、末尾汇总。
+以前喂的是裸字段（`free:desc：xxx`），讲不讲都一样；换成自然语言之后，模型可能：
+
+- **忽略**：把「做了（10月06日）」「已逾期 6 天」当噪声跳过 —— 相当于白喂；
+- **误当成正文**：把状态和日期复述进 `facts` —— 页面变回记账流水账。
+
+`RECORD_GUIDE`（`index.js` 里的常量）专门讲这件事：状态是判断执行力/拖延的**主要依据**
+（同一件事「想做」与「做了」含义完全不同），末尾汇总是跨记录统计、可引用但别复述。
+
+**它放在代码里而不是提示词注册表**，是因为这属于**数据契约（怎么读）**，
+不是人设与任务规则 —— 用户改提示词是改「用什么人格、什么口吻、什么角度」，
+不该能把「数据怎么读」改掉。三处生成路径都必须拼进 system，
+自查脚本 `check_record_guide` 盯这件事（漏掉不报错，只是那条路径的模型默默退化）。
 
 > 这个 action **不调模型、不写库、不花额度**，随便跑。
 
@@ -210,6 +264,71 @@
 
 ---
 
+### 7b. `persona` / `personaGet` / `personaVer` —— **③ 增量个人画像**
+
+⚠️ **这一组和上面的 `profile` / `profileGet` 是两个不同的功能**，不是同一个东西的两个版本：
+
+| | `profile`（④ 深度报告） | `persona`（③ 增量画像） |
+|---|---|---|
+| 职责 | 定期**全量重算**的综合诊断 | **只沉淀跨周期稳定**的特质 |
+| 内容 | 七章，含未来推演与行动方案 | 五大板块 + 变更日志 |
+| 素材 | 全部历史记录 | 全部记录 + **上一版画像** + 历次回看的稳定模式 |
+| 更新方式 | 全盘重写 | **增量**：新增 / 修正 / 淘汰 |
+| 频率 | 每自然周一次（贵，所以锁） | 不限频（便宜，合集建议周跑轻量版） |
+| 存储 | 每 openid 只留最新一份 | **按版本追加留档** |
+| 集合 | `profile` | `persona` |
+
+**为什么要分开**：两者的运行节奏、对结果的期待完全不同。画像是长期沉淀，随时能跑、越跑越准；
+深度报告是定期体检，季度看一次全貌。揉在一起的话，低频的深度诊断会不断冲掉高频积累的稳定特质
+——这正是原「个人画像」页的实际问题：名字叫画像，跑的却是深度报告。
+
+**实现上最关键的一点**：`generatePersona` **必须把上一版画像当素材喂进去**，模型才能做增量。
+不传上一版（`prev` 为 null）就退化成了「从零生成」，那和 ④ 没有任何区别，违背 ③ 的设计意图。
+所以 `promptPreview`（`type:"persona"`）会专门返回 `fromRev`，让人看出这次是「基于第几版迭代」。
+同一个 rev 已经有记录时会复用那一条，不重复写。
+
+```json
+{ "action": "persona", "openid": "你的openid", "lite": true }
+```
+
+`lite:true` 走轻量版（周用，每板块 1~2 条），默认完整版（月年用）。
+
+```json
+{ "action": "personaGet", "openid": "你的openid" }
+```
+
+返回 `{ "persona": {…最新版…}, "versions": [{ rev, createdAt, lite, records, changed }] }`。
+`versions` 是摘要（不含正文），正文要 `personaVer` 单条取。
+
+```json
+{ "action": "personaVer", "openid": "你的openid", "rev": 2 }
+```
+
+`persona` 文档的结构（字段名是契约，前端按这些键渲染）：
+
+```
+{ _id, openid, rev, energy:{drain,charge,rhythm}, value:{like,dislike,core},
+  thinking:{patterns,stuck}, tradeoff:{choose,giveup}, health:{moodRule,bodyLink},
+  changelog:{added,changed,dropped}, basedOn:{records,reviews,fromRev},
+  promptRev, lite, model, createdAt }
+```
+
+`basedOn.fromRev` 是「从哪一版迭代而来」（0 = 首次建立），
+`promptRev` 记下用的是哪一版提示词（回头能对上账）。
+
+| 返回 | 含义 |
+|---|---|
+| `{ ok:true, rev:N, …五板块内容…, changelog:{…} }` | 迭代成功，写入了第 N 版 |
+| `{ ok:true, rev:N, reused:true }` | 这一版已经存在（重复提交 / 并发），复用没有重复写 |
+| `{ empty:true, summary:"还没有记录…" }` | 一条记录都没有，先去「记」 |
+| `{ error:"本次调用额度已用完…" }` | 加大 `maxGen` 或稍后再试 |
+
+> **不设冷却锁**是有意的：`profile` 全量重算、贵，所以每周限一次；`persona` 是增量的、成本低，
+> 合集明确建议周跑轻量版 / 月年跑完整版。硬锁只会挡住正常节奏，所以改成前端提示「本次已生成过」
+> 而不是硬拦。重复点击的防护靠前端按钮置灰 + 云函数的 rev 查重。
+
+---
+
 ### 8. `promptTest` —— **调提示词就靠它**（不改代码、不动线上数据）
 
 改提示词原来的循环是「改代码 → 上传部署 → 生成 → 翻页面看」，一轮几分钟，一天试不了两次。
@@ -248,7 +367,7 @@
 
 | 参数 | 必填 | 说明 |
 | --- | --- | --- |
-| `type` | 否 | `profile`（默认）/ `day` / `week` / `month` / `year` |
+| `type` | 否 | `persona` / `profile`（默认）/ `day` / `week` / `month` / `year`。`persona` 会带上现有画像跑——试跑必须和线上用同一套素材，否则看到的不是真实效果 |
 | `rules` | 否 | 追加到规则段末尾的提示词片段。**追加放在最后是有意的**——模型对system 末尾的指令更敏感，新规则压得住旧规则 |
 | `overrideRules` | 否 | `true`＝规则段整个换掉，只保留任务说明与输出结构（从头试一版） |
 | `label` | 否 | 备注（≤60 字），跟结果一起存下来，回头能对上「这结果是哪一版跑出来的」 |
@@ -307,6 +426,136 @@
 
 ---
 
+## 五、提示词注册表（换提示词不用再部署云函数）
+
+以前换提示词只能「改代码 → 上传部署 → 等 1~2 分钟」，一轮几分钟。
+现在提示词正文存在 `promptset`里，在小程序里改完保存**立即生效**。
+
+### 为什么要分两层（重要）
+
+现在的提示词由三段拼成：
+
+```
+common.review（人设与共同原则）
+  + review.dayWeek / review.monthYear（任务规则）
+  + fieldsSpec() / profileFieldsSpec()（**输出字段契约**）
+```
+
+**只有前两层可改，最后一层锁死。** 原因：输出字段说明是**机器契约**——
+`fieldsSpec()` 生成的字段名，和云函数 `generateFor` 里的 JSON 解析、和 `review.wxml`
+里的渲染，是一一对应的。如果把它开放给用户改，用户把 `patterns.drain` 改成别的名字，
+模型会照着新名字返回，云函数解析不到 → **页面白屏，而且很难查出是自己改了字段名**。
+
+所以 `promptGet` 会把契约层原文返回给前端**只读展示**（让人看懂模型被要求返回什么结构），
+但**不提供编辑入口**。
+
+### 槽位清单
+
+| 槽位名 | 界面名 | 接在哪 |
+|---|---|---|
+| `common.review` | 回看人设与共同原则 | 所有周期回看的开头 |
+| `review.dayWeek` | 周期复盘 · 简版（日 / 周） | 日、周回看的规则段 |
+| `review.monthYear` | 周期复盘 · 完整版（月 / 年） | 月、年回看的规则段 |
+| `persona.full` | 个人画像 · 完整版（增量） | ③ 增量画像（月 / 年用） |
+| `persona.lite` | 个人画像 · 轻量版 | ③ 增量画像（周用） |
+| `report.core` | 人物深度报告 · 核心规则 | ④ 深度报告的全部硬性要求 |
+| `preset.focusBody` | 附加 · 聚焦身心 | 可勾选的附加指令 |
+| `preset.riskFirst` | 附加 · 强化风险 | 可勾选的附加指令 |
+| `preset.sleepEnergy` | 附加 · 睡眠-能量关联 | 可勾选的附加指令 |
+| `preset.keepShort` | 附加 · 压缩篇幅 | 可勾选的附加指令 |
+
+### 出厂值兜底：绝不报错
+
+`loadPrompt()` 在任何情况下都会返回一段可用的提示词，**不会抛错**：
+
+| 情况 | 行为 |
+|---|---|
+| 集合不存在（新环境没部署过） | 静默返回 `PROMPT_BUILTIN` 里的出厂值 |
+| 某条记录不存在 / 读取报错 | 同上 |
+| 正文是空字符串 | 同上（不会给模型一段空规则） |
+
+**这是硬性要求**：提示词是增强项，绝不能成为 AI 回看的单点故障。
+桩测确认：集合完全不存在时，system 消息仍有完整内容，回看照常工作。
+
+出厂值就写在代码里（`PROMPT_BUILTIN`），它同时是「恢复默认」的还原目标——
+改它等于改出厂设定。首次调用 `promptList` / `promptGet` / `promptSave` 时会自动播种。
+
+### 版本与回滚
+
+- 每次保存：**先把旧正文写进 `promptsetver` 快照**，再更新 `promptset`，`rev` 恒 +1。
+- `rev` **恒 +1 而不复用旧号**。这样「rev=N」永远唯一对应一份内容——
+  否则切回 rev=5 之后，rev=5 的含义会随时间漂移，历史记录就不可信了。
+- 留快照前会先查「这一版是不是已经有快照了」。**为什么必须查**：并发保存时两次调用
+  可能读到同一个 `curRev`，都往`promptsetver` 写同 rev 的快照，而「切回 rev=N」用的是
+  `where().limit(1)`，命中哪条不确定——这种不一致是**静默的**。单用户手动点几乎撞不上，
+  但多一次极轻的查询就能堵住，值得。
+
+### 控制台测试模板
+
+```json
+{ "action": "promptList", "openid": "你的openid" }
+```
+
+```json
+{ "action": "promptGet", "openid": "你的openid", "slot": "review.dayWeek" }
+```
+
+```json
+{ "action": "promptSave", "openid": "你的openid", "slot": "review.dayWeek",
+  "body": "角色：日志复盘分析师。\n任务：只抓睡眠与精力。\n行动上限 2 条。",
+  "note": "试一下只看睡眠" }
+```
+
+```json
+{ "action": "promptVersions", "openid": "你的openid", "slot": "review.dayWeek" }
+```
+
+```json
+{ "action": "promptVersionGet", "openid": "你的openid", "slot": "review.dayWeek", "rev": 1 }
+```
+
+```json
+{ "action": "promptRevert", "openid": "你的openid", "slot": "review.dayWeek", "rev": 1 }
+```
+
+```json
+{ "action": "promptReset", "openid": "你的openid", "slot": "review.dayWeek" }
+```
+
+```json
+{ "action": "promptResetAll", "openid": "你的openid" }
+```
+
+```json
+{ "action": "promptAdopt", "openid": "你的openid", "id": "promptlog里的那条_id" }
+```
+
+### 返回值
+
+| 返回 | 含义 |
+|---|---|
+| `{ groups:[{ group, name, slots:[{ slot,name,desc,state,rev,chars,edited }] }] }` | `promptList`。**正文不进列表**（几百上千字），只给字数与 rev |
+| `{ slot,name,desc,body,builtin,edited,rev,updatedAt,contract }` | `promptGet`。`contract` 是**只读**的输出字段说明 |
+| `{ ok:true, rev:N }` | `promptSave` / `promptReset` / `promptRevert` 成功，`rev` 是新的版本号 |
+| `{ ok:true, restored:N, skipped:M, failed:[], detail:[{slot,name,rev}] }` | `promptResetAll` 成功。`restored`=实际恢复的个数（**只算被改过的**），`skipped`=本来就是出厂值所以没动的个数。`failed` 非空表示**部分恢复失败**——前端必须把它说出来，不能当成功 |
+| `{ ok:true, rev:N, fromRev:M }` | `promptRevert` 成功，`fromRev` 是切回去的那一版 |
+| `{ ok:true, rev:N, slot, slotName }` | `promptAdopt` 成功，`slotName` 是这次改的是哪个槽位 |
+| `{ list:[{ rev,note,chars,createdAt }] }` | `promptVersions`。**不含正文**，正文要 `promptVersionGet` 单条取 |
+| `{ error:"提示词正文不能为空…" }` | 想清空正文。点「恢复默认」而不是删内容 |
+| `{ error:"这次试跑没有改提示词正文…" }` | `promptAdopt` 拿的是基线试跑（没改正文），没什么可采纳 |
+
+### 排错
+
+| 现象 | 原因 | 怎么办 |
+|---|---|---|
+| `promptList` 返回的 `edited` 一直是 `false` | 说明一直是出厂值（没保存过） | 正常。`promptSave` 一次后就会变true |
+| 保存成功但生成结果没变化 | 该槽位没接到这个功能上（看 `state`） | `state:"reserved"` 的槽位是后续阶段才接入的 |
+| 改了提示词，输出结构乱了 | 不该发生——契约层不给编辑 | 若确实需要改结构，必须改代码里的 `fieldsSpec()` |
+| 看不到历史版本 | 之前一直是出厂值，rev=1 从没被替换过 | 出厂值不算「旧版」，没有快照；改一次就有了 |
+| `promptGet` 报 `没有这个提示词槽位` | `slot` 名拼错了 | 对照上面的槽位清单 |
+
+---
+
 ## 三、配置
 
 ### 环境变量
@@ -336,12 +585,23 @@
 | --- | --- | --- |
 | `records` | 仅创建者可读写 | 原始记录，云函数按 `_openid` 读取 |
 | `analysis` | 仅创建者可读写 | 回看文档（day / week / month / year） |
-| `profile` | 仅创建者可读写 | 个人画像，**每 openid 只保留最新一份** |
+| `profile` | 仅创建者可读写 | 人物深度报告（④），**每 openid 只保留最新一份** |
+| `persona` | 仅创建者可读写 | 个人画像（③ · 增量），**按版本追加留档** |
 | `promptlog` | 仅创建者可读写 | **提示词试跑结果**（`promptTest` 写入）。只增不删，供对比不同提示词版本；正式文档一个字都不碰 |
+| `promptset` | **仅云函数读写** | 提示词注册表，**每个槽位一条**（`_id` 就是槽位名）。小程序不直读，全走云函数 |
+| `promptsetver` | **仅云函数读写** | 提示词历史快照，每次保存追加一条 |
 
 `profile` 不存在会报 `-502005`；云函数首次用到时会自动创建，所以**手动建或不管都行**。
+`persona` 同理，**自动创建**。
 `promptlog` 同理，**云函数也会自动创建**，不用手动建（缺了试跑仍可用，只是 `saved:false`）。
+`promptset` / `promptsetver` 也自动创建；**而且就算它们完全不存在，AI 回看和画像照常工作**
+（`loadPrompt` 会静默退回代码里的出厂值），见「五、提示词注册表」。
 （集合是**整个云环境共享**的，不是每个用户各有一份——用户靠文档里的 `openid` 字段区分。）
+
+> 💡 `promptset` / `promptsetver` 里存的是**提示词**，对所有用户共用一份（不是每人各存一份）。
+> `openid` 字段只用于记录「最后是谁改的」，不做权限隔离。
+> `savePrompt` 用 `doc(slot).set({ data })` **按槽位覆盖**，所以同一个槽位永远只有一条当前记录；
+> 历史全在 `promptsetver` 里另存。
 
 > ⚠️ **写库姿势提醒（踩过）**：云函数端 `wx-server-sdk` 的写入方法必须包一层 `data`：
 > `collection.add({ data: doc })`、`doc(id).update({ data: {...} })`。
@@ -493,6 +753,9 @@
 
 | 日期 | 变更 |
 | --- | --- |
+| 2026-10-07 | **喂给模型的记录文本与小程序的「可读导出」对齐（新增 `recText.js`）。** 此前喂给模型的记录是三处**各写一遍**的内联格式：`[觉察] 内容 （obsDeg：有点，free:desc：…） 09:12`——① 用的是**机器键名**（`free:desc` / `fx:nrg` / `todayBat`）而不是中文标签，模型得自己猜那是什么意思；② **完全没有记录状态**（`status` / `doneAt` / `dueTs` 一个都没进去），于是分析「行动力 / 拖延」时只能从原话里猜那条「可做」后来做了没有，而这是这类报告最该依据的东西；③ 没有优先级、计划完成、逾期；④ 能量只给 `'3'` 而不是「一般（3/5 格）」；⑤ 没有跨记录汇总。新增 `recText.js` 作为**唯一入口**，三处 build 函数都改调它，格式与 `utils/exporter.js` 的可读导出**逐行一致**（含末尾汇总）。不能直接 require `exporter.js` 是因为它依赖 `store.js`，而 `store.js` 到处用 `wx.*`，云函数里没有 wx，所以是纯逻辑复刻，并用 `tools/check-syntax.py` 的第7 条检查（`check_rec_labels` 机械比对 COLMAP / 维度名 / BATTERIES 三份常量，`check_no_inline_rectext` 禁止再出现内联副本）守住不漂移。**顺带发现并修掉可读导出自己的三个 bug**：① 「做了（10月06**日**起）」——「起」只该跟在进行中后面，「做了」说的是完成那天，写成「起」语义反了；② 待办的「类别」与「优先级」在维度名和细节区各出现一次；③ 觉察的「喜恶」同样出现两次（`buildExt` 合成的喜恶项**不带 src**，只能按标签识别后跳过）。**token 反而降了 14~21%**（469 条实测：日 6267→5369、周月年 25032→19884、画像 29278→23150）——中文标签比英文机器键短（`free:desc：` 8 字符 → `描述：` 3 字符），旧格式每行还带括号与重复键名。旧维度 `m='done'` 的兼容分支也补上了。 |
+| 2026-10-06 | **阶段三：补上真正的「③ 个人画像」，并与「④ 人物深度报告」彻底分开。** 之前页面叫「个人画像」的那个功能，实际跑的是文档里的 ④ 深度报告（七章，含推演），而 ③（只沉淀跨周期稳定特质、增量迭代、带变更日志）**完全没实现**——于是「长期沉淀」这层缺位，低频的深度诊断会不断冲掉高频积累的稳定特质。新增：`persona` 集合（**按版本追加留档**，不像 `profile` 只留最新——画像的价值恰恰在于能看到它怎么长出来）、`persona` / `personaGet` / `personaVer` 三个 action、`buildPersonaMessages`（五大板块 + `changelog`）、`pages/persona` 页面。**实现上最关键的一点：`generatePersona` 必须把上一版画像当素材喂进去**，模型才能做「新增 / 修正 / 淘汰」；不传就退化成从零生成，那和 ④ 没区别、违背 ③ 的本意。所以 `promptPreview` 的 `type:"persona"` 专门返回 `fromRev` 用来核对这一点，试跑 `persona` 时也会带上现有画像（否则试跑看到的不是真实效果）。**不设每周冷却锁**（与 profile 相反）：它是增量的、成本低，合集明确建议周跑轻量版 / 月年跑完整版，硬锁只会挡正常节奏；改为前端提示 +云端按 rev 查重防重复写入。原 `pages/profile` 标题改为「人物深度报告」，回看页顶部与设置页都改成两个独立入口（徽标「像」=琥珀色画像 / 「深」=紫色深度报告）。`persona.*` 两个提示词槽位从「未接入」转为已生效，试跑页也支持画像类型。 |
+| 2026-10-06 | **阶段一：提示词从代码搬进数据库（提示词注册表）。** 新增 `promptset`（每槽位一条当前值）+ `promptsetver`（每次保存留快照），以及 8 个只读写提示词、**不调大模型不碰业务集合**的 action：`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptVersions` / `promptVersionGet` / `promptRevert` / `promptAdopt`。`buildMessages` / `buildProfileMessages` 改为从库里取提示词——**换提示词不用再「改代码 + 上传部署」，保存即生效**。三条硬约束：①**出厂值兜底绝不报错**（集合不存在 / 读失败 / 正文为空，一律静默退回 `PROMPT_BUILTIN` 里的出厂值，桩测确认集合完全不存在时 system 仍有完整内容，AI 回看照常工作——提示词是增强项，不能成为单点故障）；②**输出字段契约锁死**（`fieldsSpec` / `profileFieldsSpec` 只在 `promptGet` 里只读展示、不给编辑：字段名与云函数解析、页面渲染一一对应，改了会让页面白屏且极难自查）；③`rev` **恒 +1 不复用旧号**，让「rev=N」唯一对应一份内容、回滚后历史不漂移。留快照前先查该 rev 是否已有快照——并发保存会写出同 rev 的两条快照，「切回 rev=N」用 `where().limit(1)` 命中哪条不确定，这类不一致是**静默的**，多一次极轻的查询即可堵住。`promptAdopt` 是「试跑→线上」的桥：把某次试跑用的正文设为线上生效（此前试跑只能看、改不了线上）。两个 build 函数改成 async，**6 处调用点全部补 `await`**（漏 await 不报错，只会静默拿到 Promise）。本阶段行为与改动前完全一致，是纯重构。 |
 | 2026-10-06 | 修「库里有试跑记录、页面却永远显示还没有试跑记录」：`ptestList` 里 `.get()` **漏了 `await`**，`list.data` 恒为 `undefined`，被 `|| []` 兜成空数组，于是无论库里有多少条都显示为空。补上 `await`（已全项目扫过，其余数据库调用都带 await）。同时试跑页不再吞掉列表读取的错误——读不到时显示真实原因，而不是一律显示「还没有记录」。 |
 | 2026-10-06 | 修「试跑结果存不进历史（库里只有 `_id`）」：`promptTest` 写入时写成了 `add(doc)`，**漏包 `{ data: ... }`**。云函数端 `wx-server-sdk` 的 `add` 必须包 `data`（与小程序端相反），漏包时**不报错、照样返回 `_id`**，但插进去的是一条只有 `_id` 的空文档——所以表现是「提示已存进历史，列表却永远空着」，属于静默失败。同文件另三处写入都包了，只有这一处漏。修复：① 包上 `data`；② 加**回读校验**（读回确认 `openid`/`createdAt` 真落库才认成功），同类静默失败当场暴露；③ `promptlog` 改为**云函数自动创建**，不用手动建；④ 落库失败时回真实原因 `saveError`，不再笼统说「集合可能不存在」。**已写入的空壳文档需手动删除**（它们没有内容）。 |
 | 2026-10-06 | 新建本文档：把散落在 README 与代码注释里的测试模板、参数、返回、额度、幂等、排错整理成一份；补上 `promptPreview` / `profileGet` / `force` 等此前只在README 一句话里带过的用法；给 `tools/check-syntax.py` 加了「action 必须在本文档里有模板」的同步检查。 |

@@ -296,6 +296,10 @@ Page(pageBase({
 
   // 提示词试跑（开发工具页）：改提示词在这里试跑，不动线上的回看与画像
   onPrompt() { wx.navigateTo({ url: '/pages/prompt/prompt' }); },
+  // ③ 个人画像（长期沉淀、增量更新）与 ④ 人物深度报告（定期重算）是两个功能，
+  // 所以给两个独立入口——它们跑的频率、期待的结果、看的方式都不一样。
+  onPersona() { wx.navigateTo({ url: '/pages/persona/persona' }); },
+  onProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
   /* 更新日志 */
   openLog() { this.setData({ logOverlay: true }); this.setTabHidden(true); },
   closeLog() { this.setData({ logOverlay: false }); this.setTabHidden(false); },

@@ -1,0 +1,181 @@
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
+  <view class="statusbar-mask"></view>
+  <view class="screen">
+    <view class="body">
+      <view class="a-hd">
+        <view class="bk" bindtap="onClose">‹ 返回</view>
+        <view class="a-tt">个人画像</view>
+      </view>
+      <view class="hint">只沉淀<text style="font-weight:700">跨周期一直成立</text>的那些特质——一次的情绪和偶然的事不会进来。每次更新都是在上一版的基础上做增量，所以它会越来越准。</view>
+
+      <!-- 生成中 -->
+      <view wx:if="{{pending}}" class="pending">
+        <view class="pend-t">正在更新，请稍后查看</view>
+        <view class="pend-s">通常十几秒到一分钟。可以先离开这个页面，好了之后回来就能看到；这里也会自动刷新。</view>
+        <view wx:if="{{!p}}" class="pend-sk">
+          <view class="sk-line sk-w40 sk-sm"></view>
+          <view class="sk-box"></view>
+          <view class="sk-box"></view>
+        </view>
+      </view>
+
+      <!-- 失败：说清真实原因，不伪装成「还没生成」 -->
+      <view wx:if="{{genFail && !pending}}" class="loadfail">
+        <view class="lft">读不到画像</view>
+        <view class="lfr" bindtap="load">重试</view>
+      </view>
+
+      <!-- 骨架屏 -->
+      <view wx:elif="{{!ready}}" class="sk skpage">
+        <view class="sk-line sk-w40 sk-sm"></view>
+        <view class="sk-box"></view>
+        <view class="sk-box"></view>
+      </view>
+
+      <block wx:else>
+        <!-- 还没建立过。pending 时不显示：上面的「正在更新」卡已经说清楚了 -->
+        <view wx:if="{{empty && !pending}}" class="empty">
+          <view class="empty-t">还没有个人画像</view>
+          <view class="empty-s">先去「记」里留下一些觉察，再回来建立属于你的画像。它会随着你的记录一点点长出来。</view>
+          <view wx:if="{{!pending}}" class="empty-btn" bindtap="generate">建立画像</view>
+        </view>
+
+        <!-- 判据用p（内容真的存在）而不是 !empty：「正在更新且还没建立过」时 p 是 null，
+             用 !empty 会掉进这个分支、渲染出一堆没有内容的空章节。 -->
+        <block wx:elif="{{p}}">
+          <!-- 头部：版本 + 更新按钮 -->
+          <view class="phead">
+            <view class="ph-l">
+              <view class="ph-v">{{p.revLabel}}</view>
+              <view class="ph-d">{{p.createdLabel}} · 基于 {{p.basedOn.records}} 条记录<text wx:if="{{p.basedOn.reviews}}"> + {{p.basedOn.reviews}} 份回看</text></view>
+            </view>
+            <view class="ph-btns">
+              <view class="ph-b" bindtap="generate" data-lite="{{true}}">{{genning?'…':'轻量更新'}}</view>
+              <view class="ph-b pri" bindtap="generate" data-lite="{{false}}">{{genning?'…':'更新画像'}}</view>
+            </view>
+          </view>
+          <view wx:if="{{p.basedOn.fromRev>0}}" class="qhint">这一版是在 v{{p.basedOn.fromRev}} 基础上增量更新的——没被推翻的结论都原样留着。</view>
+          <view wx:else class="qhint">这是第一版画像。</view>
+
+          <!-- 本次变更日志：这一页最有价值的部分，放最上面 -->
+          <view class="chg" bindtap="onChangelogTap">
+            <view class="chg-h">
+              <view class="chg-t">本次改了什么 <text class="chg-n" wx:if="{{p.changelog.any}}">+{{p.changelog.added.length}} ~{{p.changelog.changed.length}} -{{p.changelog.dropped.length}}</text></view>
+              <view class="chg-x">{{showChangelog?'收起':'展开'}}</view>
+            </view>
+            <block wx:if="{{showChangelog}}">
+              <view wx:if="{{p.changelog.any}}" class="chg-b">
+                <view wx:if="{{p.changelog.added.length}}" class="cg-sec">
+                  <view class="cg-t add">新增</view>
+                  <view wx:for="{{p.changelog.added}}" wx:key="*this" wx:for-item="it" class="cg-li">· {{it}}</view>
+                </view>
+                <view wx:if="{{p.changelog.changed.length}}" class="cg-sec">
+                  <view class="cg-t chg">修正</view>
+                  <view wx:for="{{p.changelog.changed}}" wx:key="*this" wx:for-item="it" class="cg-li">· {{it}}</view>
+                </view>
+                <view wx:if="{{p.changelog.dropped.length}}" class="cg-sec">
+                  <view class="cg-t del">淘汰</view>
+                  <view wx:for="{{p.changelog.dropped}}" wx:key="*this" wx:for-item="it" class="cg-li">· {{it}}</view>
+                </view>
+              </view>
+              <view wx:else class="chg-b">
+                <view class="cg-none">这段时间的记录没有推翻任何既有结论——说明画像挺稳，继续记着就好。</view>
+              </view>
+            </block>
+          </view>
+
+          <!-- 五大板块 -->
+          <view wx:if="{{p.hasEnergy}}" class="chap">
+            <view class="chap-h"><text class="chap-no">一</text>精力与能量模式</view>
+            <view wx:if="{{p.energy.drain.length}}" class="sub">
+              <view class="sub-l warn">耗电场景</view>
+              <view class="sub-list"><view wx:for="{{p.energy.drain}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.energy.charge.length}}" class="sub">
+              <view class="sub-l good">充电场景</view>
+              <view class="sub-list"><view wx:for="{{p.energy.charge}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.energy.rhythm}}" class="sub">
+              <view class="sub-l">能量波动规律</view>
+              <view class="sub-t">{{p.energy.rhythm}}</view>
+            </view>
+          </view>
+
+          <view wx:if="{{p.hasValue}}" class="chap">
+            <view class="chap-h"><text class="chap-no">二</text>偏好与价值取向</view>
+            <view wx:if="{{p.value.like.length}}" class="sub">
+              <view class="sub-l good">愿意主动投入</view>
+              <view class="sub-list"><view wx:for="{{p.value.like}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.value.dislike.length}}" class="sub">
+              <view class="sub-l warn">持续排斥</view>
+              <view class="sub-list"><view wx:for="{{p.value.dislike}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.value.core.length}}" class="sub">
+              <view class="sub-l">核心价值</view>
+              <view class="sub-list"><view wx:for="{{p.value.core}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+          </view>
+
+          <view wx:if="{{p.hasThinking}}" class="chap">
+            <view class="chap-h"><text class="chap-no">三</text>思维习惯与内在卡点</view>
+            <view wx:if="{{p.thinking.patterns.length}}" class="sub">
+              <view class="sub-l">典型思维模式</view>
+              <view class="sub-list"><view wx:for="{{p.thinking.patterns}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.thinking.stuck.length}}" class="sub">
+              <view class="sub-l bad">惯性卡点（写明触发条件）</view>
+              <view class="sub-list"><view wx:for="{{p.thinking.stuck}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+          </view>
+
+          <view wx:if="{{p.hasTradeoff}}" class="chap">
+            <view class="chap-h"><text class="chap-no">四</text>取舍决策模式</view>
+            <view wx:if="{{p.tradeoff.choose.length}}" class="sub">
+              <view class="sub-l">选择倾向</view>
+              <view class="sub-list"><view wx:for="{{p.tradeoff.choose}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.tradeoff.giveup.length}}" class="sub">
+              <view class="sub-l warn">放弃模式</view>
+              <view class="sub-list"><view wx:for="{{p.tradeoff.giveup}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+          </view>
+
+          <view wx:if="{{p.hasHealth}}" class="chap">
+            <view class="chap-h"><text class="chap-no">五</text>健康与情绪反应</view>
+            <view wx:if="{{p.health.moodRule}}" class="sub">
+              <view class="sub-l">情绪触发规律</view>
+              <view class="sub-t">{{p.health.moodRule}}</view>
+            </view>
+            <view wx:if="{{p.health.bodyLink.length}}" class="sub">
+              <view class="sub-l">身心联动反应</view>
+              <view class="sub-list"><view wx:for="{{p.health.bodyLink}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+          </view>
+
+          <!-- 五大板块全部为空时（记录太少、或模型这一版没给内容）：
+               板块卡已各自按判据隐藏，这里给一句实话，不让页面只剩一个头部 + 变更日志。 -->
+          <view wx:if="{{!p.hasEnergy && !p.hasValue && !p.hasThinking && !p.hasTradeoff && !p.hasHealth}}" class="qhint" style="text-align:center;padding:26px 20px">
+            这一版没有沉淀下任何稳定特质。可能是记录还太少，或这个周期的波动都被判成偶然了 —— 再记一些，隔段时间再更新试试。
+          </view>
+
+          <!-- 历史版本：画像的价值在于看它怎么长出来，所以这里给入口 -->
+          <view wx:if="{{versions.length>1}}" class="verbar" bindtap="onVerListTap">
+            <view class="vb-t">历史版本（{{versions.length}}）</view>
+            <view class="vb-x">{{showVerList?'收起':'查看'}}</view>
+          </view>
+          <view wx:if="{{showVerList}}" class="vlist">
+            <view wx:for="{{versions}}" wx:key="_id" wx:for-item="v" wx:for-index="i"
+                  class="vrow" data-i="{{i}}" bindtap="openVer">
+              <view class="vr-l">
+                <view class="vr-t">v{{v.rev}} <text wx:if="{{v.changed}}" class="vr-c">改动了 {{v.changed}} 处</text></view>
+                <view class="vr-d">{{v.time}} · 基于 {{v.records}} 条记录{{v.lite?' · 轻量版':''}}</view>
+              </view>
+              <view class="vr-x">看这版 ›</view>
+            </view>
+          </view>
+        </block>
+      </block>
+    </view>
+  </view>
+</view>

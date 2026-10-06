@@ -1,0 +1,89 @@
+/* pages/persona/persona.wxss —— 个人画像（③ 增量沉淀）
+   基础布局（.app / .screen / .body / .sk / .loadfail / .empty / .pending）与章节卡
+   （.chap / .sub）沿用 profile.wxss 与 app.wxss 的同一套视觉语言——两个页面故意长得像，
+   因为它们是同一件事的两个侧面。差异只在「变更日志」和「历史版本」两块。 */
+
+.app { position: static; min-height: 100vh; display: block; }
+.screen { height: auto; }
+.body { min-height: calc(100vh + 60px); }
+
+/* 子页头部：返回 + 标题。
+   注意：标题栏右侧不放操作按钮——「识己手札」brand 是 position:fixed 浮在状态栏胶囊
+   位置（brandTop/Left 来自 capsuleRect），同高度放东西会与它重合。按钮另起一行。 */
+.a-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.a-hd .bk { flex-shrink: 0; font-size: 15px; color: var(--ink2); padding: 4px 2px; }
+.a-hd .a-tt { flex: 1; font-size: 17px; font-weight: 800; color: var(--ink); }
+
+.hint { font-size: 12px; color: var(--ink3); margin: -2px 0 12px; line-height: 1.6; }
+.qhint { font-size: 11.5px; color: var(--ink3); line-height: 1.65; margin: 4px 0 10px; }
+
+/* 生成中提示条：告诉用户「后台在跑，稍后再看」，而不是让他对着转圈等 */
+.pending { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--r-card); padding: 12px 14px; margin-bottom: 12px; }
+.pend-t { font-size: 13.5px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.pend-s { font-size: 12.5px; color: var(--ink2); line-height: 1.65; }
+/* 首次建立时的骨架占位（与 profile 页同一套，见那边注释） */
+.pend-sk { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* 头部条：左边版本号与素材范围，右边两个更新按钮。
+   给两个按钮（轻量 / 完整）是有意的——合集建议周跑轻量版、月年跑完整版，
+   但不该替用户决定频率，所以做成可选而不是默认某一个。 */
+.phead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.ph-l { flex: 1; min-width: 0; }
+.ph-v { font-size: 17px; font-weight: 800; color: var(--accent); line-height: 1.3; }
+.ph-d { font-size: 11px; color: var(--ink3); margin-top: 2px; line-height: 1.5; }
+.ph-btns { flex-shrink: 0; display: flex; gap: 6px; }
+.ph-b { font-size: 12px; color: var(--ink2); border: 1px solid var(--line); border-radius: 99px; padding: 5px 11px; }
+.ph-b.pri { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+
+/* 本次变更日志：这一页最有价值的部分，所以放最上面、给最强的视觉。
+   增量画像的用处就在这里——不只看「现在是什么样」，也看「这次改了什么」。 */
+.chg { background: #fff; border: 1px solid var(--accent); border-radius: var(--r-card); padding: 12px 14px; margin: 10px 0; }
+.chg-h { display: flex; align-items: center; justify-content: space-between; }
+.chg-t { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.chg-n { font-size: 11px; font-weight: 400; color: var(--ink3); margin-left: 6px; }
+.chg-x { flex-shrink: 0; font-size: 12px; color: var(--ink3); }
+.chg-b { margin-top: 9px; }
+.cg-sec { margin-bottom: 8px; }
+.cg-t { font-size: 11.5px; font-weight: 700; margin-bottom: 3px; }
+.cg-t.add { color: var(--accent); }
+.cg-t.chg { color: #B0853A; }
+.cg-t.del { color: #B0556E; }
+.cg-li { font-size: 12.5px; color: var(--ink2); line-height: 1.7; word-break: break-word; }
+.cg-none { font-size: 12.5px; color: var(--ink3); line-height: 1.7; }
+
+/* 章节卡：与 profile.wxss 同一套底座 */
+.chap { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 14px 14px 4px; margin-bottom: 10px; }
+.chap-h { font-size: 15px; font-weight: 800; color: var(--ink); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.chap-no { flex-shrink: 0; width: 20px; height: 20px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+
+.sub { margin: 11px 0 13px; }
+.sub-l { font-size: 12px; color: var(--ink3); margin-bottom: 6px; font-weight: 600; }
+.sub-l.good { color: var(--accent); }
+.sub-l.warn { color: #B0853A; }
+.sub-l.bad { color: #B0556E; }
+.sub-list { display: flex; flex-direction: column; gap: 6px; }
+.sub-li { font-size: 13.5px; color: var(--ink2); line-height: 1.7; word-break: break-word; }
+.sub-t { font-size: 13.5px; color: var(--ink2); line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
+
+/* 历史版本：画像按版本留档，所以这一块是这一页特有的（profile 只留最新一份，没有它） */
+.verbar { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 11px 14px; margin-bottom: 8px; }
+.vb-t { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.vb-x { font-size: 12px; color: var(--accent); }
+.vlist { margin-bottom: 12px; }
+.vrow { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 10px 13px; margin-bottom: 6px; }
+.vr-l { flex: 1; min-width: 0; }
+.vr-t { font-size: 13px; font-weight: 700; color: var(--ink); }
+.vr-c { font-size: 11px; font-weight: 400; color: var(--ink3); margin-left: 5px; }
+.vr-d { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+.vr-x { flex-shrink: 0; font-size: 11.5px; color: var(--ink3); }
+
+/* 空态 / 骨架屏 / 加载失败
+   注意：.empty-t / .empty-s / .skpage 这些在别的页面（analysis / profile / look）的
+   wxss 里各有一份，而**页面级 wxss 不跨页生效**，所以这里必须自己定义一份，
+   否则这一页的骨架屏和空态会完全没样式（白板一块）。 */
+.empty { text-align: center; padding: 40px 24px 30px; }
+.empty-t { font-size: 15px; font-weight: 800; color: var(--ink2); margin-bottom: 8px; }
+.empty-s { font-size: 12.5px; color: var(--ink3); line-height: 1.7; }
+.empty-btn { margin-top: 16px; display: inline-block; font-size: 13.5px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 99px; padding: 9px 22px; }
+
+.skpage { padding-top: 2px; }

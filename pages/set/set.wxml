@@ -123,11 +123,15 @@
       </view>
 
       <!-- 关于 -->
+      <view class="sect-t" style="margin-top:18px">AI 分析</view>
+      <view class="srow" bindtap="onPersona"><view class="sl">个人画像</view><view class="sv">长期沉淀 · 增量更新 ▸</view></view>
+      <view class="srow" bindtap="onProfile"><view class="sl">人物深度报告</view><view class="sv">定期重算 · 含推演与行动方案 ▸</view></view>
+
       <view class="sect-t" style="margin-top:18px">关于</view>
       <view class="srow"><view class="sl">选项池</view><view class="sv">{{optGroups}} 组 · {{optCount}} 个</view></view>
       <view class="srow"><view class="sl">数据位置</view><view class="sv">云开发数据库</view></view>
       <view class="srow" bindtap="openLog"><view class="sl">更新日志</view><view class="sv">最近 {{logLatest}} ▸</view></view>
-      <view class="srow" bindtap="onPrompt"><view class="sl">提示词试跑</view><view class="sv">改提示词 · 不影响线上内容 ▸</view></view>
+      <view class="srow" bindtap="onPrompt"><view class="sl">提示词</view><view class="sv">改各处正在用的提示词 · 保存即生效 ▸</view></view>
     </view>
   </view>
 

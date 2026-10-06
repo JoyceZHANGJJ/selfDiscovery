@@ -4,7 +4,7 @@
     <view class="body">
       <view class="a-hd">
         <view class="bk" bindtap="onClose">‹ 返回</view>
-        <view class="a-tt">个人画像</view>
+        <view class="a-tt">人物深度报告</view>
       </view>
       <view class="hint-row">
         <view class="hint">基于你的全部记录，做一份「专属人物深度分析报告」：你是哪种人、适合往哪走、容易卡在哪、怎么决策。只用你的记录，不脑补；推断会标【推论】，没信号的章节宁可留空。写实，不美化。下拉可刷新；重新生成每周一次（周一0点后可再来）。</view>
@@ -15,6 +15,14 @@
       <view wx:if="{{pending}}" class="pending">
         <view class="pend-t">正在生成，请稍后查看</view>
         <view class="pend-s">分析全部记录需要一些时间（通常十几秒到一分钟）。可以先离开这个页面，生成好之后回来就能看到；这里也会自动为你刷新。下拉可随时查看最新结果。</view>
+        <!-- 首次生成时还没有任何内容可显示，用骨架屏占位。
+             不占的话下面会直接空一片，看着像加载失败；画几条灰条才像「正在出结果」。
+             有旧报告时不占——让用户还能看着上次的内容。 -->
+        <view wx:if="{{!p}}" class="pend-sk">
+          <view class="sk-line sk-w40 sk-sm"></view>
+          <view class="sk-box"></view>
+          <view class="sk-box"></view>
+        </view>
       </view>
 
       <!-- 生成失败（网络 / 服务端）：给一句说明 + 重试 -->
@@ -31,30 +39,36 @@
       </view>
 
       <block wx:else>
-        <!-- 还没生成过：空态 + 生成按钮 -->
-        <view wx:if="{{empty}}" class="empty">
-          <view class="empty-t">还没有个人画像</view>
-          <view class="empty-s">先去「记」里留下一些觉察，再回来生成属于你的深度画像。生成需要一点时间，提交后可以先去做别的。</view>
-          <view wx:if="{{!pending}}" class="empty-btn" bindtap="onGenerate">生成个人画像</view>
+        <!-- 还没生成过：空态 + 生成按钮。
+             pending 时不显示空态：上面的「正在生成」卡已经把话说全了，
+             再叠一段「还没有报告 / 生成需要一点时间」纯属重复，还让人以为没提交上。 -->
+        <view wx:if="{{empty && !pending}}" class="empty">
+          <view class="empty-t">还没有人物深度报告</view>
+          <view class="empty-s">先去「记」里留下一些觉察，再回来生成属于你的深度报告。生成需要一点时间，提交后可以先去做别的。</view>
+          <view wx:if="{{!pending}}" class="empty-btn" bindtap="onGenerate">生成深度报告</view>
         </view>
 
-        <block wx:else>
-          <!-- 内容损坏（旧版落库残留 [object Object]）：明确提示重新生成，别显示一堆乱码 -->
+        <block wx:elif="{{p}}">
+          <!-- 整份报告一个可用字段都没剩下。
+               两种成因：旧版落库残留 [object Object]（脏数据，不可修复），
+               或模型这次确实没给出内容（记录太少）。两者按钮动作相同，
+               所以合并成一条提示，别分成两种说法让人以为有区别。 -->
           <view wx:if="{{p.broken}}" class="empty">
-            <view class="empty-t">这份画像的内容损坏了</view>
-            <view class="empty-s">上一版生成时部分内容没有正确保存（显示为乱码），无法修复，请重新生成一份。</view>
-            <view wx:if="{{!cooling && !pending}}" class="empty-btn" bindtap="onGenerate">{{cooling?'本周已生成过，下周一可再来':'重新生成个人画像'}}</view>
+            <view class="empty-t">这份报告没有内容</view>
+            <view class="empty-s">分析跑完了，但没能从现有记录里提炼出任何东西。可能是记录还太少 —— 先去「记」里多留几条，再回来重新生成一份。</view>
+            <view wx:if="{{!cooling && !pending}}" class="empty-btn" bindtap="onGenerate">{{cooling?'本周已生成过，下周一可再来':'重新生成深度报告'}}</view>
           </view>
 
           <block wx:else>
-          <!-- 入口卡摘要 -->
-          <view class="pcard sum">
+          <!-- 入口卡摘要。没摘要就不渲染这张卡：强调色底 + 白字，
+               空摘要会变成一条没有任何信息的绿条，看着像出了个进度条。 -->
+          <view wx:if="{{p.hasSummary}}" class="pcard sum">
             <view class="pc-sum">{{p.summary}}</view>
             <view wx:if="{{p.updatedAtLabel}}" class="pc-upd">更新于 {{p.updatedAtLabel}} · 基于 {{p.n || ''}} 条记录</view>
           </view>
 
           <!-- 第一章 基础人物画像 -->
-          <view class="chap">
+          <view wx:if="{{p.hasBasic}}" class="chap">
             <view class="chap-h"><text class="chap-no">一</text>基础人物画像</view>
             <view wx:if="{{p.basic.info.length}}" class="sub">
               <view class="sub-l">客观基础信息</view>
@@ -83,7 +97,7 @@
           </view>
 
           <!-- 第二章 核心盘点 -->
-          <view class="chap">
+          <view wx:if="{{p.hasCore}}" class="chap">
             <view class="chap-h"><text class="chap-no">二</text>核心盘点：优势 / 短板 / 内在冲突</view>
             <view wx:if="{{p.core.strengths.length}}" class="sub">
               <view class="sub-l good">核心优势（何时发挥 / 何时失效）</view>
@@ -100,7 +114,7 @@
           </view>
 
           <!-- 第三章 适配方向推荐 -->
-          <view class="chap">
+          <view wx:if="{{p.hasFit}}" class="chap">
             <view class="chap-h"><text class="chap-no">三</text>适配方向推荐</view>
             <view wx:if="{{p.fit.workFirst.length}}" class="sub">
               <view class="sub-l good">优先尝试 · 工作模式 / 任务 / 环境</view>
@@ -125,7 +139,7 @@
           </view>
 
           <!-- 第四章 未来图景推演 -->
-          <view class="chap">
+          <view wx:if="{{p.future.neutral || p.future.optimistic || p.future.cautious}}" class="chap">
             <view class="chap-h"><text class="chap-no">四</text>未来图景推演（条件推演，非预言）</view>
             <view wx:if="{{p.future.neutral}}" class="sub">
               <view class="sub-l">中性情景 · 维持现状</view>
@@ -142,7 +156,7 @@
           </view>
 
           <!-- 第五章 实操行动方案 -->
-          <view class="chap">
+          <view wx:if="{{p.hasAction}}" class="chap">
             <view class="chap-h"><text class="chap-no">五</text>实操行动方案</view>
             <view wx:if="{{p.action.quick.length}}" class="sub">
               <view class="sub-l good">低成本试错行动（优先，可随时终止）</view>
@@ -176,7 +190,7 @@
           </view>
 
           <!-- 第七章 总结 -->
-          <view wx:if="{{p.conclusion}}" class="pcard concl">
+          <view wx:if="{{p.hasConcl}}" class="pcard concl">
             <view class="chap-h sm">七 · 总结</view>
             <view class="concl-t">{{p.conclusion}}</view>
           </view>
