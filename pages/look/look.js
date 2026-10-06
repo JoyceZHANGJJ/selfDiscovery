@@ -299,6 +299,8 @@ Page(pageBase({
         else if (this.data.stateFilter === 'done') f1b = (st === 'done');
         else if (this.data.stateFilter === 'abandon') f1b = (st === 'abandon');
         else f1b = true; // all：未做 + 在做 + 做了 + 不做
+        // 分类筛：与流转状态是两条独立的筛，可叠加（同一行里左边选分类、右边选状态）
+        if (f1b && this.data.kindFilter !== 'all') f1b = store.wantCat(r) === this.data.kindFilter;
       } else if (this.data.filter === 'obs' && this.data.kindFilter !== 'all') {
         // 觉察：喜恶（存在 ext 里的细节值）——搜索态是客户端过滤，非搜索态云端已按它筛过，这里不重复
         f1b = (r.ext || []).indexOf(this.data.kindFilter) >= 0;
@@ -349,7 +351,8 @@ Page(pageBase({
     const stats = this._padStats(this.buildStats(effM, list, !!q, all), effM);
     // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别时，标题也带上它——
     // 避免列表筛过了、标题却说整个模块
-    const kn = (['obs', 'todo', 'jot'].indexOf(effM) >= 0 && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
+    // 「可做」也带分类（它与流转状态是两条筛，标题只写分类：状态那行 chip 自己就亮着）
+    const kn = (['obs', 'todo', 'jot', 'want'].indexOf(effM) >= 0 && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
     const filterName = effM === 'all' ? '全部' : (store.mname(effM) + kn);
     // 统计块的标题与列表标题分家：**随记不跟二级类别走**（换类别时统计本来就是整模块的口径，
     // 数字不变，标题也不该从「统计 · 随记」变成「统计 · 随记 · 念头」——看着像换了另一份统计）。
@@ -357,10 +360,11 @@ Page(pageBase({
     const statName = effM === 'all' ? '全部' : (effM === 'jot' ? store.mname(effM) : filterName);
     this.setData({
       modules: this.modulesVM(),
-      // 子筛选取项池：觉察是「喜恶」，待办是「类别」，随记是「类别」——
+      // 子筛选取项池：觉察是「喜恶」，待办 / 随记是「类别」，可做是「分类」——
       // 用户在选项管理里增删后这里自动跟上
       kinds: effM === 'todo' ? store.getOPT('todoKind')
-        : (effM === 'jot' ? store.getOPT('jotKind') : store.getOPT('obsKind')),
+        : (effM === 'jot' ? store.getOPT('jotKind')
+        : (effM === 'want' ? store.getOPT('wantKind') : store.getOPT('obsKind'))),
       filterName, statName,
       days: groups,
       tasks: this.buildTasks(tasks),
@@ -415,9 +419,10 @@ Page(pageBase({
             : (this.data.stateFilter === 'done' ? 'done'
             : (this.data.stateFilter === 'abandon' ? 'abandon' : 'all')));
     }
-    // 觉察的喜恶 / 待办的类别 / 随记的类别筛选交给云端（否则分页会混进不匹配的记录，
-    // 页数与「已经到底了」都会不准）
-    const subF = this.data.filter === 'obs' || this.data.filter === 'todo' || this.data.filter === 'jot';
+    // 觉察的喜恶 / 待办的类别 / 随记的类别 / 可做的分类 筛选交给云端（否则分页会混进不匹配的记录，
+    // 页数与「已经到底了」都会不准）。可做是唯一「分类 + 流转状态」同时筛的：
+    // recWhere 里两条条件是叠加的（state 只在 m==='want' 时生效），所以照传就行
+    const subF = this.data.filter === 'obs' || this.data.filter === 'todo' || this.data.filter === 'jot' || this.data.filter === 'want';
     const extTags = (subF && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
     // 「全部」的时间线不看待办、也不看「睡」，所以查询里就把它们排掉：
     // 否则一页 20 条被待办占满，时间线只显示几条、页面短到滚不动，上拉加载更多点了没反应
@@ -537,7 +542,10 @@ Page(pageBase({
       return;
     }
     if (f === 'want') {
-      store.countByStatus({ startTs }).then(bySt => set({ bySt }));
+      // 筛了分类时状态分布也落在同一批记录上（与觉察筛喜恶同一口径；
+      // 状态不是分类分布，跟着筛才和上面的列表对得上——随记那套「不跟筛走」只适用于类别分布）
+      const tags = this.data.kindFilter !== 'all' ? [this.data.kindFilter] : null;
+      store.countByStatus({ startTs, extTags: tags }).then(bySt => set({ bySt }));
       return;
     }
     // 随记：按类别数数量（类别取自选项池，可增删）——和待办一样只看数量，不做文本 Top。
@@ -669,10 +677,14 @@ Page(pageBase({
     // 这里**不主动滚动**：换二级筛只是换这一屏的记录，页面停在你点的地方。
     // 之前会把筛选行顶到屏幕上，看着就是「跳到顶部」（与记页换维度、清单页切段同一个取舍）
   },
-  // 可以 维度下的状态切换：未做 / 在做 / 做了
+  // 可以 维度下的状态切换：未做 / 在做 / 做了 / 不做。
+  // 点「全部」＝这一行的重置键：分类也一起归零（分类与状态挤在同一行，
+  // 只给状态留一个「全部」，不清分类的话就再也回不到「所有分类」了）
   onStateFilter(e) {
-    this.data.stateFilter = e.currentTarget.dataset.s;
-    this.setData({ stateFilter: this.data.stateFilter });
+    const s = e.currentTarget.dataset.s;
+    this.data.stateFilter = s;
+    if (s === 'all') this.data.kindFilter = 'all';
+    this.setData({ stateFilter: s, kindFilter: this.data.kindFilter });
     this.resetLoad();
     // 同上：不主动滚动（可做 未做 / 在做 / 做了 / 不做 只是换一批记录）
   },

@@ -97,9 +97,12 @@
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
       </view>
 
-      <!-- 可以 维度：状态切换 未做 / 在做 / 做了 -->
+      <!-- 可以 维度：一行里两条独立的筛——左半是「分类」（取选项池 wantKind，排在状态前面），
+           右半是流转状态 未做 / 在做 / 做了 / 不做。两者可叠加（如「想做」里「未做」的那些）。
+           「全部」是这一行共用的重置键：点它把分类与状态一起归零 -->
       <view wx:if="{{filter==='want'}}" class="filters states">
-        <view class="ft {{stateFilter==='all'?'on':''}}" data-s="all" bindtap="onStateFilter">全部</view>
+        <view class="ft {{stateFilter==='all' && kindFilter==='all' ?'on':''}}" data-s="all" bindtap="onStateFilter">全部</view>
+        <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
         <view class="ft {{stateFilter==='todo'?'on':''}}" data-s="todo" bindtap="onStateFilter">未做</view>
         <view class="ft {{stateFilter==='doing'?'on':''}}" data-s="doing" bindtap="onStateFilter">在做</view>
         <view class="ft {{stateFilter==='done'?'on':''}}" data-s="done" bindtap="onStateFilter">做了</view>

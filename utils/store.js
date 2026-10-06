@@ -970,6 +970,15 @@ function jotCat(r) {
   return i >= 0 ? (ex[i] || '') : '';
 }
 
+// 可做的「分类」：取 ext 里的 wantKind（与 jotCat / taskCat 同一套写法）。
+// 看页的「可做」二级筛选要用它——分类存在 ext 里，值取自选项池 wantKind
+function wantCat(r) {
+  if (!r) return '';
+  const es = r.extSrc || [], ex = r.ext || [];
+  const i = es.indexOf('wantKind');
+  return i >= 0 ? (ex[i] || '') : '';
+}
+
 // 每天默认最多先渲染多少条：超过才有「展开全部」。这个数只在这里写一份——
 // todo-list.wxml 以前也写死了一份 20（g.n > 20），改一处忘另一处就会出现
 // 「显示了 20 条但入口不出现」（或反之）；现在 wxml 只看 winDays 返回的 more / all
@@ -1152,9 +1161,10 @@ function countByModule({ startTs = null } = {}) {
   });
 }
 // 统计：可做维度下各流转状态的条数 → { todo, doing, done, abandon }
-function countByStatus({ startTs = null } = {}) {
+// extTags：看页「可做」筛了分类时，状态分布也要落在同一批记录上（与觉察筛喜恶同一口径）
+function countByStatus({ startTs = null, extTags = null } = {}) {
   const states = ['todo', 'doing', 'done', 'abandon'];
-  return Promise.all(states.map(s => countRecords({ m: 'want', startTs, state: s }))).then(arr => {
+  return Promise.all(states.map(s => countRecords({ m: 'want', startTs, state: s, extTags }))).then(arr => {
     const out = { todo: 0, doing: 0, done: 0, abandon: 0 };
     states.forEach((s, i) => { out[s] = arr[i] || 0; });
     return out;
@@ -1996,7 +2006,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,
