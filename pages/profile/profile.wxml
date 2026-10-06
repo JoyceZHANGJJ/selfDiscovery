@@ -7,8 +7,8 @@
         <view class="a-tt">个人画像</view>
       </view>
       <view class="hint-row">
-        <view class="hint">基于你的全部记录，做一份「人物深度分析报告」——你是哪种人、适合往哪走、容易卡在哪。资料里没有的不脑补，推论会标【推论】。下拉可刷新，重新生成每周一次。</view>
-        <view wx:if="{{p}}" class="a-regen {{cooling||pending?'off':''}}" bindtap="onGenerate">{{cooling?('还剩'+retryDays+'天'):(pending?'生成中…':'↻ 重新生成')}}</view>
+        <view class="hint">基于你的全部记录，做一份「人物深度分析报告」——你是哪种人、适合往哪走、容易卡在哪。资料里没有的不脑补，推论会标【推论】。下拉可刷新；重新生成每周一次（周一0点后可再来）。</view>
+        <view wx:if="{{p}}" class="a-regen {{cooling||pending?'off':''}}" bindtap="onGenerate">{{cooling?'本周已生成':(pending?'生成中…':'↻ 重新生成')}}</view>
       </view>
 
       <!-- 生成中：后台跑着，不让用户干等 -->

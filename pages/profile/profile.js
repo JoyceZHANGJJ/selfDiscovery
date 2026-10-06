@@ -4,16 +4,15 @@
 //
 // 交互约定：
 // 1) 下拉刷新 = 只重新**读取**已有画像（profileGet，秒回、不花大模型额度），不会重新生成。
-// 2) 重新生成 = 真调大模型重算，**一周只能点一次**（云函数 7 天冷却 + 前端按钮置灰提示），
-//    避免反复刷额度。点击后是「后台任务」：立即提交，页面进入 pending 态提示「稍后回来查看」，
+// 2) 重新生成 = 真调大模型重算，**每个自然周只能点一次**（周一 00:00 按中国时区重置；
+//    云函数冷却 + 前端按钮置灰提示「还剩 N 天」双道拦截，避免反复刷额度）。
+// 3) 生成是「后台任务」：点击后立即提交，页面进入 pending 态提示「稍后回来查看」，
 //    同时后台轮询 profileGet；出结果自动渲染 + toast。不用对着转圈干等。
 const store = require('../../utils/store.js');
 const pageBase = require('../../utils/pageBase.js');
 
 const POLL_MS = 5000;      // 轮询间隔
 const POLL_MAX = 24;       // 最多轮询 24 次（约 2 分钟）
-const REGEN_DAYS = 7;      // 重新生成冷却：与云函数保持一致，一周只能点一次
-const DAY = 24 * 3600 * 1000;
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function fmtTs(ts) {
@@ -21,6 +20,18 @@ function fmtTs(ts) {
   const d = new Date(ts);
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
     + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+/* 「每周从星期一开始」：按**中国时区**算某个时刻落在哪个自然周（周一 00:00 起）。
+   必须和云函数 cnWeekStart 完全一致，否则按钮显示的天数和云端判定会错位。 */
+const CN =8 * 3600 * 1000;
+const DAY = 24 * 3600 * 1000;
+function cnWeekStart(ts) {
+  const d = new Date(ts + CN);
+  const dow = d.getUTCDay();                     // 0=周日
+  const backToMon = (dow + 6) % 7;               // 周一=0 … 周日=6
+  const mid = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0) - CN;
+  return mid - backToMon * DAY;
 }
 
 // 云函数返回的嵌套对象 → 页面用的扁平结构（补齐空数组/空串，wxml 可直接 .length）
@@ -75,11 +86,17 @@ Page(pageBase({
   onHide() { this.stopPolling(); },
   onUnload() { this.stopPolling(); this._gone = true; },
 
-  // 距上次生成不足一周 → 重新生成按钮置灰（前端先拦一道，云函数还会再拦一道）
+  // 冷却判定：上次生成还落在**当前这一自然周**（周一00:00 起）内 → 锁定到下周一 00:00。
+  // 与云函数 cnWeekStart 逻辑一致（都按中国时区），前端先拦一道，云函数还会再拦一道。
   applyCooldown(updatedAt) {
     if (!updatedAt) { this.setData({ cooling: false, retryDays: 0 }); return; }
-    const left = REGEN_DAYS * DAY - (Date.now() - updatedAt);
-    this.setData({ cooling: left > 0, retryDays: left > 0 ? Math.ceil(left / DAY) : 0 });
+    const wk = cnWeekStart(Date.now());
+    if (updatedAt >= wk) {
+      // 距下周一00:00 还有几天（周一~周日分别剩 7~1 天）
+      this.setData({ cooling: true, retryDays: Math.max(1, Math.ceil((wk + 7 * DAY - Date.now()) / DAY)) });
+    } else {
+      this.setData({ cooling: false, retryDays: 0 });
+    }
   },
 
   // 下拉刷新 = 只重新读取已有画像（profileGet，秒回、不花大模型额度），不重新生成
@@ -122,7 +139,7 @@ Page(pageBase({
     if (this.data.gening || this.data.pending) { this.loadProfile(); return; }
     // 一周冷却：距上次生成不足一周，不发请求，直接提示还剩几天
     if (this.data.cooling) {
-      wx.showToast({ title: '每周可重新生成一次，还剩' + this.data.retryDays + '天', icon: 'none' });
+      wx.showToast({ title: '本周已生成过，下周一可再来', icon: 'none' });
       return;
     }
 
@@ -144,7 +161,7 @@ Page(pageBase({
           this.stopPolling();
           this.setData({ pending: false });
           this.applyCooldown(r.updatedAt);
-          wx.showToast({ title: '每周可重新生成一次', icon: 'none' });
+          wx.showToast({ title: '本周已生成过，下周一可再来', icon: 'none' });
           return;
         }
         if (r.error) {                       // 明确报错（如额度用完）

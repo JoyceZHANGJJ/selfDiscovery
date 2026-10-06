@@ -14,8 +14,9 @@
 //   5) action:'stats'：诊断——返回当前用户记录的时间分布与「该补齐哪些周期」。
 //   6) action:'profile'：根据当前用户【全部历史记录】生成「人物深度分析报告」——固定六章
 //      （基础画像 / 核心盘点 / 适配方向 / 未来推演 / 行动方案 / 总结），upsert 到 profile 集合。
-//      同一 openid 只保留最新一份；已有一份时 7 天内不再重复生成（返回 cooling + retryAfter，
-//      省大模型额度），event.force:true 可绕过冷却（仅控制台排查用）。
+//      同一 openid 只保留最新一份；每个自然周只能生成一次（上次生成还落在本周内就锁定，
+//      下周一 00:00 按中国时区自动解锁；返回 cooling + retryAfter 省大模型额度），
+//      event.force:true 可绕过（仅控制台排查用）。
 //   7) action:'profileGet'：读取已存的画像（进页面先调，不花大模型额度）。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
@@ -64,6 +65,17 @@ function cnToday0() {
 function cnStr(ts) {
   const d = new Date(ts + 8 * 3600 * 1000);
   return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+}
+
+// 中国时区里某个时刻所属「自然周」的周一 00:00（周一为一周之始）。
+// 「每周只能重新生成一次」按自然周算：只要上次生成还落在本周内就锁定，下周一 00:00 自动解锁。
+function cnWeekStart(ts) {
+  const CN = 8 * 3600 * 1000;
+  const d = new Date(ts + CN);
+  const dow = d.getUTCDay();                       // 0=周日
+  const backToMon = (dow + 6) % 7;                 // 周一=0 … 周日=6
+  const mid = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0) - CN;
+  return mid - backToMon * 24 * 3600 * 1000;
 }
 
 // 某一段 [start, end) + 起止字符串。type：
@@ -343,9 +355,11 @@ async function ensureProfileCol() {
   profileColEnsured = true;
 }
 
-// 重新生成的冷却期：7 天内不允许再次生成（避免反复刷大模型额度）。
+// 重新生成的冷却期：**每个自然周只能生成一次**（周一 00:00 按中国时区重置）。
 // 首次生成不受限制；force:true 可绕过（仅供控制台排查用）。
-const REGEN_COOLDOWN = 7 * 24 * 3600 * 1000;
+// 判定用「上次生成时间是否还落在当前这一周」，而不是滚动 7×24h——
+// 这样「周一零点后立刻可以再生成」符合「每周从星期一开始记」的直觉。
+const REGEN_WEEK = true;   // 语义开关：true=自然周，false=滚动 7 天（保留可切）
 
 // 生成（或重新生成）当前用户的个人画像：取全部记录 → 调大模型 → upsert 到 profile 集合
 async function generateProfile(openid, force) {
@@ -356,9 +370,17 @@ async function generateProfile(openid, force) {
   const ex = await profileCol().where({ openid }).limit(1).get();
   const old = (ex.data && ex.data[0]) || null;
   if (old && !force && old.updatedAt) {
-    const left = REGEN_COOLDOWN - (Date.now() - old.updatedAt);
-    if (left > 0) {
-      return { cooling: true, retryAfter: old.updatedAt + REGEN_COOLDOWN, updatedAt: old.updatedAt };
+    let cooling = false, retryAfter = 0;
+    if (REGEN_WEEK) {
+      // 自然周：上次生成还落在本周（周一 00:00 起）内 → 锁定到下周一 00:00
+      const wk = cnWeekStart(Date.now());
+      if (old.updatedAt >= wk) { cooling = true; retryAfter = wk + 7 * 24 * 3600 * 1000; }
+    } else {
+      const left = 7 * 24 * 3600 * 1000 - (Date.now() - old.updatedAt);
+      if (left > 0) { cooling = true; retryAfter = old.updatedAt + 7 * 24 * 3600 * 1000; }
+    }
+    if (cooling) {
+      return { cooling: true, retryAfter, updatedAt: old.updatedAt };
     }
   }
 
