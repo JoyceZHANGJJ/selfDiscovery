@@ -14,6 +14,8 @@
 //   5) action:'stats'：诊断——返回当前用户记录的时间分布与「该补齐哪些周期」。
 //   6) action:'profile'：根据当前用户【全部历史记录】生成「人物深度分析报告」——固定六章
 //      （基础画像 / 核心盘点 / 适配方向 / 未来推演 / 行动方案 / 总结），upsert 到 profile 集合。
+//      同一 openid 只保留最新一份；已有一份时 7 天内不再重复生成（返回 cooling + retryAfter，
+//      省大模型额度），event.force:true 可绕过冷却（仅控制台排查用）。
 //   7) action:'profileGet'：读取已存的画像（进页面先调，不花大模型额度）。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
@@ -341,10 +343,25 @@ async function ensureProfileCol() {
   profileColEnsured = true;
 }
 
+// 重新生成的冷却期：7 天内不允许再次生成（避免反复刷大模型额度）。
+// 首次生成不受限制；force:true 可绕过（仅供控制台排查用）。
+const REGEN_COOLDOWN = 7 * 24 * 3600 * 1000;
+
 // 生成（或重新生成）当前用户的个人画像：取全部记录 → 调大模型 → upsert 到 profile 集合
-async function generateProfile(openid) {
+async function generateProfile(openid, force) {
   await ensureProfileCol();
   if (genBudget <= 0) return { error: '本次调用额度已用完，请稍后或加大 maxGen 再试' };
+
+  // 同一 openid 只保留一份最新画像（先查出来：既用于冷却判断，也用于下面覆盖更新）
+  const ex = await profileCol().where({ openid }).limit(1).get();
+  const old = (ex.data && ex.data[0]) || null;
+  if (old && !force && old.updatedAt) {
+    const left = REGEN_COOLDOWN - (Date.now() - old.updatedAt);
+    if (left > 0) {
+      return { cooling: true, retryAfter: old.updatedAt + REGEN_COOLDOWN, updatedAt: old.updatedAt };
+    }
+  }
+
   const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
   const rows = (recs.data || []).map(d => ({
     m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
@@ -373,10 +390,9 @@ async function generateProfile(openid) {
     updatedAt: Date.now()
   };
   // 同一 openid 只保留一份最新画像（update 优先，没有才 add）
-  const ex = await profileCol().where({ openid }).limit(1).get();
-  if (ex.data && ex.data.length) {
-    await profileCol().doc(ex.data[0]._id).update({ data: doc });
-    return Object.assign({ _id: ex.data[0]._id, ok: true }, doc);
+  if (old) {
+    await profileCol().doc(old._id).update({ data: doc });
+    return Object.assign({ _id: old._id, ok: true }, doc);
   }
   const add = await profileCol().add({ data: doc });
   return Object.assign({ _id: add._id, ok: true }, doc);
@@ -526,10 +542,11 @@ exports.main = async (event) => {
     return { profile: p };
   }
 
-  // 个人画像：根据全部记录（重新）生成并落库（默认的「刷新」按钮 / 下拉触发）
+  // 个人画像：根据全部记录（重新）生成并落库（默认的「重新生成」按钮 / 下拉触发）
+  // 7 天冷却：已有画像且 7 天内再点 → 返回 cooling + retryAfter（不花大模型额度）
   if (event && event.action === 'profile') {
     if (!openid) return { error: 'no openid' };
-    return generateProfile(openid);
+    return generateProfile(openid, !!event.force);
   }
 
   // 有用户上下文但没带可识别的 action（比如用测试模板直接跑）：不干活，

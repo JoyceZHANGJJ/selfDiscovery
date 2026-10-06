@@ -7,14 +7,14 @@
         <view class="a-tt">个人画像</view>
       </view>
       <view class="hint-row">
-        <view class="hint">基于你的全部记录，做一份「人物深度分析报告」——你是哪种人、适合往哪走、容易卡在哪。资料里没有的不脑补，推论会标【推论】。记录越多越准，点右侧刷新可重新生成。</view>
-        <view class="a-refresh {{loading||pending?'on':''}}" bindtap="onRefresh">↻ 刷新</view>
+        <view class="hint">基于你的全部记录，做一份「人物深度分析报告」——你是哪种人、适合往哪走、容易卡在哪。资料里没有的不脑补，推论会标【推论】。下拉可刷新，重新生成每周一次。</view>
+        <view wx:if="{{p}}" class="a-regen {{cooling||pending?'off':''}}" bindtap="onGenerate">{{cooling?('还剩'+retryDays+'天'):(pending?'生成中…':'↻ 重新生成')}}</view>
       </view>
 
       <!-- 生成中：后台跑着，不让用户干等 -->
       <view wx:if="{{pending}}" class="pending">
         <view class="pend-t">正在生成，请稍后查看</view>
-        <view class="pend-s">分析全部记录需要一些时间（通常十几秒到一分钟）。可以先离开这个页面，生成好之后回来就能看到；这里也会自动为你刷新。</view>
+        <view class="pend-s">分析全部记录需要一些时间（通常十几秒到一分钟）。可以先离开这个页面，生成好之后回来就能看到；这里也会自动为你刷新。下拉可随时查看最新结果。</view>
       </view>
 
       <!-- 生成失败（网络 / 服务端）：给一句说明 + 重试 -->

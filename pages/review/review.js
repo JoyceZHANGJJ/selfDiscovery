@@ -146,7 +146,7 @@ Page(pageBase({
       .then(res => {
         const p = res.result && res.result.profile;
         this.setData({
-          profileLatest: p ? { summary: p.summary || '' } : null
+          profileLatest: p ? { summary: p.summary || '' } : { empty: true }
         });
         this._pfLoading = false;
       })

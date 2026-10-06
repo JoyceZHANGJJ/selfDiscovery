@@ -15,6 +15,10 @@
 .a-refresh { flex-shrink: 0; font-size: 12.5px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 99px; padding: 4px 11px; }
 .a-refresh.on { opacity: .55; }
 
+/* 重新生成按钮（一周只能点一次；冷却中置灰不可点） */
+.a-regen { flex-shrink: 0; font-size: 12.5px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 99px; padding: 4px 11px; }
+.a-regen.off { color: var(--ink3); background: transparent; border-color: var(--line); opacity: .7; }
+
 /* 提示行 + 刷新按钮（避开状态栏胶囊区） */
 .hint-row { display: flex; align-items: flex-start; gap: 10px; margin: -2px 0 12px; }
 .hint-row .hint { flex: 1; margin: 0; }

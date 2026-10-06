@@ -2,16 +2,18 @@
 // 基于全部历史记录，由云函数 analysis 的 action:'profile' 生成一份「人物深度分析报告」。
 // 每 openid 一份最新：进页面先 profileGet（只读、秒回、不花大模型额度）。
 //
-// 两个交互约定：
-// 1) 刷新只认「点按钮」，下拉不触发重新生成（重新生成要调大模型、耗时长，不该被误触）。
-// 2) 生成是「后台任务」：点一下就提交，不让用户对着转圈等。页面进入 pending 态并提示
-//    「稍后回来查看」，同时在后台轮询 profileGet；出结果了自动渲染 + toast 提醒。
-//    （云函数控制台对长耗时调用偶尔会丢响应报 ret=-3，轮询兜底，避免用户以为失败。）
+// 交互约定：
+// 1) 下拉刷新 = 只重新**读取**已有画像（profileGet，秒回、不花大模型额度），不会重新生成。
+// 2) 重新生成 = 真调大模型重算，**一周只能点一次**（云函数 7 天冷却 + 前端按钮置灰提示），
+//    避免反复刷额度。点击后是「后台任务」：立即提交，页面进入 pending 态提示「稍后回来查看」，
+//    同时后台轮询 profileGet；出结果自动渲染 + toast。不用对着转圈干等。
 const store = require('../../utils/store.js');
 const pageBase = require('../../utils/pageBase.js');
 
 const POLL_MS = 5000;      // 轮询间隔
 const POLL_MAX = 24;       // 最多轮询 24 次（约 2 分钟）
+const REGEN_DAYS = 7;      // 重新生成冷却：与云函数保持一致，一周只能点一次
+const DAY = 24 * 3600 * 1000;
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function fmtTs(ts) {
@@ -54,7 +56,9 @@ Page(pageBase({
     pending: false,        // 已提交生成、结果还没出来（后台跑着，可随时离开）
     genFail: false,        // 生成失败（明确报错，非轮询超时）
     p: null,               // 画像对象
-    empty: false           // 还没生成过
+    empty: false,          // 还没生成过
+    cooling: false,        // 距上次生成不足一周（重新生成按钮置灰）
+    retryDays: 0// 冷却还剩几天
   },
 
   onShow() {
@@ -71,9 +75,23 @@ Page(pageBase({
   onHide() { this.stopPolling(); },
   onUnload() { this.stopPolling(); this._gone = true; },
 
+  // 距上次生成不足一周 → 重新生成按钮置灰（前端先拦一道，云函数还会再拦一道）
+  applyCooldown(updatedAt) {
+    if (!updatedAt) { this.setData({ cooling: false, retryDays: 0 }); return; }
+    const left = REGEN_DAYS * DAY - (Date.now() - updatedAt);
+    this.setData({ cooling: left > 0, retryDays: left > 0 ? Math.ceil(left / DAY) : 0 });
+  },
+
+  // 下拉刷新 = 只重新读取已有画像（profileGet，秒回、不花大模型额度），不重新生成
+  onPullDownRefresh() {
+    this.layoutBrand();
+    this.playBrand();
+    this.loadProfile(() => wx.stopPullDownRefresh());
+  },
+
   // 只读已存的画像（不花大模型额度）；没有就留空态让用户点生成
-  loadProfile() {
-    if (this._reading) return;
+  loadProfile(cb) {
+    if (this._reading) { cb && cb(); return; }
     this._reading = true;
     this.setData({ loading: true });
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'profileGet' } })
@@ -85,11 +103,14 @@ Page(pageBase({
           p: p ? mapProfile(p) : null,
           empty: !p
         });
+        this.applyCooldown(p ? p.updatedAt : 0);
+        cb && cb();
       })
       .catch(() => {
         // 读失败（集合还没建 / 网络问题）：先给空态，不阻断页面
         this._reading = false;
         this.setData({ loading: false, ready: true, empty: true, genFail: false });
+        cb && cb();
       });
   },
 
@@ -99,6 +120,11 @@ Page(pageBase({
     if (this._gone) return;
     // 已在生成 / 已在等待：再点只是催一下结果，不重复提交
     if (this.data.gening || this.data.pending) { this.loadProfile(); return; }
+    // 一周冷却：距上次生成不足一周，不发请求，直接提示还剩几天
+    if (this.data.cooling) {
+      wx.showToast({ title: '每周可重新生成一次，还剩' + this.data.retryDays + '天', icon: 'none' });
+      return;
+    }
 
     const base = (this.data.p && this.data.p.updatedAt) || 0;
     this.setData({ genning: true, pending: true, genFail: false });
@@ -106,13 +132,19 @@ Page(pageBase({
 
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'profile' } })
       .then(res => {
-        this._genning = false;
         this.setData({ genning: false });
         const r = res.result || {};
         if (r.empty) {                       // 还没有任何记录
           this.stopPolling();
           this.setData({ pending: false, ready: true, empty: true, p: null });
           wx.showToast({ title: '先去记几条再来生成', icon: 'none' });
+          return;
+        }
+        if (r.cooling) {                     // 云函数判定仍在冷却期（前端拦漏了 / 别人刚生成过）
+          this.stopPolling();
+          this.setData({ pending: false });
+          this.applyCooldown(r.updatedAt);
+          wx.showToast({ title: '每周可重新生成一次', icon: 'none' });
           return;
         }
         if (r.error) {                       // 明确报错（如额度用完）
@@ -124,6 +156,7 @@ Page(pageBase({
         this.setData({
           pending: false, ready: true, empty: false, p: mapProfile(r)
         });
+        this.applyCooldown(r.updatedAt);
         wx.showToast({ title: '画像已生成', icon: 'success' });
       })
       .catch(() => {
@@ -157,6 +190,7 @@ Page(pageBase({
               genning: false, pending: false, ready: true, empty: false, genFail: false,
               p: mapProfile(p)
             });
+            this.applyCooldown(p.updatedAt);
             wx.showToast({ title: '画像已生成', icon: 'success' });
           }
         })
@@ -169,15 +203,8 @@ Page(pageBase({
     if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
   },
 
-  // 标题栏/空态的「生成 / 重新生成」按钮
+  // 「生成个人画像」/「重新生成」按钮（一周只能点一次；读取画像走下拉刷新）
   onGenerate() { this.generate(); },
-
-  // 刷新按钮：只重新读取已有画像（快），不重新调大模型
-  onRefresh() {
-    if (this.data.gening || this.data.pending) { this.loadProfile(); return; }
-    this.loadProfile();
-    wx.showToast({ title: '已刷新', icon: 'none' });
-  },
 
   // 子页：从回看页 navigateTo 进来，点返回回退
   onClose() { wx.navigateBack(); }
