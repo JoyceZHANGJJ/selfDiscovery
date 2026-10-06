@@ -148,12 +148,25 @@ Page(pageBase({
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'profileGet' } })
       .then(res => {
         const p = res.result && res.result.profile;
-        // 旧版画像可能把 summary 落成了 "[object Object]"（内容已不可还原）→ 走「待生成」卡片
-        const sum = (p && typeof p.summary === 'string') ? p.summary.trim() : '';
-        const broken = !!(p && (!sum || sum === '[object Object]' || sum === '[object object]'));
+        // 旧版画像可能把字段落成了 "[object Object]"（内容已不可还原）→ 走「待生成」卡片
+        // ⚠️ 判据不能只看 summary：模型完全可能只填了 future / decision 而 summary 空着，
+        // 那样其实有内容。只看 summary 会让入口卡误报「内容损坏」，用户点进去又被
+        // 告知要重新生成，白烧一次额度。所以要看**整份还有没有内容**。
+        const txt = (v) => {
+          if (typeof v === 'string') { const t = v.trim(); return (t === '[object Object]' || t === '[object object]') ? '' : t; }
+          if (Array.isArray(v)) return v.filter(Boolean).length ? 'x' : '';
+          return (v && typeof v === 'object') ? 'x' : '';
+        };
+        const hasAny = !!(p && (
+          txt(p.summary) || txt(p.conclusion)
+          || ['basic', 'core', 'fit', 'action', 'decision'].some(g =>
+            p[g] && Object.keys(p[g]).some(k => txt(p[g][k])))
+          || ['neutral', 'optimistic', 'cautious'].some(k => txt((p.future || {})[k]))
+        ));
+        const sum = txt(p && p.summary);
         this.setData({
           profileLatest: p ? { summary: sum } : { empty: true },
-          profileBroken: broken
+          profileBroken: !!(p && !hasAny)
         });
         this._pfLoading = false;
       })

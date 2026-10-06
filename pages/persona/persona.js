@@ -20,11 +20,15 @@
 //    **不设每周冷却**：它是增量的、成本低，合集明确建议周跑轻量版 / 月年跑完整版，
 //    硬锁只会挡住正常节奏。但会给「这是第几版、上次改了什么」的提示。
 // 3) 生成是后台任务：点击后立即提交，页面进入 pending 态，可随时离开，回来自动看到结果。
+// 4) pending 标记**落 Storage**（utils/genstate.js）：页面被销毁后 data 会重置，
+//    不持久化就会出现「刚点的更新，提示没了、按钮又能点」，用户会重复提交、白烧额度。
 const store = require('../../utils/store.js');
 const pageBase = require('../../utils/pageBase.js');
+const genstate = require('../../utils/genstate.js');
 
 const POLL_MS = 5000;
 const POLL_MAX = 24;       // 最多轮询 24 次（约 2 分钟）
+const GEN_KIND = 'persona';
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function fmtTs(ts) {
@@ -100,6 +104,14 @@ function mapPersona(p) {
     // 「本次没变化」是一条**有效信息**——说明这段时间的记录没有推翻任何既有结论。
     // 所以别把空变更当成失败，它其实是在告诉你画像很稳。
     noChange: added + changed + dropped === 0,
+    // 五大板块各自「有没有内容」。判据放JS 里算，wxml 只读布尔值 ——
+    // 在 wxml 里写「这一章所有子块都空」要一长串 ||，漏一个字段就会留下
+    // 一个光秃秃的章节标题（看着像加载坏了）。
+    hasEnergy: listOf(e.drain).length + listOf(e.charge).length > 0 || !!s(e.rhythm),
+    hasValue: listOf(val.like).length + listOf(val.dislike).length + listOf(val.core).length > 0,
+    hasThinking: listOf(t.patterns).length + listOf(t.stuck).length > 0,
+    hasTradeoff: listOf(tr.choose).length + listOf(tr.giveup).length > 0,
+    hasHealth: listOf(h.bodyLink).length > 0 || !!s(h.moodRule),
     basedOn: { records: b.records || 0, reviews: b.reviews || 0, fromRev: b.fromRev || 0 },
     createdLabel: fmtTs(p.createdAt),
     lite: !!p.lite
@@ -122,8 +134,11 @@ Page(pageBase({
 
   onShow() {
     this.ensureTheme();
+    // 先读回「生成中」标记，再读数据——顺序反了标记会被 load() 覆盖掉
+    const g = genstate.peek(GEN_KIND);
+    if (g) this.setData({ pending: true });
     this.load();
-    if (this.data.pending) this.startPolling();
+    if (g) this.startPolling(g.from);
   },
 
   onHide() { this.stopPolling(); },
@@ -142,9 +157,14 @@ Page(pageBase({
           return;
         }
         const cur = r.persona || null;
+        // 与本地标记对账：云端已有比提交时更新的版本 → 这次其实已完成，清标记关pending。
+        const g = genstate.peek(GEN_KIND);
+        let done = false;
+        if (g && cur && (cur.rev || 0) > (g.from || 0)) { genstate.clear(GEN_KIND); done = true; }
         this.setData({
           ready: true, loading: false, genFail: false,
           empty: !cur,
+          pending: done ? false : this.data.pending,
           p: cur ? mapPersona(cur) : null,
           versions: (r.versions || []).map(v => Object.assign({}, v, { time: fmtTs(v.createdAt) }))
         });
@@ -157,7 +177,9 @@ Page(pageBase({
 
   // 更新画像（增量一版）。lite=true 走轻量版——合集建议：周用轻量、月年用完整版。
   generate(lite) {
-    if (this.data.genning) return;
+    // 已在生成 / 已在等待：再点不重复提交，只催一下结果。
+    // 漏掉pending 判断的话，用户在「正在生成」时再点会重复调模型、写出两版画像。
+    if (this.data.genning || this.data.pending) { this.load(); return; }
     const has = !!this.data.p;
     wx.showModal({
       title: has ? '更新画像' : '建立画像',
@@ -167,18 +189,22 @@ Page(pageBase({
       confirmText: has ? '更新' : '建立', confirmColor: '#B4544E',
       success: (res) => {
         if (!res.confirm) return;
+        // 先落标记再发请求，避免请求瞬间被打断时丢标记
+        genstate.markStart(GEN_KIND, this.data.p ? this.data.p.rev : 0);
         this.setData({ genning: true, pending: true, genFail: false });
         wx.cloud.callFunction({ name: 'analysis', data: { action: 'persona', lite: !!lite } })
           .then(r2 => {
             const rr = r2.result || {};
             if (this._gone) return;
             if (rr.error) {
+              genstate.clear(GEN_KIND);
               this.setData({ genning: false, pending: false, genFail: true });
               wx.showToast({ title: rr.error, icon: 'none', duration: 2500 });
               return;
             }
             this.setData({ genning: false });
             if (rr.empty) {
+              genstate.clear(GEN_KIND);
               this.setData({ pending: false });
               wx.showToast({ title: rr.summary || '还没有记录', icon: 'none' });
               return;
@@ -187,6 +213,9 @@ Page(pageBase({
           })
           .catch(() => {
             if (this._gone) return;
+            // 网络异常不清标记：云函数可能已经收到并在跑，
+            // 这时报「提交失败」会诱导用户再点一次，白烧一次额度。
+            genstate.clear(GEN_KIND);
             this.setData({ genning: false, pending: false, genFail: true });
             wx.showToast({ title: '提交失败（网络或云函数报错）', icon: 'none' });
           });
@@ -195,8 +224,15 @@ Page(pageBase({
   },
 
   // 后台轮询：画像是增量的、通常十几秒内就好，但不想让人对着转圈干等。
-  startPolling() {
+  // from = 提交那一刻的基准 rev（来自 genstate 标记）。
+  // ⚠️ 基准必须在函数外先取好，不能每轮重读 this.data.p.rev：
+  // 重进页面时 load() 已经把 p 换成最新版了，那时再读就等于「拿新版和它自己比」，
+  // 永远等不到变大 → pending 卡在「正在生成」直到超时。这种错在页面上看不出原因。
+  startPolling(from) {
     this.stopPolling();
+    const before = (from === undefined || from === null)
+      ? (this.data.p ? this.data.p.rev : 0)
+      : (from || 0);
     let n = 0;
     const tick = () => {
       if (this._gone) { clearTimeout(this._timer); return; }
@@ -206,9 +242,9 @@ Page(pageBase({
           if (this._gone) return;
           const r = res.result || {};
           const cur = r.persona || null;
-          const before = this.data.p ? this.data.p.rev : 0;
-          if (cur && cur.rev > before) {
+          if (cur && (cur.rev || 0) > before) {
             this.stopPolling();
+            genstate.clear(GEN_KIND);
             this.setData({
               pending: false,
               p: mapPersona(cur),
@@ -218,12 +254,22 @@ Page(pageBase({
             wx.showToast({ title: '画像已更新到 ' + cur.rev, icon: 'none' });
             return;
           }
-          if (n >= POLL_MAX) { this.stopPolling(); this.setData({ pending: false }); return; }
+          if (n >= POLL_MAX) {
+            this.stopPolling();
+            genstate.clear(GEN_KIND);
+            this.setData({ pending: false });
+            return;
+          }
           this._timer = setTimeout(tick, POLL_MS);
         })
         .catch(() => {
           if (this._gone) return;
-          if (n >= POLL_MAX) { this.stopPolling(); this.setData({ pending: false }); return; }
+          if (n >= POLL_MAX) {
+            this.stopPolling();
+            genstate.clear(GEN_KIND);
+            this.setData({ pending: false });
+            return;
+          }
           this._timer = setTimeout(tick, POLL_MS);
         });
     };

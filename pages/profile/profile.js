@@ -9,11 +9,16 @@
 //    云函数冷却 + 前端按钮置灰提示「还剩 N 天」双道拦截，避免反复刷额度）。
 // 3) 生成是「后台任务」：点击后立即提交，页面进入 pending 态提示「稍后回来查看」，
 //    同时后台轮询 profileGet；出结果自动渲染 + toast。不用对着转圈干等。
+//4) pending 标记**落Storage**（utils/genstate.js）：页面被销毁后重进，云函数可能还在跑，
+//    但页面 data 已经重置——不持久化就会出现「刚点的生成，提示没了、按钮又能点」的错觉，
+//    用户会重复提交、白烧额度。
 const store = require('../../utils/store.js');
 const pageBase = require('../../utils/pageBase.js');
+const genstate = require('../../utils/genstate.js');
 
 const POLL_MS = 5000;      // 轮询间隔
 const POLL_MAX = 24;       // 最多轮询 24 次（约 2 分钟）
+const GEN_KIND = 'profile';
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function fmtTs(ts) {
@@ -79,16 +84,44 @@ function mapProfile(p) {
   };
   const f = (p.future && typeof p.future === 'object') ? p.future : {};
   const d = (p.decision && typeof p.decision === 'object') ? p.decision : {};
-  const broken = !s(p.summary)&& !s(p.conclusion);   // 整份画像都是残渣 → 提示重新生成
+  // 每章「有没有任何内容」。wxml 里判「这一章所有子块都空」要写一长串 || 表达式，
+  // 又长又容易漏一个字段——漏一个就会出现截图里那种光秃秃的章节标题。
+  // 所以在 JS 里一次算好，wxml 只读布尔值。
+  const anyOf = (o, keys) => keys.some(k => (o[k] || []).length > 0);
+  const B = ['info', 'energy', 'decision', 'body', 'finance', 'env'];
+  const C = ['strengths', 'downsides', 'conflicts'];
+  const F = ['workFirst', 'workCareful', 'workAvoid', 'life', 'risks'];
+  const A = ['quick', 'rules', 'metrics'];
+  const hasSummary = !!s(p.summary);
+  const hasBasic = anyOf(o(p.basic, B), B);
+  const hasCore = anyOf(o(p.core, C), C);
+  const hasFuture = !!s(f.neutral) || !!s(f.optimistic) || !!s(f.cautious);
+  const hasFit = anyOf(o(p.fit, F), F) || hasFuture;
+  const hasAction = anyOf(o(p.action, A), A);
+  const hasDecision = !!s(d.rhythm) || listOf(d.framework).length > 0 || listOf(d.trial).length > 0;
+  const hasConcl = !!s(p.conclusion);
+  // 「内容损坏」= 整份报告一个可用字段都没剩下。
+  // ⚠️ 原来只看 summary + conclusion 两个字段，但模型完全可能只填了 future 或 decision
+  // ——那样明明有内容，却会被判成损坏、页面让用户重新生成，白烧一次额度。
+  // 所以判据必须是「所有章节都没内容」。
+  const broken = !hasSummary && !hasBasic && !hasCore && !hasFit
+    && !hasAction && !hasDecision && !hasConcl;
   return {
     _id: p._id,
     broken: broken,
     summary: s(p.summary).slice(0, 300),
-    basic: o(p.basic, ['info', 'energy', 'decision', 'body', 'finance', 'env']),
-    core: o(p.core, ['strengths', 'downsides', 'conflicts']),
-    fit: o(p.fit, ['workFirst', 'workCareful', 'workAvoid', 'life', 'risks']),
+    hasSummary: hasSummary,
+    hasBasic: hasBasic,
+    hasCore: hasCore,
+    hasFit: hasFit,
+    hasAction: hasAction,
+    hasDecision: hasDecision,
+    hasConcl: hasConcl,
+    basic: o(p.basic, B),
+    core: o(p.core, C),
+    fit: o(p.fit, F),
     future: { neutral: s(f.neutral), optimistic: s(f.optimistic), cautious: s(f.cautious) },
-    action: o(p.action, ['quick', 'rules', 'metrics']),
+    action: o(p.action, A),
     decision: {
       rhythm: s(d.rhythm),
       framework: listOf(d.framework),
@@ -120,9 +153,13 @@ Page(pageBase({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 3, theme: store.curTheme() });
     }
+    // 先把上次的「生成中」标记读回来，再读数据。顺序不能反：
+    // loadProfile 会覆盖 pending/empty，读晚了标记就被冲掉了。
+    const g = genstate.peek(GEN_KIND);
+    if (g) this.setData({ pending: true });
     this.loadProfile();
-    // 上次提交过生成、还没看到结果：回到页面继续等
-    if (this.data.pending) this.startPolling();
+    // 有标记 → 继续轮询；顺带校验这次生成是不是已经黄了（有标记但结果没更新）
+    if (g) this.startPolling(g.from);
   },
 
   onHide() { this.stopPolling(); },
@@ -157,10 +194,16 @@ Page(pageBase({
       .then(res => {
         this._reading = false;
         const p = res.result && res.result.profile;
+        // 和本地「生成中」标记对账：如果云端已经有比提交时更新的版本，
+        // 说明这次生成其实已经完成（用户离开页面时出结果了）→ 清标记、关pending。
+        const g = genstate.peek(GEN_KIND);
+        let done = false;
+        if (g && p && (p.updatedAt || 0) > (g.from || 0)) { genstate.clear(GEN_KIND); done = true; }
         this.setData({
           loading: false, ready: true, genFail: false,
           p: p ? mapProfile(p) : null,
-          empty: !p
+          empty: !p,
+          pending: done ? false : this.data.pending
         });
         this.applyCooldown(p ? p.updatedAt : 0);
         cb && cb();
@@ -186,6 +229,9 @@ Page(pageBase({
     }
 
     const base = (this.data.p && this.data.p.updatedAt) || 0;
+    // **先落标记再发请求**：万一进程被打断，标记已经在了，重进页面能接上。
+    // 反过来（先发请求后写标记）会在请求发出瞬间被杀时丢掉标记，pending 又会丢。
+    genstate.markStart(GEN_KIND, base);
     this.setData({ genning: true, pending: true, genFail: false });
     this.startPolling(base);
 
@@ -195,12 +241,14 @@ Page(pageBase({
         const r = res.result || {};
         if (r.empty) {                       // 还没有任何记录
           this.stopPolling();
+          genstate.clear(GEN_KIND);
           this.setData({ pending: false, ready: true, empty: true, p: null });
           wx.showToast({ title: '先去记几条再来生成', icon: 'none' });
           return;
         }
         if (r.cooling) {                     // 云函数判定仍在冷却期（前端拦漏了 / 别人刚生成过）
           this.stopPolling();
+          genstate.clear(GEN_KIND);
           this.setData({ pending: false });
           this.applyCooldown(r.updatedAt);
           wx.showToast({ title: '本周已生成过，下周一可再来', icon: 'none' });
@@ -208,10 +256,12 @@ Page(pageBase({
         }
         if (r.error) {                       // 明确报错（如额度用完）
           this.stopPolling();
+          genstate.clear(GEN_KIND);
           this.setData({ pending: false, genFail: true });
           return;
         }
         this.stopPolling();
+        genstate.clear(GEN_KIND);
         this.setData({
           pending: false, ready: true, empty: false, p: mapProfile(r)
         });
@@ -219,7 +269,8 @@ Page(pageBase({
         wx.showToast({ title: '画像已生成', icon: 'success' });
       })
       .catch(() => {
-        // 请求异常（含控制台偶发的 ret=-3）：不清 pending，让轮询继续兜底
+        // 请求异常（含控制台偶发的 ret=-3）：不清 pending 也不清标记，让轮询继续兜底。
+        // 云函数可能其实已经收到并在跑了，这时报「失败」反而误导用户重复点击。
         this.setData({ genning: false });
       });
   },
@@ -234,7 +285,8 @@ Page(pageBase({
       n++;
       if (n > POLL_MAX) {
         this.stopPolling();
-        this.setData({ genning: false });
+        genstate.clear(GEN_KIND);
+        this.setData({ genning: false, pending: false });
         wx.showToast({ title: '还在生成，稍后再来看看', icon: 'none' });
         return;
       }
@@ -245,6 +297,7 @@ Page(pageBase({
           const p = res.result && res.result.profile;
           if (p && (!from || (p.updatedAt || 0) > from)) {
             this.stopPolling();
+            genstate.clear(GEN_KIND);
             this.setData({
               genning: false, pending: false, ready: true, empty: false, genFail: false,
               p: mapProfile(p)

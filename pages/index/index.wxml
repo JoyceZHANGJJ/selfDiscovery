@@ -112,11 +112,11 @@
           <!-- 今日的「能量说明」：这句话写长了要能折行、跟着内容自己变高，所以用 textarea（auto-height）——
                其余类别（备忘 / 购物 / 随记）仍是一行的 input：一句话就够，不需要换行。
                注：textarea 没有键盘上的「完成」键（回车＝换行），保存走底部「记下 / 保存修改」 -->
-          <textarea wx:if="{{tag==='today'}}" class="big-in plain-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{todayLocked && !editing}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindinput="onMainInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
+          <textarea wx:if="{{tag==='today'}}" class="big-in plain-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{todayLocked && !editing}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindinput="onMainInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
           <input wx:else class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{tag==='today' && todayLocked && !editing}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
             <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
-            <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
+            <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
           </view>
         </block>
         <!-- 今日已填且只读：这个分支（能量说明 / 细节·都可跳过）也一并藏掉。
@@ -129,11 +129,12 @@
         <!-- 归类 / 什么事：都不给主输入框，只从上面的选项池点选（要靠「✎ 管理」增删），
              这样它始终是可归类的名词，不会被写成一整句话。
              可做的文字输入走下面「具体的描述」那个框——只填它时，它就是「事」（见 doSave） -->
-        <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
+        <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
 
-        <!-- 具体的描述：与「归类」配对（点可归类、描述不可归类），自由记录、可跳过，不带标题 -->
+        <!-- 具体的描述：与「归类」配对（点可归类、描述不可归类），自由记录、可跳过，不带标题。
+             maxlength="-1"：textarea 不写这个属性时微信默认只给 140 字，写长了会被无声截断 -->
         <view wx:if="{{composer.hasDesc}}" class="extra descrow">
-          <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
+          <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
         </view>
 
         <view class="extra-h">细节 · 都可跳过</view>
@@ -152,7 +153,12 @@
             </view>
             <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fld{{index}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           </block>
-          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb"></textarea>
+          <!-- maxlength="-1"：不限字数。textarea 不写这个属性时微信默认 140 字，
+               「有什么想抒发的？」这种框正好最容易撞上限——想多说两句就被无声截断，
+               而截断是静默的（不报错、不提示），用户只会以为自己没打上。
+               这里给自由抒发的框（感受 / 收获 / 原因 / 描述一类）全部放开；
+               主输入框与「归类」输入框保持默认，那些本来就该短。 -->
+          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
         </view>
         </block>
         </block>
