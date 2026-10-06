@@ -1131,6 +1131,45 @@ function dueOver(ts) { return !!ts && ts < Date.now(); }
 // 排序用的粗档：0＝有计划（排在前面，内部按时间早的优先），1＝没计划（沉底）
 function dueRank(ts) { return ts ? 0 : 1; }
 
+/* 改「计划完成」的唯一入口：三处改 dueTs 的地方（行尾胶囊循环 pageBase.cycleDue、
+   快捷记面板保存 custom-tab-bar._qaUpdate、记卡保存 index.doSave）都走这里，
+   免得「改了时间却还挂着已推日历的标记」这种漏改只发生在一处。
+
+   为什么必须连带清 calTs：calTs 只说明「我推过」，而推到手机日历里的日程
+   带的是**当时那个** dueTs。小程序读不回也改不了系统日程（见 utils/calendar.js
+   的能力边界），所以时间一改，日历里那条就已经对不上了——留着标记只会让
+   「已推日历」四个字变成假话，点下去还会被「要再推一遍吗」挡住。
+   清掉它，按钮回到「推到日历」，用户自己再推一次（新的时间才会写进去）。
+
+   值没变就**不动** calTs：面板打开又原样保存这种「假改动」不该抹掉标记。
+   返回是否真的改了（页面据此决定要不要提示一句）。 */
+function setDue(r, ts) {
+  const next = ts || 0;
+  const old = r.dueTs || 0;
+  if (next === old) return false;
+  r.dueTs = next;
+  r.calTs = 0;
+  return true;
+}
+
+/* 待办「待完成」一段的排序：清单页 / 看页 / 记页三处必须完全一致，所以只写一份。
+   口径（由重到轻依次比较）：
+     ① 优先级（紧急重要 → 不紧急不重要，见 prioRank）
+     ② 有计划的排在前面；都有计划时早的在前（「今天要交」压着「下周一交」）
+     ③ 都没计划时按记录时间倒序
+   「没计划」沉到同一优先级档的最后是刻意的——它是常态，让它去打扰已经排好期的那些没道理。
+   返回**新数组**（sort 会就地改，传进来的数组不能动：那是全局记录表）。 */
+function sortUndone(list) {
+  return (list || []).slice().sort((a, b) => {
+    const pa = prioRank(taskPrio(a)), pb = prioRank(taskPrio(b));
+    if (pa !== pb) return pa - pb;
+    const da = dueRank(a.dueTs), db = dueRank(b.dueTs);
+    if (da !== db) return da - db;
+    if (da === 0 && a.dueTs !== b.dueTs) return a.dueTs - b.dueTs;
+    return (b.ts || 0) - (a.ts || 0);
+  });
+}
+
 // 待办的「类别」：新记录取 ext 里的 todoKind；迁移前的老记录按原模块兜底。
 //
 // 「类别色」是与「维度色」分开的另一族，两边不重复（维度色见 MODULES：
@@ -2204,7 +2243,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, dueNext, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, dueNext, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

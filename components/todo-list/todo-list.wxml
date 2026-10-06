@@ -28,7 +28,9 @@
           <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
           <view class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}" aria-label="优先级 {{item.pn}}"></view>
           <text class="tv">{{item.txt}}</text>
-          <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          <!-- 时间用 tt（待办行专用：今天＝时刻，非今天＝简洁日期）而不是 t：
+               清单页的 recVM 把 t 覆盖成了 tt，看页没有，两边都读 tt 才真的同一份口径 -->
+          <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           <!-- 计划完成：**没计划就不渲染**（多数待办本来就没计划时间）。
                有计划时点一下＝换下一档（今天 → 明天 → 本周末 → 下周一 → 取消），
                不用弹任何选择器；要具体到某一天走「左滑 → 快捷记面板」 -->
@@ -57,7 +59,7 @@
             <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
             <view class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}" aria-label="优先级 {{item.pn}}"></view>
             <text class="tv">{{item.txt}}</text>
-            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           </view>
           <view class="done-at">{{item.doneAtText}}</view>
         </view>
@@ -84,7 +86,7 @@
             <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
             <view class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}" aria-label="优先级 {{item.pn}}"></view>
             <text class="tv">{{item.txt}}</text>
-            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+            <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           </view>
           <view class="done-at">{{item.abandAtText}}</view>
         </view>

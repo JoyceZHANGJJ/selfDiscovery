@@ -466,23 +466,30 @@ Component({
       const ex = rec.ext || (rec.ext = []);
       const before = (rec.txt || '') + '' + ex.join('');
       const dueBefore = rec.dueTs || 0;   // 计划完成也要参与「有没有改动」的判定
+      const calBefore = rec.calTs || 0;   // 原「已推日历」标记：改计划时间会被清掉（见 setDue）
       // 按标签定位覆盖写：找得到就改那一格，找不到就补在后面（老记录可能没有优先级那一格）
       const setTag = (s, v) => { const i = src.indexOf(s); if (i >= 0) ex[i] = v; else { src.push(s); ex.push(v); } };
       setTag(a.src || (a.m === 'jot' ? 'jotKind' : 'todoKind'), a.cat);
       if (a.m === 'todo') {
         const prio = (this.data.qaPrios[this.data.qaPrioIdx] || {}).n;
         if (prio) setTag('todoPrio', prio);
-        rec.dueTs = this.data.qaDueTs || 0;   // 计划完成是顶层字段（不在 ext 里）
+        // 走 store.setDue：时间真变了就把「已推日历」清掉——手机日历里那条写的是旧时间，
+        // 而小程序读不回也改不了系统日程（见 utils/calendar.js 的能力边界）。
+        // 留着标记只会让按钮显示「已推日历」却对不上日程，再点还会被确认框挡住
+        store.setDue(rec, this.data.qaDueTs || 0);
       }
       rec.txt = txt;
       // 改动判定连计划完成一起算：只改了计划时间也要落云（文本与 ext 都没动时上面那条比较会是 false）
       const changed = ((rec.txt || '') + '' + (rec.ext || []).join('') !== before)
         || ((rec.dueTs || 0) !== dueBefore);
+      // 计划时间变了而且原来推过日历：按钮会回到「推到日历」，
+      // 说一句免得以为日历里那条也会跟着改（系统日程读不回来，见 utils/calendar.js）
+      const dueChanged = (rec.dueTs || 0) !== dueBefore;
       this.closeQa();
       if (!changed) return;
       store.updateRecord(rec).catch(() => {});
       this.notifyPage();
-      wx.showToast({ title: '已更新', icon: 'none' });
+      wx.showToast({ title: (dueChanged && calBefore) ? '已更新 · 日历需重推' : '已更新', icon: 'none' });
     },
     /* 编辑模式里的「删除」：交给页面自己的删除（它有撤销条，与操作条「删除」同一套）；
        页面没接就直接删——保证删得掉，只是没有撤销条 */

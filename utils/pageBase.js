@@ -145,10 +145,15 @@ function pageBase(extra) {
       const r = this.findRec(id);
       if (!r || !store.isTask(r.m)) return;
       const next = store.dueNext(r.dueTs);
-      r.dueTs = next;   // 0 ＝ 取消计划（回到「没计划」这个常态）
+      const hadCal = !!r.calTs;
+      // 走 store.setDue：值变了连带清掉「已推日历」标记（手机日历里那条已经是旧时间了）
+      store.setDue(r, next);   // 0 ＝ 取消计划（回到「没计划」这个常态）
       store.updateRecord(r).catch(() => {});
       this._refreshAfterDue();
-      wx.showToast({ title: next ? '计划 · ' + store.dueLabel(next) : '已取消计划', icon: 'none' });
+      wx.showToast({
+        title: (next ? '计划 · ' + store.dueLabel(next) : '已取消计划') + (hadCal ? ' · 日历需重推' : ''),
+        icon: 'none'
+      });
     },
 _refreshAfterDue() {
       if (typeof this.rebuild === 'function') this.rebuild();          // 清单页 / 看页

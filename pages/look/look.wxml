@@ -76,6 +76,7 @@
       <todo-list wx:if="{{tasks.show}}" id="todoList"
         tit="{{tasks.tit}}" sum="{{tasks.sum}}"
         manage="{{true}}" showMn="{{filter==='all' || filter==='todo'}}"
+        sel="{{sel || ''}}"
         undone="{{tasks.undone}}" doneGroups="{{tasks.doneGroups}}" abandGroups="{{tasks.abandGroups}}"
         undoneN="{{tasks.undoneN}}" doneN="{{tasks.doneN}}" abandN="{{tasks.abandN}}"
         undoneHide="{{tasks.undoneHide}}" doneHide="{{tasks.doneHide}}" abandHide="{{tasks.abandHide}}"

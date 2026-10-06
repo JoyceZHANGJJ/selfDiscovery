@@ -233,6 +233,8 @@
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
           <text class="mn" style="color:{{item.c}}">{{item.m}}</text>
+          <!-- 优先级小旗：与清单页 / 看页的 todo-list 逐字一致（只有挑过的档才显示，见 store.prioShow） -->
+          <view class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}" aria-label="优先级 {{item.pn}}"></view>
           <text wx:if="{{item.doingDays}}" class="tag doing">第{{item.doingDays}}天</text>
           <!-- 「今日」一日一记：**能量格是主项**（与记页只读摘要 / 看页卡片同一套 5 格条），
                那句话是附属内容、挪到下面「能量说明」那一行（见下面的 .dt） -->
@@ -246,7 +248,13 @@
           </view>
           <view wx:else class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.desc}}" class="tdesc">{{item.desc}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
           <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
-          <text wx:else class="tw">{{item.d}}{{item.t}}</text>
+          <!-- 待办的「计划完成」：与清单页 / 看页的 todo-list 逐字一致——
+               没计划就不渲染，有计划点一下换下一档（今天 → 明天 → 本周末 → 下周一 → 取消）。
+               之前只有清单页和看页有，记页这一段看不到，同一条待办三处长得不一样。
+               三个 wx:if 各自独立（不能写成 if/else 链）：待办也可能没有计划时间，
+               那时右边要空着而不是退回显示记录日期时间 -->
+          <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onRecentDue" aria-label="计划完成 {{item.due}}">{{item.due}}</view>
+          <text wx:if="{{!item.task}}" class="tw">{{item.d}}{{item.t}}</text>
         </view>
         <!-- 「今日」：附属内容＝能量说明那句话（没写就不占这一行——只留能量格是正常的） -->
         <view wx:if="{{item.bat}}" class="dt">

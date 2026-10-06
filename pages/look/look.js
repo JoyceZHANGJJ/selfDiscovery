@@ -374,15 +374,16 @@ Page(pageBase({
     this._flushAlign();   // 数据渲染完了，按最终布局对齐（见 _alignLater）
   },
 
-  /* 待办清单：待完成在上（按时间倒序）；已完成、已放弃各成一段（按各自时间倒序 + 按天分段）；
-     三段都可收起。「全部」里不再平铺待办——待办只在自己那个维度（备忘 / 购物）下看 */
+  /* 待办清单：待完成在上（口径与清单页逐字相同：优先级 → 计划完成时间 → 记录时间，
+     收在 store.sortUndone，看页 / 清单页 / 记页共用一份）；
+     已完成、已放弃各成一段（按各自时间倒序 + 按天分段）；三段都可收起 */
   buildTasks(ts) {
     if (!store.isTask(this.data.filter)) {
       return { show: false, tit: '', sum: '', undone: [], undoneN: 0, doneGroups: [], doneN: 0, abandGroups: [], abandN: 0 };
     }
     // 注意：recVM 的产物里没有 ts / doneAt / abandonedAt，必须在 map 之前对原始记录排序，
     // 否则 sort 比较的全是 undefined，等于没排
-    const undoneRaw = ts.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const undoneRaw = store.sortUndone(ts.filter(r => !r.done && r.status !== 'abandon'));
     const doneRecs = ts.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = ts.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
     const doneDays = this.groupByDay(doneRecs, r => r.doneAt || r.ts);

@@ -88,7 +88,9 @@ Page(pageBase({
 
   recVM(r) {
     const v = vm.baseVM(r);
-    // 待办的时间：今天显示时刻，非今天显示简洁日期（避免只有 HH:MM 看不出是哪天）
+    // 待办的行内时间组件那边直接读 tt（与看页同一份口径，不必两页各覆盖一次 t）。
+    // 这里覆盖 t 是留给随记段那个 .tw 的：它不摆日期前缀，只写 item.t，
+    // 所以非今天的随记得靠 tt 才看得出是哪天（今天＝时刻，非今天＝简洁日期）
     v.t = r.tt || r.t;
     // 完成时间带「完成 ·」前缀：行右侧那个裸时间是「记录时间」，两个时间要能分得清
     v.doneAtText = r.doneAt ? ('完成 · ' + date.hhmm(r.doneAt)) : '已完成';
@@ -119,16 +121,10 @@ Page(pageBase({
     // 待完成不按时间排，先按**优先级**轻重（紧急重要 → 不紧急不重要，见 store.prioRank），
     // 同一档内再按**计划完成时间**：有计划的排在前面、早的在前（「今天要交」压着「下周一交」），
     // 没计划的沉到这一档的最后、内部仍按时间倒序——「没计划」是常态，
-    // 让它们去打扰计划好的那些没有道理（见 store.dueRank）。
-    // 「显示更多」也是在排好的序列上往后切，所以翻出来的仍是这一档里的下几条
-    const undoneRaw = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => {
-      const pa = store.prioRank(store.taskPrio(a)), pb = store.prioRank(store.taskPrio(b));
-      if (pa !== pb) return pa - pb;
-      const da = store.dueRank(a.dueTs), db = store.dueRank(b.dueTs);
-      if (da !== db) return da - db;
-      if (da === 0 && a.dueTs !== b.dueTs) return a.dueTs - b.dueTs;   // 都有计划：早的在前
-      return (b.ts || 0) - (a.ts || 0);
-    });
+    // 让它们去打扰计划好的那些没有道理。口径收在 store.sortUndone（看页 / 记页同一份，
+    // 三处各写一遍迟早会走偏）；「显示更多」也是在排好的序列上往后切，
+    // 所以翻出来的仍是这一档里的下几条
+    const undoneRaw = store.sortUndone(list.filter(r => !r.done && r.status !== 'abandon'));
     const doneRecs = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = list.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
     // 已完成 / 已放弃各按「那天」分段（与看页同一套）：段头给日期，行内只写「完成 / 放弃 · HH:MM」

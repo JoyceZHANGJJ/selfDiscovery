@@ -617,16 +617,17 @@ Page(pageBase({
   /* 「最近 / 待办 / 已完成」三块列表共用这一段（标题旁的几个词就是开关），都只取 10 条：
      ・最近：日常记录。待办一律不在这里出现——它有自己的「待办 / 已完成」两块，
        而且随手记的备忘会挤掉真正想回看的觉察 / 此刻 / 可做 / 随记
-     ・待办：还没做完的待办（已放弃的不算——那类去清单页看），按记录时间倒序
+     ・待办：还没做完的待办（已放弃的不算——那类去清单页看）。
+       排序与清单页 / 看页**逐字相同**（优先级 → 计划完成时间 → 记录时间，见 store.sortUndone）：
+       同一件事在三个地方看到的不该是三种顺序，否则「哪件最要紧」得自己重新排一遍
      ・已完成：最近 10 条「完成」的（待办勾掉的 + 可做「做了」的 + 历史 m='done'），按完成时间倒序 */
   recentVM() {
     const all = app.globalData.records || [];
     const tab = this.data.recentTab;
     if (tab === 'todo') {
-      return all
-        .filter(r => store.isTask(r.m) && !r.done && r.status !== 'abandon')
-        .slice(0, 10)
-        .map(r => this.recVM(r));
+      return store.sortUndone(
+        all.filter(r => store.isTask(r.m) && !r.done && r.status !== 'abandon')
+      ).slice(0, 10).map(r => this.recVM(r));
     }
     if (tab === 'done') {
       // filter 出来的是新数组，sort 不会动到 app.globalData.records 的顺序
@@ -1025,10 +1026,13 @@ Page(pageBase({
     rec.status = er.status || '';
     rec.startedAt = startedAt;
     // 计划完成：待办在记卡里就能设（那一行 chips）。其余维度沿用原值——
-    // 它们是顶层字段，不在 ext 里，漏搬就会在保存后内存那条被 decorate 归 0
-    rec.dueTs = this.st.tag === 'todo' ? (this.st.due || 0) : (er.dueTs || 0);
+    // 它们是顶层字段，不在 ext 里，漏搬就会在保存后内存那条被 decorate 归 0。
+    // 先把 dueTs 摆成**原值**再让 setDue 换：它靠「新旧不同」判断要不要连带清 calTs，
+    // 要是先把新值填进去，它看到的就永远是「没变」，标记也就永远清不掉了
+    rec.dueTs = er.dueTs || 0;
     // 已推日历：记卡里仍然没有这一格（要重新推走操作条上的按钮），只把原值搬过来
     rec.calTs = er.calTs || 0;
+    store.setDue(rec, this.st.tag === 'todo' ? (this.st.due || 0) : (er.dueTs || 0));
     // 「开始」流转进入：保存时才落「进行中感受」这一刻——状态置在做、开始时间记当前
     if (this.st.startMode) { rec.status = 'doing'; rec.startedAt = Date.now(); }
     // 「完成」流转进入：保存时才置「做了」并记录完成时间（默认现在）
@@ -1520,6 +1524,11 @@ Page(pageBase({
     store.updateRecord(r).catch(() => {});
     this.recompute();
   },
+
+  /* 「最近」里待办行尾的「计划完成」胶囊：点一下换下一档。
+     换档、清「已推日历」标记、提示文案全走 pageBase.cycleDue（清单页 / 看页同一份），
+     这里只负责把组件事件的 id 取出来——记页的行是自己写的，取值路径与组件那条不同 */
+  onRecentDue(e) { if (this.guardEdit()) return; this.cycleDue(this._id(e)); },
 
   /* 删除一条记录并给出撤销机会（操作条「删除」与就地编辑的「删除」共用） */
   _delRec(r) {
