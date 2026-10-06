@@ -86,6 +86,8 @@ Component({
     list: tabList(store.curTheme()),   // 图标按当前主题先算一份，免得首帧是空的（attached 再对齐一次）
     // 快捷记（「＋」球）：点球就在原地弹条，不跳页；长按球才进清单页
     qa: false,           // 面板是否展开
+    // 编辑模式：非空＝正在改这条记录（回显它的文本 / 类别 / 优先级，保存＝更新而不是新建）
+    qaEditId: '',
     qaCats: [],          // 平铺的快捷类别（来自 getQuickCats，带名字 / 颜色 / 占位符 / key）
     qaIdx: 0,            // 当前选中的类别下标
     qaPrios: [],         // 优先级 chips（待办才有；随记类别下这一行不渲染）
@@ -253,15 +255,62 @@ Component({
       const cats = buildQaCats();
       const a = cats[0] || {};
       const p = qaPrioDefIdx();
-      this.setData({ qa: true, qaFocus: false, qaUndo: null, qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c, qaPrios: p.prios, qaPrioIdx: p.idx, qaIsTodo: a.m !== 'jot' });
+      // qaEditId 一并归零：新建态（＝不是回显改某一条）——保险，正常路径下 closeQa 已经清过
+      this.setData({ qa: true, qaFocus: false, qaUndo: null, qaEditId: '', qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c, qaPrios: p.prios, qaPrioIdx: p.idx, qaIsTodo: a.m !== 'jot' });
       // 位置按**当前**键盘状态给：不能沿用上一次记下的键盘高度——键盘已经收了、面板还按旧高度
       // 悬在页面中间（这就是「再打开位置变了」）。键盘真在的话，点输入框那一下会再来一次高度事件
       this._applyKb(0);
     },
     closeQa(keepDraft) {
       if (!this.data.qa && !this.data.qaFocus) return;
-      this.setData(keepDraft ? { qa: false, qaFocus: false } : { qa: false, qaFocus: false, qaTxt: '' });
+      // 编辑模式下不留草稿：那句话是「这一条的内容」，留着再点球就成了新建一条同样的
+      if (this.data.qaEditId) keepDraft = false;
+      this._qaRec = null;
+      if (this._qaEditFocusTimer) { clearTimeout(this._qaEditFocusTimer); this._qaEditFocusTimer = null; }
+      this.setData(keepDraft
+        ? { qa: false, qaFocus: false, qaEditId: '' }
+        : { qa: false, qaFocus: false, qaTxt: '', qaEditId: '' });
       this._applyKb(0);   // 收起后面板不再需要跟着键盘，位置状态归位
+    },
+
+    /* 左滑「改这一条」：打开同一个面板，但回显这条记录的内容（文本 / 类别 / 优先级），
+       保存时更新原记录（时间不动）。以前那个行内编辑器只有一个输入框，改不了类别与优先级 */
+    openQuickEdit(rec) {
+      if (!rec) return;
+      const m = rec.m === 'jot' ? 'jot' : 'todo';
+      // 只留同类类别：改类别不该把一条待办变成随记（模块变了，记录会整个挪到另一个维度）
+      const cats = buildQaCats().filter(c => c.m === m);
+      const cur = m === 'jot' ? store.jotCat(rec) : store.taskCat(rec);
+      let idx = cats.findIndex(c => c.cat === cur);
+      if (idx < 0) {
+        // 这条的类别没勾进快捷类别（或后来删了）：临时插在最前面，否则回显不出来
+        const info = catInfo({ m, cat: cur });
+        cats.unshift({ key: (m === 'jot' ? 'jot:' : 'todo:') + cur, m, src: info.src, cat: cur, n: info.n, c: info.c, ph: info.ph });
+        idx = 0;
+      }
+      const prios = buildQaPrios();
+      const cp = store.taskPrio(rec);
+      let pi = prios.findIndex(p => p.n === cp);
+      if (pi < 0) {
+        if (cp) { prios.unshift({ n: cp, c: store.prioColor(cp) }); pi = 0; }   // 改名后的旧档位
+        else pi = qaPrioDefIdx().idx;                                          // 老记录没有这一格
+      }
+      const a = cats[idx] || {};
+      this._qaRec = rec;                 // 记录引用留在这儿（不进 data：整个对象没必要参与渲染）
+      this.closePageFloats();            // 先收掉页面的操作条 / 撤销条，别和面板叠在一起
+      this._qaStopUndoTimer();
+      this.setData({
+        qa: true, qaFocus: false, qaUndo: null, qaEditId: rec.id, qaTxt: rec.txt || '',
+        qaCats: cats, qaIdx: idx, qaName: a.n, qaPh: a.ph, qaC: a.c,
+        qaPrios: prios, qaPrioIdx: pi, qaIsTodo: m !== 'jot'
+      });
+      this._applyKb(0);
+      // 意图明确（就是来改这条的），隔一拍自动聚焦——与以前的行内编辑器一致，省一次点击
+      if (this._qaEditFocusTimer) clearTimeout(this._qaEditFocusTimer);
+      this._qaEditFocusTimer = setTimeout(() => {
+        this._qaEditFocusTimer = null;
+        if (this.data.qa && this.data.qaEditId) this.setData({ qaFocus: true });
+      }, 80);
     },
     // 点面板自身空白区（标题 / chips 行空白）：没在输入时收起；**输入中不动它**——
     // 写到一半顺手点一下面板空白（很常见）不该把整个面板收掉。收起走「点面板以外」或「点 × 球」
@@ -329,8 +378,10 @@ Component({
       if (!keepFocus) return;
       this._qaKeepFocus();
     },
-    /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条 */
+    /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条。
+       编辑模式（qaEditId 非空）走 _qaUpdate——更新原来那条，不是新建 */
     onQaSave() {
+      if (this.data.qaEditId) { this._qaUpdate(); return; }
       const txt = (this.data.qaTxt || '').trim();
       if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
       const a = this.data.qaCats[this.data.qaIdx] || {};
@@ -354,6 +405,50 @@ Component({
         this.notifyPage();
         this._qaStartUndoTimer();
       }).catch(() => wx.showToast({ title: '没记上，再试一次', icon: 'none' }));
+    },
+    /* 编辑模式的保存：把面板上的内容写回原记录（文本 + 类别 + 优先级），
+       记录时间不动——改的是内容，不是「什么时候记的」。没改动就不落云 */
+    _qaUpdate() {
+      const txt = (this.data.qaTxt || '').trim();
+      if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
+      const rec = this._qaRec;
+      if (!rec) { this.closeQa(); return; }
+      const a = this.data.qaCats[this.data.qaIdx] || {};
+      const src = rec.extSrc || (rec.extSrc = []);
+      const ex = rec.ext || (rec.ext = []);
+      const before = (rec.txt || '') + '' + ex.join('');
+      // 按标签定位覆盖写：找得到就改那一格，找不到就补在后面（老记录可能没有优先级那一格）
+      const setTag = (s, v) => { const i = src.indexOf(s); if (i >= 0) ex[i] = v; else { src.push(s); ex.push(v); } };
+      setTag(a.src || (a.m === 'jot' ? 'jotKind' : 'todoKind'), a.cat);
+      if (a.m === 'todo') {
+        const prio = (this.data.qaPrios[this.data.qaPrioIdx] || {}).n;
+        if (prio) setTag('todoPrio', prio);
+      }
+      rec.txt = txt;
+      const changed = (rec.txt || '') + '' + (rec.ext || []).join('') !== before;
+      this.closeQa();
+      if (!changed) return;
+      store.updateRecord(rec).catch(() => {});
+      this.notifyPage();
+      wx.showToast({ title: '已更新', icon: 'none' });
+    },
+    /* 编辑模式里的「删除」：交给页面自己的删除（它有撤销条，与操作条「删除」同一套）；
+       页面没接就直接删——保证删得掉，只是没有撤销条 */
+    onQaDel() {
+      const id = this.data.qaEditId;
+      if (!id) return;
+      this.closeQa();
+      const pages = getCurrentPages();
+      const page = pages[pages.length - 1];
+      if (page && typeof page.delRecById === 'function') { page.delRecById(id); return; }
+      const G = (typeof getApp === 'function' && getApp()) ? getApp().globalData : {};
+      const arr = G.records || [];
+      const i = arr.findIndex(r => r.id === id);
+      if (i < 0) return;
+      store.deleteRecord(arr[i]).catch(() => {});
+      arr.splice(i, 1);
+      this.notifyPage();
+      wx.showToast({ title: '已删除', icon: 'none' });
     },
     /* 撤销：把刚记下的那条删掉（与其它页的删除撤销是同一套心智） */
     onQaUndo() {

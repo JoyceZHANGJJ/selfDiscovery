@@ -119,6 +119,23 @@ function pageBase(extra) {
     _id(e) { return (e.detail && e.detail.id != null) ? e.detail.id : e.currentTarget.dataset.id; },
     _detailOr(e, key) { return (e.detail && e.detail[key] != null) ? e.detail[key] : e.currentTarget.dataset[key]; },
 
+    /* 快捷记面板（custom-tab-bar）的实例：tab 页由框架挂在 getTabBar() 上，
+       非 tab 页（清单页）自己挂了一份 <quick-ball id="quickBall">——两处都取得到 */
+    quickBar() {
+      const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
+      if (tb) return tb;
+      return (typeof this.selectComponent === 'function') ? this.selectComponent('#quickBall') : null;
+    },
+    /* 就地改一条待办 / 随记：打开快捷记面板并回显（文本 + 类别 + 优先级），
+       保存＝更新原来那条（不是新建）。取代以前那个只有输入框的行内编辑器。
+       返回 false 表示拿不到面板（调用方退回行内编辑器） */
+    quickEdit(r) {
+      const bar = this.quickBar();
+      if (!bar || typeof bar.openQuickEdit !== 'function') return false;
+      bar.openQuickEdit(r);
+      return true;
+    },
+
     /* 按「某一天」把记录分段（看页 / 清单页逐字相同）：段头用时间线同款日标签，段内保持传入顺序。
        只分组、不 map 成 VM——窗口外那些天不用白算（见 winGroups） */
     groupByDay(recs, tsOf) {

@@ -116,5 +116,5 @@
   <!-- 快捷记录：本页不是 tab 页（没有自定义 tabBar），所以手动挂一份组件（quick-ball 即它）——
        ballOnly 只渲染右下角的「＋」球与快捷记面板，不渲染底部 tab 栏。
        记下后组件会回调本页的 onQuickTodo → rebuild，新的一条立刻出现在列表里 -->
-  <quick-ball ballOnly="{{true}}" />
+  <quick-ball id="quickBall" ballOnly="{{true}}" />
 </view>

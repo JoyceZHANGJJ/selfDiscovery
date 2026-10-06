@@ -68,6 +68,10 @@
 }
 .qa-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .qa-title { font-size: 12.5px; color: var(--ink2, #55524A); font-weight: 600; }
+/* 编辑态（左滑「改这一条」）右上角多出来的「删除」：与标题同一排、低一档的浅色小字，
+   不抢「保存」的主操作；命中区同样补齐（12px 的字太小，手指点不准） */
+.qa-del { font-size: 12px; color: var(--ink3, #8B8779); padding: 3px 0 3px 10px; position: relative; }
+.qa-del::after { content: ''; position: absolute; left: -4px; right: -4px; top: -6px; bottom: -6px; }
 .qa-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; flex-shrink: 0; }
 /* 快捷类别：纯文字（与记卡里的「类别 / 喜恶」同一套）——无边框无底，
    选中＝主题色 + 加粗；类别颜色由前面的小圆点带出来（原来靠药丸底色）。

@@ -1227,10 +1227,13 @@ Page(pageBase({
     this.setData({ qeFocus: true });
   },
 
-  /* 左滑某一行＝就地改这一条（复用就地编辑器：改文字 + 删除）。
-     上面还开着一条时先收起（_closeQ 会把紧随的那次 save 事件挡掉），隔一拍再弹新的——
-     否则旧输入框的失焦会把内容存到刚滑开的那条上 */
+  /* 左滑某一行＝改这一条：**打开快捷记面板并回显**（文本 + 类别 + 优先级一起改，保存＝更新原记录）。
+     以前这里只弹一个行内输入框（改得了话、改不了类别与优先级），待办有了优先级之后就不够用了。
+     拿不到面板才退回行内编辑器（上面还开着一条时先收起——_closeQ 会把紧随的那次 save 事件挡掉，
+     隔一拍再弹新的，否则旧输入框的失焦会把内容存到刚滑开的那条上） */
   swipeEdit(id, txt) {
+    const r = (app.globalData.records || []).find(x => x.id === id);
+    if (r && this.quickEdit(r)) { if (this.data.qeOn) this._closeQ(); return; }
     if (this.data.qeOn) {
       this._closeQ();
       if (this._openTimer) clearTimeout(this._openTimer);
@@ -1310,6 +1313,13 @@ Page(pageBase({
   onQDel() {
     const r = (app.globalData.records || []).find(x => x.id === this.data.qeId);
     this._closeQ();
+    if (!r || (!store.isTask(r.m) && r.m !== 'jot')) return;
+    this._delRec(r);
+  },
+  /* 快捷记面板（回显编辑态）里的「删除」：走本页自己的删除，与操作条上的「删除」同一套撤销条 */
+  delRecById(id) {
+    if (!id) return;
+    const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r || (!store.isTask(r.m) && r.m !== 'jot')) return;
     this._delRec(r);
   },

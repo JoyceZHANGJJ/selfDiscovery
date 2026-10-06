@@ -816,12 +816,14 @@ Page(pageBase({
     if (!r) return;
     this.setData({ sel: id, selRec: { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } });
   },
-  /* 行内动作（左滑「改这一条」）：跳记页完整编辑（与操作条里的「改」同一条路）。
-     顺手记时间戳并撤掉排队中的「切维度」——这次滑动不该再被当成切维度 */
-  rowAct(r) {
+  /* 行内动作（左滑「改这一条」）：一句话的记录（待办）走快捷记面板回显，其余跳记页完整编辑
+     （与操作条里的「改」同一条路）。顺手记时间戳并撤掉排队中的「切维度」——
+     这次滑动不该再被当成切维度 */
+  rowAct(r, tryPanel) {
     this._lpAt = Date.now();     // 刚滑过：紧跟其后的 tap（若有）不当成点选
     this._rowActAt = Date.now();
     this._cancelSeg();
+    if (tryPanel && this.quickEdit(r)) return;
     this.editInCard(r);
   },
   /* 跳记页完整编辑（看页是「概览 + 管理去记卡」的口径，待办 / 时间线行都走这条） */
@@ -839,12 +841,21 @@ Page(pageBase({
     // 待办也出操作条（放弃 / 恢复 本地处理，改 / 删 走下面统一分支）
     this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
   },
-  /* 待办行（todo-list 组件里）的「行尾左滑」：与时间线行同一口径——进记卡改这一条 */
+  /* 待办行（todo-list 组件里）的「行尾左滑」＝改这一条：与清单 / 记页同一口径——
+     打开快捷记面板回显（文本 + 类别 + 优先级一起改，保存＝更新原记录）。
+     拿不到面板才退回「进记卡完整编辑」（与时间线行同一条路） */
   onRowSwipe(e) {
     const d = e.detail || {};
     if (d.id == null) return;
     const r = this.findRec(d.id);
-    if (r) this.rowAct(r);
+    if (!r) return;
+    this.rowAct(r, true);
+  },
+  /* 快捷记面板（回显编辑态）里的「删除」：走本页自己的删除，与操作条上的「删除」同一套撤销条 */
+  delRecById(id) {
+    if (!id) return;
+    const r = this.findRec(id);
+    if (r) this._delRec(r);
   },
 
   /* 记录操作条统一入口（与记页共用 rec-actions 组件；看页行为：流转/改/结束 跳到记页（结束时间待「保存修改」时才记），恢复/删 本地直接处理）

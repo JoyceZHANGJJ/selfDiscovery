@@ -7,7 +7,10 @@
     <!-- 标题只留「快捷记」：原先右上角的「清单 ›」入口已去掉。
          进清单页：看页待办块里的「去清单页管理 ›」，或长按这个「＋」球 -->
     <view class="qa-hd">
-      <view class="qa-title">快捷记</view>
+      <!-- 编辑态（qaEditId 非空＝左滑「改这一条」进来的）：标题换成「改这一条」，
+           右边多一个「删除」——改到一半发现这条不要了，不用先退出再找操作条 -->
+      <view class="qa-title">{{qaEditId ? '改这一条' : '快捷记'}}</view>
+      <view wx:if="{{qaEditId}}" class="qa-del" catchtap="onQaDel">删除</view>
     </view>
     <!-- 平铺的快捷类别：点哪个就在哪个类别下记（来自「设置」里的勾选，上限见 store.QUICKCATS_MAX）。
          横向铺不下就换行（面板吸在球上方，往上长），不做左右滚——一屏看全、点哪条都不用先拨 -->
@@ -30,7 +33,7 @@
            不再让微信去「顶页面」——回看整页是 scroll-view（页面本身不滚），它顶不动，
            结果就是面板留在原地被键盘盖住；两边的调整叠在一起也会把面板抬过头 -->
       <input class="qa-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" bindkeyboardheightchange="onQaKb" confirm-type="done" adjust-position="{{false}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
-      <view class="qa-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">记下</view>
+      <view class="qa-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">{{qaEditId ? '保存' : '记下'}}</view>
     </view>
   </view>
 

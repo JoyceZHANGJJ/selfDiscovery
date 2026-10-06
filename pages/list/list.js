@@ -506,7 +506,8 @@ Page(pageBase({
     }
     this.focusEd();
   },
-  /* 左滑某一行＝就地改这一条（这里只改「这一句话」；类别 / 原因仍在记页的记卡里改）。
+  /* 左滑某一行＝改这一条：**打开快捷记面板并回显**（文本 + 类别 + 优先级一起改，保存＝更新原记录）。
+     以前这里只弹一个行内输入框（改得了话、改不了类别与优先级），待办的优先级出来之后就明显不够用了。
      上面还开着一条时先收起（_closeEdit 会把紧随的那次 save 事件挡掉），隔一拍再弹新的 */
   onRowSwipe(e) {
     if (this.guardEdit()) return;   // 正在编辑另一条：先处理它（原来这里直接收起，未保存的文本就丢了）
@@ -517,7 +518,15 @@ Page(pageBase({
     this._rowActAt = Date.now(); // 这一次滑动归行内：根节点那次不要再切段（见 onSwipeEnd）
     this._cancelSeg();           // 已经排队的那次切段也撤掉（事件先后不定，两边都兜住）
     this.setData({ sel: null, selRec: null });
-    this._openEdit(id, r.txt || '', true);
+    if (this.quickEdit(r)) return;             // 面板改这一条（新口径）
+    this._openEdit(id, r.txt || '', true);     // 拿不到面板才退回行内编辑器（理论上不会发生）
+  },
+  /* 面板里的「删除」：走本页自己的删除（删完有撤销条），与操作条上的「删除」同一套 */
+  delRecById(id) {
+    if (!id) return;
+    const r = this.findRec(id);
+    if (!r || !canList(r.m)) return;
+    this._del(r);
   },
 
   /* 保存：失焦 / 键盘「完成」/ 点「保存」由组件派发 save；改空或没改动则不落云 */
