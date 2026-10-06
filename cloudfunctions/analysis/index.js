@@ -1,12 +1,16 @@
 // 云函数 analysis —— AI 回看
 // 入口：
-//   1) 定时触发（每天中国 01:00）：遍历所有有记录的用户，生成到昨天为止「该生成」的回看：
-//      · 日回看：每天（回顾昨天）
-//      · 周回看：昨天恰好是周日时，回顾刚结束的那一周（周一~周日）
-//      · 月回看：昨天恰好是月末时，回顾刚结束的那个月
-//      · 年回看：昨天恰好是 12-31 时，回顾刚结束的那一年
-//      按 openid + type + start 幂等，重复跑不会叠加；期间没有记录就不生成（不留空卡）。
+//   1) 定时触发（每天中国 01:00）：遍历所有有记录的用户——
+//      · 先给每人生成「昨天」的日回看；
+//      · 再补齐历史周 / 月 / 年：往回扫最近 12 周 / 12 月 / 5 年，没生成过且期间有记录的
+//        会补出来（按 openid + type + start 幂等，重复跑不会叠加；期间没记录就不生成、
+//        不留空卡；还没结束的周期不生成）。单次调用最多真正调大模型 MAX_GEN_PER_RUN 次，
+//        一次补不完的由下一次定时接着补，避免撞 60s 超时。
 //   2) 客户端 action:'list'：返回当前用户的历史回看（按起始日期倒序，带 type）。
+//   3) action:'gen'：手动给当前用户生成一份（day 可带 offset 往前推几天；周 / 月 / 年
+//      取最近一个已完整结束的周期，不用等到边界日）。
+//   4) action:'backfill'：手动给当前用户补齐历史周 / 月 / 年（控制台测试 / 排查用，
+//      可带 maxGen 放宽单次生成上限）。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
 //   指出模式与连接、说可能的内在动机与张力、给具体可做且有方向性的建议；
@@ -34,6 +38,12 @@ const MODULE_LABELS = {
 };
 
 const TYPE_LABEL = { day: '日', week: '周', month: '月', year: '年' };
+
+// 历史补齐：往回扫多深 & 单次调用最多真正生成几条。
+// LLM 一次要几秒~十几秒，60s 超时内最多做十来次；补不完的由下一次定时接着补（幂等，不会重）。
+const BACKFILL_DEPTH = { week: 12, month: 12, year: 5 };
+const MAX_GEN_PER_RUN = 15;
+let genBudget = 0;   // 本次调用的剩余生成额度，main 入口重置
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 
@@ -83,6 +93,37 @@ function period(type, offset) {
     return { start, end: yst0 + DAY, startStr: cnStr(start), endStr: cnStr(yst0) };
   }
   return null;
+}
+
+// 过去 n 个「已完整结束」的自然周期（从近到远），供补齐历史用。
+// 与 period() 的区别：不要求「昨天」恰是周日 / 月末 / 12-31——任何时候都能把
+// 历史上缺的周 / 月 / 年补出来。end 是排他边界（下一周期的开始）。
+function pastPeriodList(type, n) {
+  const DAY = 24 * 3600 * 1000;
+  const CN = 8 * 3600 * 1000;
+  const today0 = cnToday0();
+  const d = new Date(today0 + CN);                 // 用中国时区分量做基准
+  const y = d.getUTCFullYear(), m = d.getUTCMonth();
+  const out = [];
+  for (let k = 1; k <= n; k++) {
+    let start, end;
+    if (type === 'week') {
+      const back = (d.getUTCDay() + 6) % 7;        // 距本周周一的天数
+      const mon0 = today0 - back * DAY;            // 本周一 00:00
+      start = mon0 - k * 7 * DAY;
+      end = start + 7 * DAY;
+    } else if (type === 'month') {
+      start = Date.UTC(y, m - k, 1, 0, 0, 0, 0) - CN;
+      end = Date.UTC(y, m - k + 1, 1, 0, 0, 0, 0) - CN;
+    } else if (type === 'year') {
+      start = Date.UTC(y - k, 0, 1, 0, 0, 0, 0) - CN;
+      end = Date.UTC(y - k + 1, 0, 1, 0, 0, 0, 0) - CN;
+    } else {
+      break;
+    }
+    out.push({ start, end, startStr: cnStr(start), endStr: cnStr(end - DAY) });
+  }
+  return out;
 }
 
 function hm(ts) {
@@ -205,6 +246,12 @@ function chatCompletion(messages) {
 
 // 为某个用户生成某个周期的回看（幂等：已有则跳过；期间无记录则跳过且不落空卡）
 async function generateFor(openid, type, p) {
+  // 只生成「已完整结束」的周期：结束时刻还没到（未来 / 进行中）就不生成，
+  // 防止误传 offset 把「明天」也生成出一份回看
+  if (p.end > Date.now()) return { skipped: true, future: true, key: type + ':' + p.startStr };
+  // 生成额度用完就先不调大模型（剩下的由下一次定时 / 手动补齐接着做）
+  if (genBudget <= 0) return { skipped: true, deferred: true, key: type + ':' + p.startStr };
+
   // 旧日回看文档没有 type/start 字段，沿用 openid+date 判重，避免重复生成
   const where = type === 'day'
     ? { openid, date: p.startStr }
@@ -224,6 +271,7 @@ async function generateFor(openid, type, p) {
   if (!rows.length) return { skipped: true, empty: true, key: type + ':' + p.startStr };
 
   const parsed = await chatCompletion(buildMessages(rows, type, p));
+  genBudget--;
   const clean = v => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
   const doc = {
     openid,
@@ -245,27 +293,33 @@ async function generateFor(openid, type, p) {
   return { key: type + ':' + p.startStr, ok: true };
 }
 
-// 对单个用户跑一遍「该生成」的清单：昨天(日) + 刚结束的周/月/年（若昨天恰是边界）
-async function generateAllFor(openid) {
-  const types = ['day', 'week', 'month', 'year'];
-  const out = { done: 0, skipped: 0, err: 0 };
-  for (const t of types) {
-    const p = period(t, 1);                // offset 1 = 昨天
-    if (!p) continue;                      // 周月年只在边界日生成
-    try {
-      const r = await generateFor(openid, t, p);
-      if (r.ok) out.done++; else out.skipped++;
-    } catch (e) {
+// 逐条生成并计数（错误只记日志不中断，一条失败不影响别的）
+function tally(oid, t, p, out) {
+  return generateFor(oid, t, p).then(r => { if (r.ok) out.done++; else out.skipped++; })
+    .catch(e => {
       out.err++;
-      console.error('[analysis] 生成失败 openid=' + openid + ' ' + t + ' ' + p.startStr + '：' + e.message);
+      console.error('[analysis] 生成失败 openid=' + oid + ' ' + t + ' ' + p.startStr + '：' + e.message);
+    });
+}
+
+// 对单个用户跑「日回看 + 历史周 / 月 / 年补齐」
+async function generateAllFor(openid, out) {
+  // 1) 日回看：回顾昨天（保底，优先于补齐）
+  const dp = period('day', 1);
+  if (dp) await tally(openid, 'day', dp, out);
+  // 2) 周 / 月 / 年：从最近的完整周期往回扫，没生成过且有记录的补出来
+  for (const t of ['week', 'month', 'year']) {
+    for (const p of pastPeriodList(t, BACKFILL_DEPTH[t])) {
+      await tally(openid, t, p, out);
     }
   }
-  return out;
 }
 
 exports.main = async (event) => {
   const ctx = cloud.getWXContext();
   const openid = ctx.OPENID || (event && event.openid);
+  // 生成额度：每次调用重置（实例热复用时也不能把上一次的余额带过来）
+  genBudget = (event && typeof event.maxGen === 'number') ? event.maxGen : MAX_GEN_PER_RUN;
 
   // 客户端：取历史列表（带 type，按起始日期倒序）
   if (event && event.action === 'list') {
@@ -274,27 +328,38 @@ exports.main = async (event) => {
     return { list: res.data || [] };
   }
 
-  // 定时任务（无用户上下文）：为所有用户生成该生成的日/周/月/年回看
-  if (!openid) {
-    const agg = await recCol().aggregate().group({ _id: '$_openid' }).limit(1000).end();
-    const ids = (agg.list || []).map(x => x._id).filter(Boolean);
-    let done = 0, skipped = 0, err = 0;
-    for (const oid of ids) {
-      const r = await generateAllFor(oid);
-      done += r.done; skipped += r.skipped; err += r.err;
-    }
-    return { trigger: true, day: cnStr(cnToday0() - 86400000), users: ids.length, done, skipped, err };
-  }
-
-  // 单用户手动生成（保留能力，未在小程序暴露按钮）：action:'gen'
-  // event.type: day/week/month/year（默认 day），event.offset: 往前推几天（默认 1）
+  // 单用户手动生成：action:'gen'。day 用 event.offset（往前推几天，默认 1，须 ≥1）；
+  // 周 / 月 / 年取最近一个已完整结束的周期（不必等到边界日）。
   if (event && event.action === 'gen') {
     if (!openid) return { error: 'no openid' };
     const t = ['day', 'week', 'month', 'year'].indexOf(event.type) >= 0 ? event.type : 'day';
-    const p = period(t, typeof event.offset === 'number' ? event.offset : 1);
-    if (!p) return { error: '该周期尚未结束，无可生成' };
-    return generateFor(openid, t, p);
+    const p = t === 'day'
+      ? period('day', typeof event.offset === 'number' ? event.offset : 1)
+      : (pastPeriodList(t, 1)[0] || null);
+    if (!p) return { error: '没有可生成的周期' };
+    const r = await generateFor(openid, t, p);
+    if (r.future) return { error: '不能生成未来的回看（day 的 offset 需 ≥ 1）' };
+    return r;
   }
 
-  return { ok: false };
+  // 单用户补齐历史：action:'backfill'（控制台测试 / 排查用）——
+  // 扫最近 BACKFILL_DEPTH 个周 / 月 / 年，缺且有记录的补生成；默认上限 30 条，可 maxGen 放宽
+  if (event && event.action === 'backfill') {
+    if (!openid) return { error: 'no openid' };
+    if (typeof event.maxGen === 'number') genBudget = event.maxGen;
+    const out = { done: 0, skipped: 0, err: 0 };
+    await generateAllFor(openid, out);
+    return { backfill: true, done: out.done, skipped: out.skipped, err: out.err };
+  }
+
+  // 有用户上下文但没带可识别的 action（比如用测试模板直接跑）：不干活，
+  // 也绝不能落到下面的定时批量分支——否则一次手动测试会给所有用户补齐一遍
+  if (openid) return { ok: false, hint: '无 action；生成用 action:gen / backfill，列表用 action:list' };
+
+  // 定时任务（无用户上下文）：先给所有用户出昨天的日回看，再逐人补齐历史周 / 月 / 年
+  const agg = await recCol().aggregate().group({ _id: '$_openid' }).limit(1000).end();
+  const ids = (agg.list || []).map(x => x._id).filter(Boolean);
+  const out = { done: 0, skipped: 0, err: 0 };
+  for (const oid of ids) await generateAllFor(oid, out);
+  return { trigger: true, day: cnStr(cnToday0() - 86400000), users: ids.length, done: out.done, skipped: out.skipped, err: out.err };
 };
