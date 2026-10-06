@@ -11,6 +11,7 @@
 //      取最近一个已完整结束的周期，不用等到边界日）。
 //   4) action:'backfill'：手动给当前用户补齐历史周 / 月 / 年（控制台测试 / 排查用，
 //      可带 maxGen 放宽单次生成上限）。
+//   5) action:'stats'：诊断——返回当前用户记录的时间分布与「该补齐哪些周期」。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
 //   指出模式与连接、说可能的内在动机与张力、给具体可做且有方向性的建议；
@@ -350,6 +351,28 @@ exports.main = async (event) => {
     const out = { done: 0, skipped: 0, err: 0 };
     await generateAllFor(openid, out);
     return { backfill: true, done: out.done, skipped: out.skipped, err: out.err };
+  }
+
+  // 诊断：action:'stats' —— 当前用户记录的时间分布，用来核对「哪些周 / 月 / 年该有回看」。
+  // 返回 total（记录条数）、first/last（最早最晚日期）、perDay（按天条数）、
+  // backfillShouldGenerate（过去 12 周 / 12 月 / 5 年里「有记录」的周期清单——
+  // backfill 应该刚好生成这些；如果 stats 里有、backfill 却没生成，才是真 bug）
+  if (event && event.action === 'stats') {
+    if (!openid) return { error: 'no openid' };
+    const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(1000).get();
+    const rows = (recs.data || []).filter(r => r.ts);
+    if (!rows.length) return { total: 0, note: '该 openid 下没有带时间的记录' };
+    const perDay = {};
+    rows.forEach(r => { const k = cnStr(r.ts); perDay[k] = (perDay[k] || 0) + 1; });
+    const keys = Object.keys(perDay).sort();
+    const cover = [];
+    for (const t of ['week', 'month', 'year']) {
+      pastPeriodList(t, BACKFILL_DEPTH[t]).forEach(p => {
+        const n = rows.filter(r => r.ts >= p.start && r.ts < p.end).length;
+        if (n) cover.push({ type: t, range: p.startStr + '~' + p.endStr, n });
+      });
+    }
+    return { total: rows.length, first: keys[0], last: keys[keys.length - 1], perDay, backfillShouldGenerate: cover };
   }
 
   // 有用户上下文但没带可识别的 action（比如用测试模板直接跑）：不干活，
