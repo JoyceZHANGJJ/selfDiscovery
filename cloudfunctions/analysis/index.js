@@ -29,6 +29,12 @@
 //   8) action:'promptPreview'：只读预览「大模型实际看到的资料」（system/user 消息全文 +
 //      字数），用来核对喂给模型的原文长什么样；不调模型、不写库。
 //      event.type: profile（默认）/ day / week / month / year。
+//   9) action:'promptTest'：**调提示词用这个**。用真实记录跑一次模型，返回并落库结果，
+//      但**绝不碰正式的 analysis / profile 文档**（试跑错多少次都不会影响线上内容）。
+//      event.type 同上；event.rules 是**追加**到该类型规则末尾的提示词片段（留空=用线上那一版，
+//      用来做基线对照）；event.overrideRules:true 则**完全替换**规则段（只保留人设与输出结构）。
+//      event.label 是这次试跑的备注，会一起存下来，方便回头对比「哪一版更好」。
+//   10) action:'ptestList' / 'ptestGet' / 'ptestDel'：读 / 删试跑记录（试跑页用）。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
 //   指出模式与连接、说可能的内在动机与张力、给具体可做且有方向性的建议；
@@ -44,6 +50,9 @@ const _ = db.command;
 const recCol = () => db.collection('records');
 const analysisCol = () => db.collection('analysis');
 const profileCol = () => db.collection('profile');   // 个人画像（每 openid 一份最新）
+// 提示词试跑结果（action:'promptTest' 写入）。只增不覆盖，用来对比不同提示词版本；
+// 正式的回看 / 画像永远不写这里，所以试跑不会污染线上内容，也不会被幂等跳过。
+const ptestCol = () => db.collection('promptlog');
 
 // ---- 配置（非密钥项可放 config.json 的 env；密钥 LLM_API_KEY 必须在控制台环境变量里配） ----
 // LLM_BASE_URL 是「接口 base」，/chat/completions 由代码自动拼上，避免各家路径不一致写错。
@@ -243,7 +252,10 @@ function fieldsSpec(type) {
   return lines.map(s => '  ' + s).join('\n');
 }
 
-function buildMessages(rows, type, p) {
+// opt: { overrideRules } —— 试跑用：overrideRules 为真时只保留「人设 + 本次类型 + 输出结构」，
+//把规则段整个换掉（方便从零试一版提示词，不受现有规则束缚）；否则用线上那一版。
+function buildMessages(rows, type, p, opt) {
+  const o = opt || {};
   const span = { day: '一天', week: '一周', month: '一个月', year: '一年' }[type];
   const cap = type === 'day' ? 100 : 400;
   const list = (rows || []).slice(0, cap).map(r => {
@@ -258,7 +270,7 @@ function buildMessages(rows, type, p) {
 
   // 日 / 周用极简轻量版，月 / 年用完整版
   const lite = (type === 'day' || type === 'week');
-  const rules = lite ? REVIEW_RULES_LITE : REVIEW_RULES_FULL;
+  const rules = o.overrideRules ? '' : (lite ? REVIEW_RULES_LITE : REVIEW_RULES_FULL);
   const focus = {
     day: '聚焦当日波动，对比个人常态，只看当天信号，不做长期预判。',
     week: '增加和上一周期的对比，观察阶段性变化；仅多次重复的信号标记为风险。',
@@ -266,9 +278,13 @@ function buildMessages(rows, type, p) {
     year: '做跨月长周期汇总，提炼全年稳定特质与全年核心矛盾，对比年初状态，区分临时阶段性问题和底层长期模式；风险侧重长期持续累积的影响，行动偏向中长期规划与方向校准。'
   }[type];
 
+  // 规则段的拼装：线上版or 空（被整体替换），末尾再追加调用方传进来的片段。
+  // 追加放在最后是有意的——模型对system 末尾的指令更敏感，新规则压得住旧规则。
+  const rulesSeg = [rules, o.extraRules].filter(Boolean).join('\n');
+
   const sys = COMMON_RULES
     + '\n\n本次类型：' + (TYPE_LABEL[type] || type) + '复盘。' + focus
-    + '\n\n' + rules
+    + (rulesSeg ? '\n\n' + rulesSeg : '')
     + '\n\n输出 JSON 字段（严格按下面的固定板块结构，板块名不要改）：\n' + fieldsSpec(type);
   const user = '本次类型：' + (TYPE_LABEL[type] || type) + '复盘。\n以下是用户 ' + p.startStr + ' 至 ' + p.endStr + ' 这' + span
     + '记录的自我觉察（按时间先后，日期只在与起始日不同时标注）：\n\n'
@@ -388,7 +404,8 @@ function profileFieldsSpec() {
   ].join('\n');
 }
 
-function buildProfileMessages(rows, reviews) {
+function buildProfileMessages(rows, reviews, opt) {
+  const o = opt || {};
   const list = (rows || []).slice(0, 500).map(r => {
     const mod = MODULE_LABELS[r.m] || r.m || '记录';
     const parts = [];
@@ -419,7 +436,10 @@ function buildProfileMessages(rows, reviews) {
     }
   });
 
-  const sys = PROFILE_RULES
+  // 规则段：线上版或空（被整体替换）；追加片段放最后，对模型影响最大。
+  const rulesSeg = [o.overrideRules ? '' : PROFILE_RULES, o.extraRules].filter(Boolean).join('\n');
+
+  const sys = (rulesSeg || '你是一位擅长从个人日志中提炼稳定特质的心理分析顾问。')
     + '\n\n任务：根据用户【全部历史记录】做一份「专属人物深度分析报告」——是长期稳定的'
     + '「他大概是哪种人、适合往哪走、容易卡在哪、怎么决策」，不是某一段的复盘。'
     + '\n重点：挖出他的本能行为陷阱（下意识自动发生、事后反复纠结内耗的习惯），'
@@ -784,6 +804,101 @@ async function previewReviewMessages(openid, type) {
   };
 }
 
+// ============ 提示词试跑 ============
+// 调提示词的循环本来是「改代码 → 上传部署 → 生成 → 翻页面看」，一轮几分钟，
+// 一天试不了两次。这个action 把循环缩短成「改一段文字 → 点一下 → 看结果」：
+//   ·资料来自真实记录（和线上生成同一套拼装），所以看到的效果就是真实效果；
+//   · event.rules 追加一段提示词；event.overrideRules 则把规则段整个换掉从头试；
+//   · 结果写promptlog 集合返回，**完全不碰 analysis / profile**——
+//     试跑错多少次都不会影响线上的回看与画像，也不会被幂等跳过。
+// 落库是为了能在小程序里反复对比不同版本；也因此顺手记下当时用的提示词原文，
+// 回头能对上「这个结果是哪一版提示词跑出来的」。
+async function runPromptTest(openid, event) {
+  const t = event.type || 'profile';
+  const isProfile = t === 'profile';
+  if (!isProfile && ['day', 'week', 'month', 'year'].indexOf(t) < 0) {
+    return { error: 'type 只能是 profile / day / week / month / year' };
+  }
+  // 温度：画像 0.7（报告要稳），回看沿用线上默认 0.8；允许 event.temperature 覆盖
+  const temp = typeof event.temperature === 'number' ? event.temperature : (isProfile ? 0.7 : 0.8);
+  const opt = {
+    extraRules: (typeof event.rules === 'string' ? event.rules.trim() : ''),
+    overrideRules: !!event.overrideRules
+  };
+
+  let msgs, meta = {};
+  if (isProfile) {
+    const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
+    const rows = (recs.data || []).map(d => ({
+      m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
+    }));
+    let reviews = [];
+    try {
+      const rv = await analysisCol().where({ openid }).orderBy('start', 'desc').limit(24).get();
+      reviews = rv.data || [];
+    } catch (e) { reviews = []; }
+    if (!rows.length) return { error: '没有记录可试' };
+    msgs = buildProfileMessages(rows, reviews, opt);
+    meta = { records: rows.length, reviewsUsed: reviews.length };
+  } else {
+    // 与线上同一套取数：day 可指定 offset 往前推几天，周 / 月 / 年取最近一个已结束的周期
+    const p = t === 'day'
+      ? period('day', typeof event.offset === 'number' ? event.offset : 1)
+      : (pastPeriodList(t, 1)[0] || null);
+    if (!p) return { error: '没有可试的周期' };
+    if (p.end > cnToday0()) return { error: '这个周期还没结束，不能试（未来的记录还不存在）' };
+    const recs = await recCol().where({
+      _openid: openid, ts: _.and([_.gte(p.start), _.lt(p.end)])
+    }).orderBy('ts', 'asc').limit(t === 'day' ? 100 : 500).get();
+    const rows = (recs.data || []).map(d => ({
+      m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts,
+      ds: cnStr(d.ts || 0), t: hm(d.ts)
+    }));
+    if (!rows.length) return { error: '这个周期没有记录可试' };
+    msgs = buildMessages(rows, t, p, opt);
+    meta = { records: rows.length, range: p.startStr + '~' + p.endStr };
+  }
+
+  const started = Date.now();
+  let parsed;
+  try {
+    parsed = await chatCompletion(msgs, temp);
+  } catch (e) {
+    return { error: '模型调用失败：' + (e && e.message ? e.message : String(e)), systemChars: msgs[0].content.length, userChars: msgs[1].content.length };
+  }
+  const ms = Date.now() - started;
+
+  // 落库：连同当时的提示词原文一起存，回头能对上「这结果是哪一版跑出来的」
+  const doc = Object.assign({
+    openid,
+    type: t,
+    label: (typeof event.label === 'string' ? event.label : '').slice(0, 60),
+    overrideRules: opt.overrideRules,
+    rules: opt.extraRules,              // 追加的片段（空 = 跑的是线上那版）
+    temperature: temp,
+    systemChars: msgs[0].content.length,
+    userChars: msgs[1].content.length,
+    model: LLM_MODEL,
+    ms,
+    result: parsed,                     // 原样存，前端爱怎么渲染怎么渲染
+    createdAt: Date.now()
+  }, meta);
+
+  let savedId = '';
+  try {
+    const add = await ptestCol().add(doc);
+    savedId = (add && add._id) || '';
+  } catch (e) {
+    // 集合不存在等：功能仍可用，只是这次没存下来，明确告诉调用方
+    return Object.assign({ saved: false, note: '结果没存下来（promptlog 集合可能还不存在），下面就是本次输出' }, doc);
+  }
+
+  return Object.assign({ saved: true, _id: savedId }, meta, {
+    systemChars: doc.systemChars, userChars: doc.userChars, ms, model: LLM_MODEL,
+    rulesUsed: opt.extraRules, overrideRules: opt.overrideRules, result: parsed
+  });
+}
+
 exports.main = async (event) => {
   const ctx = cloud.getWXContext();
   const openid = ctx.OPENID || (event && event.openid);
@@ -850,6 +965,44 @@ exports.main = async (event) => {
     const t = event.type || 'profile';
     if (t === 'profile') return previewProfileMessages(openid);
     return previewReviewMessages(openid, t);
+  }
+
+  // 提示词试跑：用真实记录跑一次，返回并落库结果，但**不碰正式的 analysis / profile**。
+  // event.type: profile / day / week / month / year
+  //   event.rules 追加一段提示词（留空=用线上那版，做基线对照）
+  //   event.overrideRules:true 把规则段整个换掉（从头试一版，不受现有规则束缚）
+  //   event.label 备注、event.offset（日往前推几天）、event.temperature
+  if (event && event.action === 'promptTest') {
+    if (!openid) return { error: 'no openid' };
+    return runPromptTest(openid, event);
+  }
+
+  // 试跑记录的读 / 删（小程序试跑页用）
+  if (event && event.action === 'ptestList') {
+    if (!openid) return { error: 'no openid' };
+    const q = ptestCol().where({ openid });
+    const list = (event.type ? q.where({ type: event.type }) : q)
+      .orderBy('createdAt', 'desc').limit(50).get();
+    // 列表只要摘要：结果正文很大，全量回传既慢又撑爆小程序的数据量
+    return {
+      list: (list.data || []).map(d => ({
+        _id: d._id, type: d.type, label: d.label, createdAt: d.createdAt,
+        rules: (d.rules || '').slice(0, 60), overrideRules: !!d.overrideRules,
+        temperature: d.temperature, ms: d.ms, records: d.records, range: d.range || ''
+      }))
+    };
+  }
+  if (event && event.action === 'ptestGet') {
+    if (!openid) return { error: 'no openid' };
+    if (!event.id) return { error: 'no id' };
+    const one = await ptestCol().where({ openid, _id: event.id }).limit(1).get();
+    return { doc: (one.data || [])[0] || null };
+  }
+  if (event && event.action === 'ptestDel') {
+    if (!openid) return { error: 'no openid' };
+    if (!event.id) return { error: 'no id' };
+    await ptestCol().where({ openid, _id: event.id }).remove();
+    return { deleted: event.id };
   }
 
   // 个人画像：读取已存的（前端进页先调这个，快、不花大模型额度）

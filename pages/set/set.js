@@ -294,6 +294,8 @@ Page(pageBase({
   // 它从未生效过（那是 uni-app 的 API）。tab 页按系统返回 = 退出小程序，无法拦截；
   // 需要返回键友好的交互不能放在 tab 页的浮层里——主题选择最后做成了设置页内的内联列表
 
+  // 提示词试跑（开发工具页）：改提示词在这里试跑，不动线上的回看与画像
+  onPrompt() { wx.navigateTo({ url: '/pages/prompt/prompt' }); },
   /* 更新日志 */
   openLog() { this.setData({ logOverlay: true }); this.setTabHidden(true); },
   closeLog() { this.setData({ logOverlay: false }); this.setTabHidden(false); },

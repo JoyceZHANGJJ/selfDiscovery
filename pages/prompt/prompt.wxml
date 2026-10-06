@@ -1,0 +1,97 @@
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
+  <view class="statusbar-mask"></view>
+  <view class="screen">
+    <view class="body">
+      <view class="a-hd">
+        <view class="bk" bindtap="onClose">‹ 返回</view>
+        <view class="a-tt">提示词试跑</view>
+      </view>
+      <view class="hint">用你的真实记录跑一次，<text style="font-weight:700">不会动</text>正式的回看与画像——放心改。</view>
+
+      <!-- 类型 -->
+      <view class="atabs">
+        <view wx:for="{{types}}" wx:key="k"
+              class="atab {{type===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTypeTap">
+          {{item.n}}
+        </view>
+      </view>
+      <view class="qhint">画像 = 全部历史记录；日 / 周 / 月 / 年 = 最近一个已结束的周期。</view>
+
+      <!-- 提示词输入 -->
+      <view class="card">
+        <view class="c-h">
+          <view class="c-t">提示词</view>
+          <view class="c-clear" bindtap="onClearInput">清空</view>
+        </view>
+        <textarea class="ta" auto-height adjust-position="{{false}}" cursor-spacing="20"
+                  maxlength="-1" value="{{rules}}" bindinput="onRulesInput"
+                  placeholder="写要试的那一段。例：&#10;【硬性】actions 里的「执行时机」必须写出具体钟点（如 21:30），不要写「晚上」。"></textarea>
+
+        <view class="swrow" bindtap="onOverrideTap">
+          <view class="sw {{override?'on':''}}"><view class="swd"></view></view>
+          <view class="swx">
+            <view class="swt">{{override?'整段替换':'追加到线上规则后面'}}</view>
+            <view class="swd2">{{override?'线上那套规则全部丢掉，只保留任务说明与输出结构——适合从零试一版新的。':'保留线上那一版，把你写的接在最后。模型对结尾的指令更敏感，新要求压得住旧要求。'}}</view>
+          </view>
+        </view>
+
+        <input class="mini-in lb" placeholder="备注（选填）：这一版想试什么" value="{{label}}" bindinput="onLabelInput" adjust-position="{{false}}" cursor-spacing="20" />
+
+        <view class="btn run {{running?'dis':''}}" bindtap="run">{{running?'跑着…':'跑一次'}}</view>
+        <view class="qhint">不填提示词直接跑 = 拿线上那版做基线，用来和改完的版本对比。每次都会花一次模型额度。</view>
+      </view>
+
+      <view wx:if="{{errText}}" class="err">{{errText}}</view>
+
+      <!-- 本次结果 -->
+      <block wx:if="{{lastResult}}">
+        <view class="sect-t" style="margin-top:18px">本次结果</view>
+        <view class="meta">
+          <view wx:for="{{lastResult.meta}}" wx:key="k" class="meta-r">
+            <view class="meta-k">{{item.k}}</view><view class="meta-v">{{item.v}}</view>
+          </view>
+        </view>
+        <view class="nodes">
+          <view wx:for="{{lastResult.nodes}}" wx:key="path" class="node">
+            <view class="np">{{item.path}}</view>
+            <view class="nt">{{item.text}}</view>
+          </view>
+        </view>
+        <view wx:if="{{!lastResult.nodes.length}}" class="qhint">模型返回了空内容。</view>
+      </block>
+
+      <!-- 历史 -->
+      <view class="sect-t" style="margin-top:18px">历史试跑 <text style="font-weight:400;color:var(--ink3);font-size:11.5px">（留着对比哪一版更好）</text></view>
+      <view wx:if="{{list.length===0}}" class="qhint">还没有试跑记录。</view>
+      <view wx:for="{{list}}" wx:key="_id" wx:for-item="a" wx:for-index="i"
+            class="hrow {{detailIdx===i?'open':''}}" data-i="{{i}}" bindtap="onItemTap">
+        <view class="hr-l">
+          <view class="hr-t">
+            <text class="hr-k">{{a.type==='profile'?'画像':a.type==='day'?'日回看':a.type==='week'?'周回看':a.type==='month'?'月回看':'年回看'}}</text>
+            <text class="hr-time">{{a.label || ''}}</text>
+          </view>
+          <view class="hr-d">{{a.overrideRules?'替换版':'追加/基线'}} · {{a.records}} 条 · {{a.ms}}ms · {{a.temperature}}</view>
+        </view>
+        <view class="hr-del" data-i="{{i}}" catchtap="onDel" aria-label="删除">✕</view>
+      </view>
+
+      <!-- 展开的一条 -->
+      <block wx:if="{{detail}}">
+        <view class="meta">
+          <view wx:if="{{detail.label}}" class="meta-r"><view class="meta-k">备注</view><view class="meta-v">{{detail.label}}</view></view>
+          <view wx:for="{{detail.meta}}" wx:key="k" class="meta-r">
+            <view class="meta-k">{{item.k}}</view><view class="meta-v">{{item.v}}</view>
+          </view>
+        </view>
+        <view class="nodes">
+          <view wx:for="{{detail.nodes}}" wx:key="path" class="node">
+            <view class="np">{{item.path}}</view>
+            <view class="nt">{{item.text}}</view>
+          </view>
+        </view>
+        <view wx:if="{{!detail.nodes.length}}" class="qhint">这一条的结果是空的。</view>
+        <view class="btn gh copy" bindtap="copyResult">复制这份结果</view>
+      </block>
+    </view>
+  </view>
+</view>

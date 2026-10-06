@@ -127,6 +127,7 @@
       <view class="srow"><view class="sl">选项池</view><view class="sv">{{optGroups}} 组 · {{optCount}} 个</view></view>
       <view class="srow"><view class="sl">数据位置</view><view class="sv">云开发数据库</view></view>
       <view class="srow" bindtap="openLog"><view class="sl">更新日志</view><view class="sv">最近 {{logLatest}} ▸</view></view>
+      <view class="srow" bindtap="onPrompt"><view class="sl">提示词试跑</view><view class="sv">改提示词 · 不影响线上内容 ▸</view></view>
     </view>
   </view>
 
