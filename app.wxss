@@ -222,16 +222,23 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 维度名（觉察/无感…）：11px 下 700 在手机上不够明显，提到 800（与问候/小节标题同级强调）；
    标题折成两行时别跟着首行基线吊在上边——独立垂直居中（与勾选框一致） */
 .rec .mn { font-size: 11px; font-weight: 800; align-self: center; }
-/* 待办行的优先级：小色点 + 文字（紧急 / 重要 四象限）。色点用 currentColor——
-   颜色按档位由行数据给（见 store.prioColor），所以只写一处就能整条跟着变；
-   默认档「不紧急不重要」与老记录都不渲染这一格（见 vm.js 的 pn），不能每行都挂标签 */
+/* 待办行的优先级：一面小旗子（旗杆 + 三角旗面）。原来画的是「色点 + 文字」，
+   字一多整行就吵，改成只留旗子——档位靠**颜色**区分（紧急重要＝红褐 / 重要不紧急＝橙 /
+   紧急不重要＝蓝，见 store.prioColor），确切说法在记录详情里（详情仍显示「优先级：…」）。
+   旗子用 currentColor 画：颜色只在行数据的 pc 里写一处，杆和面整条跟着变。
+   默认档「不紧急不重要」与老记录都不渲染（见 vm.js 的 pn），不能每行都插一面旗 */
 .rec .prio {
-  font-size: 11px; font-weight: 700; color: var(--ink3);
-  align-self: center; flex-shrink: 0; display: inline-flex; align-items: center;
+  position: relative; width: 11px; height: 13px;
+  flex-shrink: 0; align-self: center; color: var(--ink3);
 }
-.rec .prio::before {
-  content: ''; width: 6px; height: 6px; border-radius: 99px;
-  background: currentColor; margin-right: 4px; flex-shrink: 0;
+.rec .prio::before {          /* 旗杆 */
+  content: ''; position: absolute; left: 1.5px; top: 0;
+  width: 1.6px; height: 13px; border-radius: 1px; background: currentColor;
+}
+.rec .prio::after {           /* 旗面：三角形，尖端朝右＝向右飘 */
+  content: ''; position: absolute; left: 3.1px; top: 1px;
+  border-left: 7px solid currentColor;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
 }
 /* 事件项（主内容）加重：用 700 而不是 600——手机端中文字体常缺 600 这一档，
    WebView 不合成中间字重时会回落到 400，导致加重看不出来；700 各端都能稳定渲染 */

@@ -565,10 +565,11 @@ const FIELDS = {
     { g: 'todoKind', single: true, noInput: true, required: true },
     // 「优先级」紧跟类别：先定是什么（类别），再定多紧要。四象限按「紧急 / 重要」两轴分，
     // 顺序由重到轻，默认落在末位「不紧急不重要」（见 PRIO_DEFAULT）——
-    // 只有真正挑过的档位才在列表里显示标记，默认档不显示，免得每行都挂一个标签。
-    // hideDetail：行尾已经有色点 + 文字，详情区不再重复一行（与类别同一口径）。
+    // 只有真正挑过的档位才在列表里插一面旗，默认档不显示，免得每行都挂一个标签。
+    // 不设 hideDetail：列表里现在只有旗子、没有字，档位的确切说法要在详情区说一次
+    // （与类别相反——类别在行首就有名字，详情再写一遍是重复）
     // 插在中间不影响旧记录：导入按标签匹配（见 srcList），不按位置
-    { g: 'todoPrio', single: true, noInput: true, hideDetail: true },
+    { g: 'todoPrio', single: true, noInput: true },
     { free: 'tasknote', label: '原因', ph: '为什么记这条？可不填', ta: true },
     // 「放弃原因」仅点「放弃」或编辑「已放弃」记录时显示（由 index 编辑态按状态过滤，
     // 与可做那边同一个键名 free:abandonWhy，保存/恢复/导出的处理都复用同一套）
