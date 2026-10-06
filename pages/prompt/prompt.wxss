@@ -46,7 +46,22 @@
 
 .err { margin-top: 12px; font-size: 12.5px; color: #B4544E; background: rgba(180,84,78,.07); border-left: 3px solid #B4544E; border-radius: 0 8px 8px 0; padding: 8px 10px; line-height: 1.6; }
 
-/* 结果的元信息（喂了多少、哪一版、耗时） */
+/* 「用了哪版」：从 .meta 表格里拎出来单放。
+   原因：原来它跟「耗时 / 模型」并排，值又是整段提示词原文，视觉上分不清
+   哪部分是系统自带的规则、哪部分是你自己加的，越看越像「系统怎么这麼乱」。
+   拆成醒目的标签 + 单独一块原文后，一眼就清楚。 */
+.ver { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--ink3); border-radius: 0 var(--r-card) var(--r-card) 0; padding: 9px 12px; margin-top: 10px; }
+.ver.on { border-left-color: var(--accent); }
+.ver-t { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.ver.on .ver-t { color: var(--accent); }
+.ver-n { font-size: 11.5px; color: var(--ink3); margin-top: 3px; line-height: 1.6; }
+
+/* 你追加 / 替换的那段原文：单独开一块，标清「这是你写的」，避免和系统规则混淆 */
+.rules-box { background: var(--soft, #F7F5F1); border: 1px solid var(--line); border-radius: var(--r-card); padding: 9px 12px; margin-top: 6px; }
+.rules-h { font-size: 11px; color: var(--ink3); }
+.rules-b { font-size: 12.5px; color: var(--ink2); line-height: 1.75; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+
+/* 结果的元信息（喂了多少、耗时、模型） */
 .meta { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 10px 12px; margin-top: 10px; }
 .meta-r { display: flex; gap: 8px; font-size: 12px; line-height: 1.6; padding: 2px 0; }
 .meta-k { flex-shrink: 0; width: 62px; color: var(--ink3); }

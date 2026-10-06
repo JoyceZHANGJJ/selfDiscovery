@@ -119,7 +119,8 @@ Page(pageBase({
         this.setData({
           lastResult: {
             nodes: flatNodes(r.result, '', 0, []),
-            meta: this._metaOf(r)
+            meta: this._metaOf(r),
+            ver: this._whichVer(r)
           },
           errText: r.saved ? '' : ('这条没存进历史（原因：' + (r.saveError || '未知') + '）——下面的结果照样能看，只是关掉就没了')
         });
@@ -132,16 +133,28 @@ Page(pageBase({
       });
   },
 
+  // 「用了哪版」不放在普通元信息里——那一格会把整段提示词铺开，
+  // 视觉上分不清是「系统自带的规则」还是「你追加的那句」，越看越糊。
+  // 拆成两个字段：ver（短标签，一眼看清用的哪版）+ rulesUsed（原文，可复制）。
+  _whichVer(r) {
+    const used = (r.rulesUsed !== undefined && r.rulesUsed !== null) ? r.rulesUsed : (r.rules || '');
+    if (r.overrideRules) return { ver: '整段替换版', note: '线上那套规则已全部丢弃，只用下面这段', used: used };
+    return used ? { ver: '线上版 + 追加', note: '保留了线上那套规则，把下面这段接在最后', used: used }
+               : { ver: '线上原版（基线）', note: '没加任何提示词，跑的就是线上正在用的那一版', used: '' };
+  },
+
   _metaOf(r) {
-    return [
+    const w = this._whichVer(r);
+    const out = [
       { k: '类型', v: (TYPES.filter(t => t.k === r.type)[0] || {}).n || r.type || '' },
       { k: '记录', v: (r.records || 0) + ' 条' + (r.range ? '（' + r.range + '）' : '') },
       { k: '耗时', v: (r.ms || 0) + ' ms' },
       { k: '模型', v: r.model || '' },
       { k: '温度', v: String(r.temperature === undefined ? '' : r.temperature) },
-      { k: '喂给模型', v: (r.userChars || 0) + ' 字资料 + ' + (r.systemChars || 0) + ' 字提示词' },
-      { k: '用了哪版', v: r.overrideRules ? ('替换版：' + (r.rulesUsed || '')) : (r.rulesUsed ? ('线上版 + 追加：' + r.rulesUsed) : '线上原版（基线）') }
+      { k: '喂给模型', v: (r.userChars || 0) + ' 字资料 + ' + (r.systemChars || 0) + ' 字提示词' }
     ];
+    // ver 单独挂到外层，wxml 里用它做醒目的标签；不放进 meta 表格
+    return out;
   },
 
   // 历史列表（摘要，不含结果正文）
@@ -169,6 +182,7 @@ Page(pageBase({
           detail: {
             nodes: flatNodes(d.result, '', 0, []),
             meta: this._metaOf(d),
+            ver: this._whichVer(d),
             label: d.label || ''
           }
         });

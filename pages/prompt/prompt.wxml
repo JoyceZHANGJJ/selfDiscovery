@@ -46,6 +46,14 @@
       <!-- 本次结果 -->
       <block wx:if="{{lastResult}}">
         <view class="sect-t" style="margin-top:18px">本次结果</view>
+        <view class="ver {{lastResult.ver.ver==='线上原版（基线）'?'':'on'}}">
+          <view class="ver-t">用了哪版：{{lastResult.ver.ver}}</view>
+          <view class="ver-n">{{lastResult.ver.note}}</view>
+        </view>
+        <view wx:if="{{lastResult.ver.used}}" class="rules-box">
+          <view class="rules-h">你追加 / 替换的原文</view>
+          <view class="rules-b">{{lastResult.ver.used}}</view>
+        </view>
         <view class="meta">
           <view wx:for="{{lastResult.meta}}" wx:key="k" class="meta-r">
             <view class="meta-k">{{item.k}}</view><view class="meta-v">{{item.v}}</view>
@@ -78,6 +86,14 @@
 
       <!-- 展开的一条 -->
       <block wx:if="{{detail}}">
+        <view class="ver {{detail.ver.ver==='线上原版（基线）'?'':'on'}}">
+          <view class="ver-t">用了哪版：{{detail.ver.ver}}</view>
+          <view class="ver-n">{{detail.ver.note}}</view>
+        </view>
+        <view wx:if="{{detail.ver.used}}" class="rules-box">
+          <view class="rules-h">你追加 / 替换的原文</view>
+          <view class="rules-b">{{detail.ver.used}}</view>
+        </view>
         <view class="meta">
           <view wx:if="{{detail.label}}" class="meta-r"><view class="meta-k">备注</view><view class="meta-v">{{detail.label}}</view></view>
           <view wx:for="{{detail.meta}}" wx:key="k" class="meta-r">
