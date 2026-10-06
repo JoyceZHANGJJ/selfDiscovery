@@ -28,15 +28,15 @@
           <text class="mn" style="color:{{item.c}}" wx:if="{{showMn}}">{{item.m}}</text>
           <view class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}" aria-label="优先级 {{item.pn}}"></view>
           <text class="tv">{{item.txt}}</text>
-          <!-- 计划完成：**没计划就不渲染**（多数待办本来就没计划时间）。
-               位置在「创建时间」的**左边**：时间是这一行最后一眼扫到的东西，
-               计划完成是额外挂着的一条期限，排在时间前面才读得出「几天后 / 已经过期」。
-               点一下＝取消这条待办的计划（会先问一句）；要定日子走行尾左滑的快捷记面板，
-               或进记卡里那一行 chips。 -->
-          <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onDueTap" aria-label="计划完成 {{item.due}}，点一下取消计划">{{item.due}}</view>
-          <!-- 时间用 tt（待办行专用：今天＝时刻，非今天＝简洁日期）而不是 t：
-               清单页的 recVM 把 t 覆盖成了 tt，看页没有，两边都读 tt 才真的同一份口径 -->
-          <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
+          <!-- 右侧那一格：**原因照常显示，后面跟一个时间**。
+               那个时间是「计划完成」优先、没计划才轮到创建时间：
+               ・有计划 → 显示计划完成（今天 / 明天 / 周五，或自定到某天某点），不显示创建时间
+               ・没计划 → 显示创建时间（用 tt：今天＝时刻，非今天＝简洁日期；
+                 不用 t 是因为清单页 recVM 把 t 覆盖成了 tt、看页没覆盖，两边都读 tt 才是同一份口径）
+               两者同一个位置是刻意的：右端只挂一个日期，没有「两个日子挤在一行」要挑的情况。
+               点计划完成那格＝取消这条待办的计划（先问一句）；要定日子走行尾左滑的快捷记面板，
+               或进记卡里那一行 chips -->
+          <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onDueTap" aria-label="计划完成 {{item.due}}，点一下取消计划">{{item.due}}</view><text wx:else class="twt">{{item.tt}}</text></view>
         </view>
         <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
       </view>

@@ -241,7 +241,8 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
   border-top: 4px solid transparent; border-bottom: 4px solid transparent;
 }
 /* 待办行的「计划完成」胶囊（今天 / 明天 / 周五）：**没计划的行不渲染**（见 vm.js 的 dueHas），
-   所以不会每行都挂一个标签。排在「创建时间」**左边**（DOM 顺序：tv → due → twr）。
+   所以不会每行都挂一个标签。它在 `.twr` 那一格里、占着「创建时间」的位置——
+   有计划就显示计划、没计划才显示创建时间，右端永远只有一个日子。
    可点＝取消这条待办的计划（会先问一句，见 pageBase.clearDue）；
    要定／改日子仍走行尾左滑的快捷记面板或记卡那一行 chips。
    ・平时用主题色浅底 + 主题色字（和「已记」胶囊同一族），一看就知道是「什么时候」；
