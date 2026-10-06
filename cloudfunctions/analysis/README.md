@@ -44,6 +44,7 @@
 | `promptGet` | 小程序（提示词管理页） | 是 | 否 | 否 | 读一个槽位的正文 + 出厂值 + 只读的输出字段契约 |
 | `promptSave` | 小程序（提示词管理页） | 是 | 否 | 否 | **保存提示词正文，立即生效**；自动给旧版留快照，rev 恒 +1 |
 | `promptReset` | 小程序（提示词管理页） | 是 | 否 | 否 | 恢复出厂默认（也是一次正常保存，同样留快照） |
+| `promptResetAll` | 小程序（提示词管理页） | 是 | 否 | 是（一次改全部） | **一键把全部被改过的槽位恢复出厂默认**；本来就是出厂值的不动 |
 | `promptVersions` | 小程序（提示词管理页） | 是 | 否 | 否 | 某槽位的历史版本列表（摘要，不含正文） |
 | `promptVersionGet` | 小程序（提示词管理页） | 是 | 否 | 否 | 取某个历史版本的正文 |
 | `promptRevert` | 小程序（提示词管理页） | 是 | 否 | 否 | 切回某个历史版本（走一次正常保存，新 rev 恒 +1） |
@@ -53,9 +54,9 @@
 > `gen` / `backfill` / `profile` / `promptTest` 每次真正调用大模型都算一次额度，见「额度与幂等」。
 > `promptTest` 是唯一「调模型但**不写正式文档**」的 action——试跑错多少次都不影响线上回看与画像。
 >
-> **提示词注册表**（`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptVersions` /
-> `promptVersionGet` / `promptRevert` / `promptAdopt`）只读写 `promptset` 与 `promptsetver`，
-> **不调大模型、不碰任何业务集合**，所以随便调、不花额度。
+> **提示词注册表**（`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptResetAll` /
+> `promptVersions` / `promptVersionGet` / `promptRevert` / `promptAdopt`）只读写 `promptset` 与
+> `promptsetver`，**不调大模型、不碰任何业务集合**，所以随便调、不花额度。
 > 提示词正文现在存在数据库里，改完保存即生效，**不用再「改代码 + 上传部署」**。
 > 详见「五、提示词注册表」。
 
@@ -127,11 +128,45 @@
 原始记录会被加工成这种格式再拼进去（不是裸字段）：
 
 ```
-[觉察] 加班 （喜恶：喜欢，精力：耗尽） 22:10
-[随记] 突然想到一个产品点子 2026-09-30 08:30
+## 2026-09-29 周二
+- 09:12 觉察 | 方案又推翻了 | 描述：第三方给的反馈不太行 | 感受：有点焦虑、怎么开始：自己想做、精力：累
+- 21:00 今日 | 还行吧 | 剩余能量：一般（3/5 格）
+- 22:10 觉察 | 加班 | 喜恶：不喜欢 | 感受：很空虚 | 精力：耗尽
+## 2026-09-30 周三
+- 08:30 随记·灵感 | 突然想到一个产品点子
+- 10:00 可做·想做 | 做一个小程序 | 做了（10月06日） | 原因：看到别人晒成果
+
+## 汇总
+- 天数：2 天（有记录 2026-09-29 至 2026-09-30），日均 2.5 条
+- 维度分布：觉察 2 条，今日 1 条，随记 1 条，可做 1 条
+- 可做 1 条：做了 1
+- 每日剩余能量：记录 1 天，平均 3/5 格
 ```
 
-`2026-09-30` 只在与起始日不同时才标注；时间只到分钟。
+竖线只是分隔符，各段含义固定：时间 · 维度（带分类）· 内容 · 状态（哪天做的）· 标签：值。
+末尾的「## 汇总」是跨记录的统计（天数、维度分布、可做四态、一直没做的、逾期待办、能量平均），
+和设置页「可读导出」里那段是同一份逻辑——这样你核对模型看到的资料时，看到的就是自己那份导出。
+
+**格式由 `recText.js` 单独维护**，`buildMessages` / `buildProfileMessages` / `buildPersonaMessages`
+三处都调它，**不要在index.js 里再内联拼一遍**（自查脚本 `check_no_inline_rectext` 会拦）。
+它与小程序端 `utils/exporter.js` 的可读导出必须是同一口径，两份常量（COLMAP / 维度名 / BATTERIES）
+由自查脚本 `check_rec_labels` 机械比对，改一边必须改另一边。
+
+### `RECORD_GUIDE`：怎么告诉模型读这份记录
+
+上面那份文本带了不少**只有机器能看懂的东西**——状态后缀、优先级、能量档位、末尾汇总。
+以前喂的是裸字段（`free:desc：xxx`），讲不讲都一样；换成自然语言之后，模型可能：
+
+- **忽略**：把「做了（10月06日）」「已逾期 6 天」当噪声跳过 —— 相当于白喂；
+- **误当成正文**：把状态和日期复述进 `facts` —— 页面变回记账流水账。
+
+`RECORD_GUIDE`（`index.js` 里的常量）专门讲这件事：状态是判断执行力/拖延的**主要依据**
+（同一件事「想做」与「做了」含义完全不同），末尾汇总是跨记录统计、可引用但别复述。
+
+**它放在代码里而不是提示词注册表**，是因为这属于**数据契约（怎么读）**，
+不是人设与任务规则 —— 用户改提示词是改「用什么人格、什么口吻、什么角度」，
+不该能把「数据怎么读」改掉。三处生成路径都必须拼进 system，
+自查脚本 `check_record_guide` 盯这件事（漏掉不报错，只是那条路径的模型默默退化）。
 
 > 这个 action **不调模型、不写库、不花额度**，随便跑。
 
@@ -488,6 +523,10 @@ common.review（人设与共同原则）
 ```
 
 ```json
+{ "action": "promptResetAll", "openid": "你的openid" }
+```
+
+```json
 { "action": "promptAdopt", "openid": "你的openid", "id": "promptlog里的那条_id" }
 ```
 
@@ -498,6 +537,7 @@ common.review（人设与共同原则）
 | `{ groups:[{ group, name, slots:[{ slot,name,desc,state,rev,chars,edited }] }] }` | `promptList`。**正文不进列表**（几百上千字），只给字数与 rev |
 | `{ slot,name,desc,body,builtin,edited,rev,updatedAt,contract }` | `promptGet`。`contract` 是**只读**的输出字段说明 |
 | `{ ok:true, rev:N }` | `promptSave` / `promptReset` / `promptRevert` 成功，`rev` 是新的版本号 |
+| `{ ok:true, restored:N, skipped:M, failed:[], detail:[{slot,name,rev}] }` | `promptResetAll` 成功。`restored`=实际恢复的个数（**只算被改过的**），`skipped`=本来就是出厂值所以没动的个数。`failed` 非空表示**部分恢复失败**——前端必须把它说出来，不能当成功 |
 | `{ ok:true, rev:N, fromRev:M }` | `promptRevert` 成功，`fromRev` 是切回去的那一版 |
 | `{ ok:true, rev:N, slot, slotName }` | `promptAdopt` 成功，`slotName` 是这次改的是哪个槽位 |
 | `{ list:[{ rev,note,chars,createdAt }] }` | `promptVersions`。**不含正文**，正文要 `promptVersionGet` 单条取 |
@@ -713,6 +753,7 @@ common.review（人设与共同原则）
 
 | 日期 | 变更 |
 | --- | --- |
+| 2026-10-07 | **喂给模型的记录文本与小程序的「可读导出」对齐（新增 `recText.js`）。** 此前喂给模型的记录是三处**各写一遍**的内联格式：`[觉察] 内容 （obsDeg：有点，free:desc：…） 09:12`——① 用的是**机器键名**（`free:desc` / `fx:nrg` / `todayBat`）而不是中文标签，模型得自己猜那是什么意思；② **完全没有记录状态**（`status` / `doneAt` / `dueTs` 一个都没进去），于是分析「行动力 / 拖延」时只能从原话里猜那条「可做」后来做了没有，而这是这类报告最该依据的东西；③ 没有优先级、计划完成、逾期；④ 能量只给 `'3'` 而不是「一般（3/5 格）」；⑤ 没有跨记录汇总。新增 `recText.js` 作为**唯一入口**，三处 build 函数都改调它，格式与 `utils/exporter.js` 的可读导出**逐行一致**（含末尾汇总）。不能直接 require `exporter.js` 是因为它依赖 `store.js`，而 `store.js` 到处用 `wx.*`，云函数里没有 wx，所以是纯逻辑复刻，并用 `tools/check-syntax.py` 的第7 条检查（`check_rec_labels` 机械比对 COLMAP / 维度名 / BATTERIES 三份常量，`check_no_inline_rectext` 禁止再出现内联副本）守住不漂移。**顺带发现并修掉可读导出自己的三个 bug**：① 「做了（10月06**日**起）」——「起」只该跟在进行中后面，「做了」说的是完成那天，写成「起」语义反了；② 待办的「类别」与「优先级」在维度名和细节区各出现一次；③ 觉察的「喜恶」同样出现两次（`buildExt` 合成的喜恶项**不带 src**，只能按标签识别后跳过）。**token 反而降了 14~21%**（469 条实测：日 6267→5369、周月年 25032→19884、画像 29278→23150）——中文标签比英文机器键短（`free:desc：` 8 字符 → `描述：` 3 字符），旧格式每行还带括号与重复键名。旧维度 `m='done'` 的兼容分支也补上了。 |
 | 2026-10-06 | **阶段三：补上真正的「③ 个人画像」，并与「④ 人物深度报告」彻底分开。** 之前页面叫「个人画像」的那个功能，实际跑的是文档里的 ④ 深度报告（七章，含推演），而 ③（只沉淀跨周期稳定特质、增量迭代、带变更日志）**完全没实现**——于是「长期沉淀」这层缺位，低频的深度诊断会不断冲掉高频积累的稳定特质。新增：`persona` 集合（**按版本追加留档**，不像 `profile` 只留最新——画像的价值恰恰在于能看到它怎么长出来）、`persona` / `personaGet` / `personaVer` 三个 action、`buildPersonaMessages`（五大板块 + `changelog`）、`pages/persona` 页面。**实现上最关键的一点：`generatePersona` 必须把上一版画像当素材喂进去**，模型才能做「新增 / 修正 / 淘汰」；不传就退化成从零生成，那和 ④ 没区别、违背 ③ 的本意。所以 `promptPreview` 的 `type:"persona"` 专门返回 `fromRev` 用来核对这一点，试跑 `persona` 时也会带上现有画像（否则试跑看到的不是真实效果）。**不设每周冷却锁**（与 profile 相反）：它是增量的、成本低，合集明确建议周跑轻量版 / 月年跑完整版，硬锁只会挡正常节奏；改为前端提示 +云端按 rev 查重防重复写入。原 `pages/profile` 标题改为「人物深度报告」，回看页顶部与设置页都改成两个独立入口（徽标「像」=琥珀色画像 / 「深」=紫色深度报告）。`persona.*` 两个提示词槽位从「未接入」转为已生效，试跑页也支持画像类型。 |
 | 2026-10-06 | **阶段一：提示词从代码搬进数据库（提示词注册表）。** 新增 `promptset`（每槽位一条当前值）+ `promptsetver`（每次保存留快照），以及 8 个只读写提示词、**不调大模型不碰业务集合**的 action：`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptVersions` / `promptVersionGet` / `promptRevert` / `promptAdopt`。`buildMessages` / `buildProfileMessages` 改为从库里取提示词——**换提示词不用再「改代码 + 上传部署」，保存即生效**。三条硬约束：①**出厂值兜底绝不报错**（集合不存在 / 读失败 / 正文为空，一律静默退回 `PROMPT_BUILTIN` 里的出厂值，桩测确认集合完全不存在时 system 仍有完整内容，AI 回看照常工作——提示词是增强项，不能成为单点故障）；②**输出字段契约锁死**（`fieldsSpec` / `profileFieldsSpec` 只在 `promptGet` 里只读展示、不给编辑：字段名与云函数解析、页面渲染一一对应，改了会让页面白屏且极难自查）；③`rev` **恒 +1 不复用旧号**，让「rev=N」唯一对应一份内容、回滚后历史不漂移。留快照前先查该 rev 是否已有快照——并发保存会写出同 rev 的两条快照，「切回 rev=N」用 `where().limit(1)` 命中哪条不确定，这类不一致是**静默的**，多一次极轻的查询即可堵住。`promptAdopt` 是「试跑→线上」的桥：把某次试跑用的正文设为线上生效（此前试跑只能看、改不了线上）。两个 build 函数改成 async，**6 处调用点全部补 `await`**（漏 await 不报错，只会静默拿到 Promise）。本阶段行为与改动前完全一致，是纯重构。 |
 | 2026-10-06 | 修「库里有试跑记录、页面却永远显示还没有试跑记录」：`ptestList` 里 `.get()` **漏了 `await`**，`list.data` 恒为 `undefined`，被 `|| []` 兜成空数组，于是无论库里有多少条都显示为空。补上 `await`（已全项目扫过，其余数据库调用都带 await）。同时试跑页不再吞掉列表读取的错误——读不到时显示真实原因，而不是一律显示「还没有记录」。 |
