@@ -147,6 +147,9 @@ Page(pageBase({
       const ps = [store.addOption(g, v)];
       if (store.isDefault(g, v)) ps.push(store.clearDelDef(g, v)); // 加回的是曾被删的默认项
       ps.push(store.markOptCustom(g, O[g]));
+      // 记一笔「本次新增」：记页从这返回时，若这一组一个都没选就把刚加的这项选上
+      // （见 index.applyAdded）。与 _renames 同一套路——跨页面传消息只能靠 store 上的会话态
+      store.noteAddedOpt(g, v);
       Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     }
     this.setData({ newVal: '' });

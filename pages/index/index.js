@@ -146,8 +146,9 @@ Page(pageBase({
       //   推到后台再回来把 editing 清成 false，吸底操作行就会从「保存修改」变回「记下」）
       const fromBg = !!app._fromBg; app._fromBg = false;
       if (!app.globalData.editRec && !this.st.fromManage && !fromBg) this.setData({ editing: false });
-      // 从「管理选项」返回：把刚改名过的选项同步到已选中的 chip / 手填值上，避免旧名残留
-      if (this.st.fromManage) this.applyRenames();
+      // 从「管理选项」返回：把刚改名过的选项同步到已选中的 chip / 手填值上，避免旧名残留；
+      // 刚新增的那一项，若对应位置还空着就替他选上（见 applyRenames / applyAdded）
+      if (this.st.fromManage) { this.applyRenames(); this.applyAdded(); }
       this.st.fromManage = false;
       this.checkEdit();
       this.rotateGreet();
@@ -454,6 +455,41 @@ Page(pageBase({
     });
   },
 
+  /* 从「管理选项」返回：刚新增的那一项，若它在记卡里对应的位置**一个都没选**，就替他选上。
+     ・为什么只在「没选」时选：已经选过别的，说明是有意选的，不能替他改掉；
+       而「一个都没选」的多半是这组本来没有默认值（归类 / 情绪 / 分类 / 感受这些），
+       刚加的那项通常正是他这趟去管理页想加的东西，选上省掉再点一次
+     ・编辑态不做：那时记卡回显的是**一条已存在的记录**，替他选等于不声不响地改那条记录
+     ・只处理当前维度：这一项属于别的维度就等切过去再说（那时它多半会被默认值顶上，
+       真需要保留就再点一次——跨维度先选上反而会跟着切维度被清掉，白选） */
+  applyAdded() {
+    const am = store.takeAddedMap();
+    const keys = Object.keys(am);
+    if (!keys.length) return;
+    if (this.st.edit) return;                 // 编辑态：见上，不动已存在的那条记录
+    this._autoPick = {};                      // 只记本次选上的（换批次前清掉，见 _composerDirty）
+    const tag = this.st.tag;
+    keys.forEach(g => {
+      const v = am[g];
+      const ow = store.groupOwner(g);
+      if (!ow || ow.m !== tag) return;       // 不是当前维度的组 / 不属于任何维度（如 fx: 固定组）
+      if (ow.it && ow.it.sub) return;        // 档位副行（程度）：它跟着情绪出现，没选情绪时选它没意义
+      if (store.getOPT(g).indexOf(v) < 0) return;   // 加完又被删了：不在池里就别选
+      if (ow.main) {
+        // 主项（归类 / 什么事）：没选也没手填时才选。手填过就不能覆盖——那是他自己写的
+        if (!this.st.mainPick && !(this.st.main || '').trim()) {
+          this.st.mainPick = v; this.st.main = '';
+          this._autoPick.main = v;      // 记一笔：这是替他选的，不算「记卡里有内容」（见 _composerDirty）
+        }
+        return;
+      }
+      if ((this.st.pick[g] || []).length) return;     // 这组已选过
+      if ((this.st.typed[g] || '').trim()) return;    // 手填过：也算他选过
+      this.st.pick[g] = [v];
+      this._autoPick[g] = v;
+    });
+  },
+
   /* 编辑态：修改时间（创建 / 开始 / 结束） */
   onEditDate(e) { this.setData({ editDate: e.detail.value }); },
   onEditTime(e) { this.setData({ editTime: e.detail.value }); },
@@ -510,11 +546,8 @@ Page(pageBase({
 
   buildComposer() {
     const tag = this.st.tag;
-    let f = store.FIELDS[tag];
-    if (!f) {
-      const d = (app.globalData.dims || []).find(x => x.k === tag);
-      if (d) f = { main: 'm_' + tag, items: [{ g: 'm_' + tag, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
-    }
+    const f = store.fieldsOf(tag);
+    if (!f) return { main: '', mainOpts: [], catItems: [], items: [], plain: false, focusIdx: -1, mainVal: '', mainPh: '' };
     const main = f.main;
     const mainOpts = store.getOPT(main).map(v => ({ v, on: this.st.mainPick === v }));
     // 历史数据里手填的「点」可能不在选项池里：把它作为临时选项排在最前，
@@ -958,18 +991,22 @@ Page(pageBase({
   /* 记卡里是否已经有「用户填的 / 选的」内容。
      自动补的默认值不算：进 可做 / 待办 / 随记 / 觉察 时会替你把 分类 / 类别 / 怎么开始的
      选上第一个（见 ensureModuleDefaults），那是系统选的不是你选的——算进去的话，
-     一进这些维度就永远切不动了。 */
+     一进这些维度就永远切不动了。
+     同理放过 applyAdded 替他选上的那一项（从选项管理页加了新选项回来、那一组正好空着）：
+     那也是替他选的，他没打算在这张卡上写东西，不该因此被拦着切不了维度。 */
   _composerDirty() {
     const s = this.st;
     if ((s.main || '').trim()) return true;
-    if (s.mainPick) return true;
+    if (s.mainPick && s.mainPick !== (this._autoPick || {}).main) return true;
     if (s.due) return true;   // 挑过「计划完成」也算内容：切维度会把 st 整块重置，那是白挑
     const def = this._defaultPicks();
+    const ap = this._autoPick || {};
     const pk = s.pick || {};
     for (const g in pk) {
       const arr = pk[g] || [];
       if (!arr.length) continue;
       if (def[g] != null && arr.length === 1 && String(arr[0]) === String(def[g])) continue;  // 只是默认值
+      if (ap[g] != null && arr.length === 1 && String(arr[0]) === String(ap[g])) continue;    // 刚从管理页带回来的那一项
       return true;
     }
     const td = s.typed || {};
@@ -1006,11 +1043,8 @@ Page(pageBase({
 
   /* -------- 保存 -------- */
   doSave() {
-    let f = store.FIELDS[this.st.tag];
-    if (!f) {
-      const d = (app.globalData.dims || []).find(x => x.k === this.st.tag);
-      if (d) f = { main: 'm_' + this.st.tag, items: [{ g: 'm_' + this.st.tag, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] };
-    }
+    const f = store.fieldsOf(this.st.tag);
+    if (!f) { wx.showToast({ title: '这个维度已不存在', icon: 'none' }); return; }
     // 编辑时：按记录类型拼装时间
     //  · 非 done：创建时间=ts；做了(legacy m='done')：结束时间=ts(完成)，创建(惦记)=refTs
     //  · 新流程 want+done：创建时间=ts，完成时间=doneAt（可被「结束时间」输入框改写）

@@ -693,6 +693,26 @@ function mcolor(k) {
 function isSingle(g) { for (const k in FIELDS) { const f = FIELDS[k]; if (f.items && f.items.find(it => it.g === g && it.single)) return true; } return false; }
 // 该选项组是否隐藏手填输入框（这类组不能手填，编辑时不留残值）
 function isNoInput(g) { for (const k in FIELDS) { const f = FIELDS[k]; if (f.items && f.items.find(it => it.g === g && it.noInput)) return true; } return false; }
+// 某维度的字段定义。自定义维度运行时才注册进 FIELDS（见 regDim），但拿到的可能是
+// 还没注册 / 已注销的一份，所以按「维度名」再兜一层——记卡与 doSave 各写一遍这段兜底，
+// 现在收回单一入口（见 fieldsOf）
+function fieldsOf(m) {
+  const f = FIELDS[m];
+  if (f) return f;
+  const d = (G.dims || []).find(x => x.k === m);
+  return d ? { main: 'm_' + d.k, items: [{ g: 'm_' + d.k, single: true }, { free: 'note', label: '补充', ph: '随便记点什么，可跳过', ta: true }] } : null;
+}
+// 某个选项组属于哪个维度的哪一项：返回 { m, main:bool, it }，不在任何维度里返回 null。
+// 记卡从选项管理页返回时用它判断「刚加的那一项」对应记卡里的哪一行（见 index.applyAdded）
+function groupOwner(g) {
+  for (const m in FIELDS) {
+    const f = FIELDS[m];
+    if (f.main === g) return { m, main: true, it: null };
+    const it = (f.items || []).find(x => x.g === g);
+    if (it) return { m, main: false, it };
+  }
+  return null;
+}
 function getOPT(g) { const O = G.OPT || OPT; return O[g] || []; }
 // 快捷创建（「＋」球面板）里平铺哪些类别：待办类别（todoKind 池）+ 随记类别（jotKind 池）。
 // 由用户在「设置」里勾选，最多 QUICKCATS_MAX 个；没勾过时给默认（全部待办类别 + 随记类别，截断到上限）。
@@ -1696,6 +1716,17 @@ function renameInRecords(g, ov, nv) {
 // （记页从管理页返回时用 takeRenameMap 取走并同步，见 index 的 applyRenames）
 let _renames = {};
 function takeRenameMap() { const m = _renames; _renames = {}; return m; }
+
+/* 本次会话里**新增**过的选项：{ 组: 值 }（同组只记最后一个）。
+   选项管理页每加一项就记一笔（见 options.onNewAdd），记页从管理页返回时取走：
+   若这一组在记卡里**一个都没选**，就把刚加的那项选上（见 index.applyAdded）。
+   为什么只在「没选」时选：已经选中的话用户是明确选过别的，不能替他改；
+   而「一个都没选」通常是这组本来没有默认值（情绪 / 归类 / 分类这些），
+   刚加的那项多半就是他这趟去管理页想加的那个，顺手选上省掉再点一次。
+   同组记一个就够：连着加了两项时，取最后一个（最贴近他按下返回时刚看到的那个）。 */
+let _added = {};
+function noteAddedOpt(g, v) { _added[g] = v; }
+function takeAddedMap() { const m = _added; _added = {}; return m; }
 function renameOption(g, ov, nv) {
   _renames[g] = _renames[g] || {};
   _renames[g][ov] = nv;
@@ -2230,9 +2261,9 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, fieldsOf, groupOwner, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
-  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
+  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap, noteAddedOpt, takeAddedMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, onLoaded, onRecChange, emitRecChange, reload, regDim, unregDim,
   globalData: G
