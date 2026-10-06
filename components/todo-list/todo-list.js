@@ -57,6 +57,8 @@ Component({
     },
     onCheck(e) { this.triggerEvent('check', { id: e.currentTarget.dataset.id }); },
     onTapRow(e) { if (!this.data.manage) return; this.triggerEvent('select', { id: e.currentTarget.dataset.id }); },
+    // 行尾「计划完成」胶囊：点一下＝换下一档，属于「管理」动作（与左滑同一口径）
+    onDueTap(e) { if (!this.data.manage) return; this.triggerEvent('due', { id: e.currentTarget.dataset.id }); },
     // 长按＝复制，不是「管理」动作：概览态（看页）也照样派发
     onLongPress(e) { this.triggerEvent('longpress', { id: e.currentTarget.dataset.id }); },
     /* 行内触摸：只在「行尾起手的左滑」上插手——那是「就地改这一条」（派发 swipeleft 给页面）。

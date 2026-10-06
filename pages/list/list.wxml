@@ -69,7 +69,7 @@
           undoneHide="{{undoneHide}}" doneHide="{{doneHide}}" abandHide="{{abandHide}}"
           bind:check="onCheck" bind:select="onRecTap" bind:longpress="onLongPress"
           bind:swipeleft="onRowSwipe"
-          bind:touchend="onRowTouchend" bind:more="onMore" bind:daymore="onDayMore" />
+          bind:touchend="onRowTouchend" bind:more="onMore" bind:daymore="onDayMore" bind:due="onDueTap" />
 
         <!-- 随记：按「随记类别」分段展示（没有待完成 / 已完成 / 已放弃那套，也没有完成勾选）——
              段头是类别（组序＝随记类别池顺序），组内按记录时间倒序，不会漏内容。

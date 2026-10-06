@@ -29,6 +29,10 @@
           <view class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}" aria-label="优先级 {{item.pn}}"></view>
           <text class="tv">{{item.txt}}</text>
           <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.t}}</text></view>
+          <!-- 计划完成：**没计划就不渲染**（多数待办本来就没计划时间）。
+               有计划时点一下＝换下一档（今天 → 明天 → 本周末 → 下周一 → 取消），
+               不用弹任何选择器；要具体到某一天走「左滑 → 快捷记面板」 -->
+          <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onDueTap" aria-label="计划完成 {{item.due}}">{{item.due}}</view>
         </view>
         <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
       </view>

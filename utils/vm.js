@@ -29,7 +29,14 @@ function baseVM(r) {
     usefor: r.usefor || '',
     status: r.status || '',
     pn: showPrio ? prio : '',
-    pc: showPrio ? store.prioColor(prio) : ''
+    pc: showPrio ? store.prioColor(prio) : '',
+    // 计划完成（待办）：**没计划就没有这一项**（dueHas=false，行尾什么都不渲染）——
+    // 跟优先级默认档同一个取舍，只是这里更彻底：一条待办本来就不一定有计划时间。
+    // dueOv＝逾期，行尾那片胶囊转红褐；文案本身已经写了「昨天 / 10月2日」，
+    // 颜色只是补一层「一眼扫到」，色弱用户只看字也读得出过期
+    due: task ? store.dueLabel(r.dueTs) : '',
+    dueHas: !!(task && r.dueTs),
+    dueOv: !!(task && store.dueOver(r.dueTs))
   };
 }
 

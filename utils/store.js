@@ -911,6 +911,7 @@ function decorate(r) {
   o.startedAt = r.startedAt || 0;
   o.abandonedAt = r.abandonedAt || 0;
   o.endTs = r.endTs || 0;
+  o.dueTs = r.dueTs || 0;   // 计划完成（待办专用）：0＝没计划，是常态
   // 待办：类别（todoKind）+「原因」自由字段。
   // 「原因」合并了原先 备忘的「原因」与 购物的「干什么用」（旧的 two 个来源也一并兼容，供迁移前数据回显）
   o.cat = '';
@@ -972,6 +973,104 @@ function taskPrio(r) {
   const i = es.indexOf('todoPrio');
   return i >= 0 ? (ex[i] || '') : '';
 }
+
+/* ---------------- 待办的「计划完成」（截止） ----------------
+   ・存在**顶层字段 dueTs**（时间戳），不是 ext 里的一格：ext / extSrc 是按位置对齐的两条数组，
+     导出导入的标签匹配、迁移、改名全挂在这套对齐上，往里塞一个时间戳会让对齐变得别扭；
+     而 endTs / abandonedAt / startedAt 这些同类「时间」字段本来就在顶层，dueTs 跟着它们走。
+   ・**没有计划时间才是常态**：新建的待办、老记录、随时记下的，全都没有这一格（0）。
+     绝不自动补——优先级那个「默认档」的思路在这里是反的：给每条待办都塞一个日期，
+     等于把「计划」这件事变成噪音。0 的行尾什么都不显示、不逾期、排序沉底。
+   ・一天粒度就够（「周五交」不会精确到几点），所以档位一律落在当天的 23:59——
+     既保住「那天结束前做完」的意思，又保证设成「今天」的那一刻不会已经逾期。
+   ・自定到具体时刻也允许（dueTs 带时分），显示时才把时刻带出来（见 dueLabel）。 */
+const DUE_END_H = 23, DUE_END_M = 59;
+// 档位循环顺序（面板里的 chips 与行尾点一下的顺序都用它）：无 → 今天 → … → 下周一 → 无
+const DUE_STEPS = ['今天', '明天', '本周末', '下周一'];
+
+// 从 base 那天起往后 addDays 天的 23:59
+function dueDayEnd(base, addDays) {
+  const d = new Date(base || Date.now());
+  d.setDate(d.getDate() + (addDays || 0));
+  d.setHours(DUE_END_H, DUE_END_M, 0, 0);
+  return d.getTime();
+}
+// 「本周末」＝最近的那个周日（周日算一周之末；今天已经是周日就是今天）
+function dueWeekend(base) {
+  base = base || Date.now();
+  const d = new Date(base);
+  const add = (7 - d.getDay()) % 7;   // 0=周日 → 0 天；周六 → 1 天
+  return dueDayEnd(base, add);
+}
+// 「下周一」＝下一个周一（今天已是周一就是 7 天后；今天周日则是明天）
+function dueNextMon(base) {
+  base = base || Date.now();
+  const add = (8 - new Date(base).getDay()) % 7 || 7;
+  return dueDayEnd(base, add);
+}
+// 档位名 → 时间戳（'无' 或认不出 → 0）。base 只是为了让测试能在别的日子上跑
+function duePresetTs(k, base) {
+  base = base || Date.now();
+  if (k === '今天') return dueDayEnd(base, 0);
+  if (k === '明天') return dueDayEnd(base, 1);
+  if (k === '本周末') return dueWeekend(base);
+  if (k === '下周一') return dueNextMon(base);
+  return 0;
+}
+// 行尾胶囊点一下＝换下一档：无 → 今天 → 明天 → 本周末 → 下周一 → 无。
+// ・已经设成某一档的：按**档位**认（不看具体时刻），顺次往后；
+// ・自定过具体日期的：往后找最近的那一档，都没有就回到「无」——
+//   保证点一下永远有明确的下一步，不会点不动（面板里可以设成任何一天）
+function dueNext(ts, base) {
+  base = base || Date.now();
+  ts = ts || 0;
+  if (!ts) return duePresetTs('今天', base);
+  for (let i = 0; i < DUE_STEPS.length; i++) {
+    if (Math.abs(duePresetTs(DUE_STEPS[i], base) - ts) < 60000) {
+      return i + 1 < DUE_STEPS.length ? duePresetTs(DUE_STEPS[i + 1], base) : 0;
+    }
+  }
+  for (let i = 0; i < DUE_STEPS.length; i++) {
+    const p = duePresetTs(DUE_STEPS[i], base);
+    if (p > ts + 60000) return p;
+  }
+  return 0;
+}
+// 当前是哪个档：返回档位名（'无' / '自定' / 四个档位之一）。面板高亮用它
+function duePresetOf(ts, base) {
+  if (!ts) return '无';
+  base = base || Date.now();
+  for (let i = 0; i < DUE_STEPS.length; i++) {
+    if (Math.abs(duePresetTs(DUE_STEPS[i], base) - ts) < 60000) return DUE_STEPS[i];
+  }
+  return '自定';
+}
+// 行尾胶囊的文案：今天 / 明天 / 后天 / 昨天 / 10月12日（跨年才带年份），
+// 自定过具体时刻的再把时刻带出来（「明天 18:00」）。
+// **按当前时间现算**——库里存的只是那一刻的时间戳，「今天」是显示时才有的说法，
+// 不能存下来（今天存的「明天」，后天看就永远是「明天」了）
+function dueLabel(ts) {
+  if (!ts) return '';
+  const d = new Date(ts), n = new Date();
+  const dd = Math.round((date.dayStart(ts) - date.dayStart(n.getTime())) / 86400000);
+  let day;
+  if (dd === 0) day = '今天';
+  else if (dd === 1) day = '明天';
+  else if (dd === 2) day = '后天';
+  else if (dd === -1) day = '昨天';
+  else {
+    const md = (d.getMonth() + 1) + '月' + d.getDate() + '日';
+    day = d.getFullYear() === n.getFullYear() ? md : (d.getFullYear() + '年' + md);
+  }
+  // 自定的具体时刻（不是档位的 23:59）才把时分带上——档位只说「哪天」，说了反而吵
+  if (d.getHours() !== DUE_END_H || d.getMinutes() !== DUE_END_M) day += ' ' + date.hhmm(ts);
+  return day;
+}
+// 逾期：过了那一刻还没完成。文案（昨天 / 10月2日）本身已经说明了过期，
+// 颜色只是再补一层「一眼扫到」的提示——色弱用户只看字也读得出来
+function dueOver(ts) { return !!ts && ts < Date.now(); }
+// 排序用的粗档：0＝有计划（排在前面，内部按时间早的优先），1＝没计划（沉底）
+function dueRank(ts) { return ts ? 0 : 1; }
 
 // 待办的「类别」：新记录取 ext 里的 todoKind；迁移前的老记录按原模块兜底。
 //
@@ -1248,6 +1347,7 @@ function addRecord(rec) {
   if (rec.refTs) data.refTs = rec.refTs;
   if (rec.endTs) data.endTs = rec.endTs;
   if (rec.abandonedAt) data.abandonedAt = rec.abandonedAt;
+  if (rec.dueTs) data.dueTs = rec.dueTs;
   return recCol().add({ data }).then(res => res._id)
     .catch(e => { log.err('record.add', e, { m: rec.m, txt: rec.txt }); log.fail('没记上，请重试'); throw e; });
 }
@@ -1260,6 +1360,7 @@ function updateRecord(rec) {
   if (rec.refTs !== undefined) data.refTs = rec.refTs;
   if (rec.endTs !== undefined) data.endTs = rec.endTs;
   if (rec.abandonedAt !== undefined) data.abandonedAt = rec.abandonedAt;
+  if (rec.dueTs !== undefined) data.dueTs = rec.dueTs;
   return recCol().doc(rec._rid).update({ data })
     .catch(e => { log.err('record.update', e, { m: rec.m, txt: rec.txt }); log.fail('没保存上，请重试'); throw e; });
 }
@@ -1797,7 +1898,7 @@ function migrateNopeLikeIntoObs() {
         G.records[i] = decorate({
           id: r.id, _rid: r._rid, m: 'obs', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
           done: r.done, doneAt: r.doneAt, status: r.status, ref: r.ref, refTxt: r.refTxt,
-          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt
+          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt, dueTs: r.dueTs
         });
       });
       wx.setStorageSync(MIG_NOPELIKE_KEY, 1);
@@ -1888,7 +1989,7 @@ function migrateTasksToTodo() {
         G.records[i] = decorate({
           id: r.id, _rid: r._rid, m: 'todo', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
           done: r.done, doneAt: r.doneAt, status: r.status, ref: r.ref, refTxt: r.refTxt,
-          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt
+          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt, dueTs: r.dueTs
         });
       });
       wx.setStorageSync(MIG_TODO_KEY, 1);
@@ -2053,7 +2154,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, duePresetTs, dueNext, duePresetOf, dueLabel, dueOver, dueRank, dueDayEnd, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

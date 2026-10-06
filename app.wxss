@@ -240,6 +240,19 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
   border-left: 7px solid currentColor;
   border-top: 4px solid transparent; border-bottom: 4px solid transparent;
 }
+/* 待办行的「计划完成」胶囊（今天 / 明天 / 周五）：**没计划的行不渲染**（见 vm.js 的 dueHas），
+   所以不会每行都挂一个标签。点一下＝换下一档，没有选择器。
+   ・平时用主题色浅底 + 主题色字（和「已记」胶囊同一族），一看就知道是「什么时候」；
+   ・逾期（dueOv）换成低饱和红褐（与「紧急重要」同一族，不用高亮红）——
+     文案本身已经写了「昨天 / 10月2日」，颜色只是补一层「一眼扫到」的提示，
+     色弱用户只看字也读得出过期，不靠颜色单独承载信息 */
+.rec .due {
+  flex-shrink: 0; align-self: center;
+  font-size: 11px; line-height: 1; padding: 3px 7px; border-radius: 99px;
+  color: var(--accent); background: var(--accent-soft);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.rec .due.ov { color: #B4544E; background: #FBF1F0; }
 /* 事件项（主内容）加重：用 700 而不是 600——手机端中文字体常缺 600 这一档，
    WebView 不合成中间字重时会回落到 400，导致加重看不出来；700 各端都能稳定渲染 */
 .rec .tv { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 700; color: var(--ink); word-break: break-all; line-height: 1.5; }

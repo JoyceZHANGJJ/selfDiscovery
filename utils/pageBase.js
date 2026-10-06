@@ -136,6 +136,25 @@ function pageBase(extra) {
       return true;
     },
 
+    /* 待办行尾的「计划完成」胶囊：点一下＝换下一档（无 → 今天 → 明天 → 本周末 → 下周一 → 无），
+       全程不弹选择器。清单页 / 看页逐字相同，所以收在这里；要具体到某一天走左滑面板（那里有自定）。
+       换档＝改写 dueTs 后落云并刷新当前页（各页刷新的入口不统一，见 _refreshAfterDue） */
+    onDueTap(e) { this.cycleDue(this._id(e)); },
+    cycleDue(id) {
+      const r = this.findRec(id);
+      if (!r || !store.isTask(r.m)) return;
+      const next = store.dueNext(r.dueTs);
+      r.dueTs = next;   // 0 ＝ 取消计划（回到「没计划」这个常态）
+      store.updateRecord(r).catch(() => {});
+      this._refreshAfterDue();
+      wx.showToast({ title: next ? '计划 · ' + store.dueLabel(next) : '已取消计划', icon: 'none' });
+    },
+    _refreshAfterDue() {
+      if (typeof this.rebuild === 'function') this.rebuild();          // 清单页 / 看页
+      else if (typeof this.recompute === 'function') this.recompute(); // 记页
+      else if (typeof this.buildRecs === 'function') this.buildRecs();
+    },
+
     /* 按「某一天」把记录分段（看页 / 清单页逐字相同）：段头用时间线同款日标签，段内保持传入顺序。
        只分组、不 map 成 VM——窗口外那些天不用白算（见 winGroups） */
     groupByDay(recs, tsOf) {

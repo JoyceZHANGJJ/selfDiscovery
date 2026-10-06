@@ -117,11 +117,17 @@ Page(pageBase({
     // 另外：先排序 → 按「显示更多」的窗口切片 → 最后才 map 成 VM；
     // 记录多的时候（几百上千条）不要把没渲染的那些也白算一遍（不然「显示更多」会卡）
     // 待完成不按时间排，先按**优先级**轻重（紧急重要 → 不紧急不重要，见 store.prioRank），
-    // 同一档内再按时间倒序——要紧的顶在上面，时间只在同档内决定先后。
+    // 同一档内再按**计划完成时间**：有计划的排在前面、早的在前（「今天要交」压着「下周一交」），
+    // 没计划的沉到这一档的最后、内部仍按时间倒序——「没计划」是常态，
+    // 让它们去打扰计划好的那些没有道理（见 store.dueRank）。
     // 「显示更多」也是在排好的序列上往后切，所以翻出来的仍是这一档里的下几条
     const undoneRaw = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => {
       const pa = store.prioRank(store.taskPrio(a)), pb = store.prioRank(store.taskPrio(b));
-      return pa !== pb ? pa - pb : (b.ts || 0) - (a.ts || 0);
+      if (pa !== pb) return pa - pb;
+      const da = store.dueRank(a.dueTs), db = store.dueRank(b.dueTs);
+      if (da !== db) return da - db;
+      if (da === 0 && a.dueTs !== b.dueTs) return a.dueTs - b.dueTs;   // 都有计划：早的在前
+      return (b.ts || 0) - (a.ts || 0);
     });
     const doneRecs = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = list.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));

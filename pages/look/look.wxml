@@ -79,7 +79,7 @@
         undone="{{tasks.undone}}" doneGroups="{{tasks.doneGroups}}" abandGroups="{{tasks.abandGroups}}"
         undoneN="{{tasks.undoneN}}" doneN="{{tasks.doneN}}" abandN="{{tasks.abandN}}"
         undoneHide="{{tasks.undoneHide}}" doneHide="{{tasks.doneHide}}" abandHide="{{tasks.abandHide}}"
-        bind:check="onRecCheck" bind:select="onRecTap" bind:longpress="onRowLongPress" bind:swipeleft="onRowSwipe" bind:more="onTaskMore" bind:daymore="onDayMore">
+        bind:check="onRecCheck" bind:select="onRecTap" bind:longpress="onRowLongPress" bind:swipeleft="onRowSwipe" bind:more="onTaskMore" bind:daymore="onDayMore" bind:due="onDueTap">
         <!-- 看页只作概览：给一个去清单页管理的入口——落在组件标题行的右端（与「待办」标题同一行、右起） -->
         <view class="tolist-link" bindtap="goList">去清单页管理 ›</view>
       </todo-list>

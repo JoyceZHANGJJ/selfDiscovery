@@ -63,12 +63,44 @@ function buildQaCats() {
 function buildQaPrios() {
   return (store.getOPT('todoPrio') || []).map(n => ({ n, c: store.prioColor(n) }));
 }
+
+/* 「计划完成」的一行档位（同样只有待办才有）：四个快捷键 + 「无」+「自定…」。
+   这一行的存在就是为了**不弹选择器**——点一格就设好；「自定…」是唯一的例外。
+   档位值一律现算（today 23:59 / 明天 23:59 / 本周末 / 下周一），所以面板放一晚再点
+   也还是「从现在算的今天」。
+   「自定…」那一格的文字会换成已选的具体日期，这样点完自定一眼能看出选的是哪天 */
+function dueState(ts) {
+  ts = ts || 0;
+  const pick = store.duePresetOf(ts);
+  const chips = store.DUE_STEPS.map(k => ({ k, t: k }));
+  chips.push({ k: '无', t: '无' });
+  chips.push({ k: '自定', t: pick === '自定' ? store.dueLabel(ts) : '自定…' });
+  return { qaDueTs: ts, qaDues: chips, qaDuePick: pick };
+}
+// 浮层里两个选择器要的串：2026-10-06 / 23:59
+function ymd(ts) {
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function hm(ts) {
+  const d = new Date(ts);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
 // 默认选中的那档＝默认档「不紧急不重要」（与记卡一致：不点也有值，但列表不插旗）
 function qaPrioDefIdx() {
   const prios = buildQaPrios();
   const def = (store.todoPrioDefault() || [])[0] || '';
   const i = prios.findIndex(p => p.n === def);
   return { prios, idx: i >= 0 ? i : Math.max(0, prios.length - 1) };
+}
+// 面板「新建态」要的那组字段：类别 / 优先级 / 计划完成三行一起归位。
+// attached（首帧）与 openQa（点球弹面板）需要的完全一样，写一份免得两处走偏；
+// 计划完成固定回「无」——新建一条待办默认没有计划时间，要设得自己点一下
+function qaNewFields(cats, a, p) {
+  return Object.assign({
+    qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c,
+    qaPrios: p.prios, qaPrioIdx: p.idx, qaIsTodo: a.m !== 'jot'
+  }, dueState(0));
 }
 
 Component({
@@ -92,6 +124,15 @@ Component({
     qaIdx: 0,            // 当前选中的类别下标
     qaPrios: [],         // 优先级 chips（待办才有；随记类别下这一行不渲染）
     qaPrioIdx: 0,        // 当前选中的优先级下标（默认落在默认档）
+    // 计划完成（待办才有，与优先级同一格）：默认 0＝没计划——**这才是常态**，
+    // 一条待办本来就不一定有计划时间，所以面板里也不预选任何一档，只能自己点
+    qaDueTs: 0,          // 面板里当前选的计划时间戳（0＝没计划）
+    qaDues: [],          // 那一行档位 chips（今天 / 明天 / 本周末 / 下周一 / 无 / 自定…）
+    qaDuePick: '无',     // 高亮哪一格
+    // 「自定…」的浮层：全站唯一会弹选择器的地方，只在主动点「自定…」时开
+    qaDueOpen: false,
+    qaDueDate: '',
+    qaDueTime: '',
     qaIsTodo: true,      // 当前类别是不是待办（决定优先级那一行出不出）
     qaName: '',          // 当前类别名字（撤销条展示用）
     qaPh: '',            // 当前类别占位符
@@ -117,7 +158,7 @@ Component({
       const cats = buildQaCats();
       const a = cats[0] || {};
       const p = qaPrioDefIdx();
-      this.setData({ theme: t, themeStyle: store.themeStyle(t), list: tabList(t), qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c, qaPrios: p.prios, qaPrioIdx: p.idx, qaIsTodo: a.m !== 'jot' });
+      this.setData(Object.assign({ theme: t, themeStyle: store.themeStyle(t), list: tabList(t) }, qaNewFields(cats, a, p)));
       // 吸底面板要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
       // 所以直接把键盘高度当 bottom，面板始终落在键盘上方（与记页吸底操作行同一套做法）
       this._bindKb();
@@ -256,7 +297,7 @@ Component({
       const a = cats[0] || {};
       const p = qaPrioDefIdx();
       // qaEditId 一并归零：新建态（＝不是回显改某一条）——保险，正常路径下 closeQa 已经清过
-      this.setData({ qa: true, qaFocus: false, qaUndo: null, qaEditId: '', qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c, qaPrios: p.prios, qaPrioIdx: p.idx, qaIsTodo: a.m !== 'jot' });
+      this.setData(Object.assign({ qa: true, qaFocus: false, qaUndo: null, qaEditId: '', qaDueOpen: false }, qaNewFields(cats, a, p)));
       // 位置按**当前**键盘状态给：不能沿用上一次记下的键盘高度——键盘已经收了、面板还按旧高度
       // 悬在页面中间（这就是「再打开位置变了」）。键盘真在的话，点输入框那一下会再来一次高度事件
       this._applyKb(0);
@@ -268,8 +309,8 @@ Component({
       this._qaRec = null;
       if (this._qaEditFocusTimer) { clearTimeout(this._qaEditFocusTimer); this._qaEditFocusTimer = null; }
       this.setData(keepDraft
-        ? { qa: false, qaFocus: false, qaEditId: '' }
-        : { qa: false, qaFocus: false, qaTxt: '', qaEditId: '' });
+        ? { qa: false, qaFocus: false, qaEditId: '', qaDueOpen: false }
+        : { qa: false, qaFocus: false, qaTxt: '', qaEditId: '', qaDueOpen: false });
       this._applyKb(0);   // 收起后面板不再需要跟着键盘，位置状态归位
     },
 
@@ -299,11 +340,13 @@ Component({
       this._qaRec = rec;                 // 记录引用留在这儿（不进 data：整个对象没必要参与渲染）
       this.closePageFloats();            // 先收掉页面的操作条 / 撤销条，别和面板叠在一起
       this._qaStopUndoTimer();
-      this.setData({
+      this.setData(Object.assign({
         qa: true, qaFocus: false, qaUndo: null, qaEditId: rec.id, qaTxt: rec.txt || '',
+        qaDueOpen: false,
         qaCats: cats, qaIdx: idx, qaName: a.n, qaPh: a.ph, qaC: a.c,
         qaPrios: prios, qaPrioIdx: pi, qaIsTodo: m !== 'jot'
-      });
+      // 计划完成也回显：随记没有这一格，一律 0
+      }, dueState(m === 'todo' ? (rec.dueTs || 0) : 0)));
       this._applyKb(0);
       // 意图明确（就是来改这条的），隔一拍自动聚焦——与以前的行内编辑器一致，省一次点击
       if (this._qaEditFocusTimer) clearTimeout(this._qaEditFocusTimer);
@@ -378,6 +421,37 @@ Component({
       if (!keepFocus) return;
       this._qaKeepFocus();
     },
+    /* 计划完成：点一格就设好——这一行的全部意义就是**不弹选择器**。
+       点「无」＝把计划取消掉（回到「没计划」这个常态，与不设时是同一种数据）。
+       与类别 / 优先级 chip 同一套：不动输入框里已写的内容，键盘也不闪断 */
+    onQaDue(e) {
+      const k = e.currentTarget.dataset.k;
+      if (k === '自定') { this._openQaDue(); return; }
+      const keepFocus = !!this.data.qaFocus;
+      this._qaChipAt = Date.now();
+      this.setData(dueState(k === '无' ? 0 : store.duePresetTs(k)));
+      if (keepFocus) this._qaKeepFocus();
+    },
+    /* 「自定…」：面板里唯一会弹选择器的一格（要具体到某一天才用得上）。
+       起点取当前值；当前是「无」就从「今天」起——别让浮层停在 1970 年 */
+    _openQaDue() {
+      const ts = this.data.qaDueTs || store.duePresetTs('今天');
+      this.setData({ qaDueOpen: true, qaDueDate: ymd(ts), qaDueTime: hm(ts) });
+    },
+    onQaDueDate(e) { this.setData({ qaDueDate: e.detail.value }); },
+    onQaDueTime(e) { this.setData({ qaDueTime: e.detail.value }); },
+    closeQaDue() { this.setData({ qaDueOpen: false }); },
+    /* 浮层保存：两个选择器的串拼回时间戳。日期一定选得到（picker 保证格式），
+       时间兜底 23:59——与四个档位同一个口径（「那天结束前」） */
+    okQaDue() {
+      const p = String(this.data.qaDueDate || '').split('-');
+      const t = String(this.data.qaDueTime || '').split(':');
+      if (p.length !== 3) { this.setData({ qaDueOpen: false }); return; }
+      const ts = new Date(+p[0], +p[1] - 1, +p[2], +t[0] || 0, +t[1] || 0, 0).getTime();
+      this.setData(Object.assign({ qaDueOpen: false }, dueState(ts)));
+      wx.showToast({ title: '计划 · ' + store.dueLabel(ts), icon: 'none' });
+    },
+
     /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条。
        编辑模式（qaEditId 非空）走 _qaUpdate——更新原来那条，不是新建 */
     onQaSave() {
@@ -395,7 +469,8 @@ Component({
         const prio = (this.data.qaPrios[this.data.qaPrioIdx] || {}).n;
         if (prio) { ext.push(prio); src.push('todoPrio'); }
       }
-      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext, extSrc: src, done: false, doneAt: 0, status: '' };
+      // 计划完成：只有待办写（随记没有这一格）；没点过就是 0＝不写这个字段
+      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext, extSrc: src, done: false, doneAt: 0, status: '', dueTs: a.m === 'todo' ? (this.data.qaDueTs || 0) : 0 };
       store.addRecord(rec).then(rid => {
         rec._rid = rid; rec.id = rid;
         const G = getApp().globalData;
@@ -417,15 +492,19 @@ Component({
       const src = rec.extSrc || (rec.extSrc = []);
       const ex = rec.ext || (rec.ext = []);
       const before = (rec.txt || '') + '' + ex.join('');
+      const dueBefore = rec.dueTs || 0;   // 计划完成也要参与「有没有改动」的判定
       // 按标签定位覆盖写：找得到就改那一格，找不到就补在后面（老记录可能没有优先级那一格）
       const setTag = (s, v) => { const i = src.indexOf(s); if (i >= 0) ex[i] = v; else { src.push(s); ex.push(v); } };
       setTag(a.src || (a.m === 'jot' ? 'jotKind' : 'todoKind'), a.cat);
       if (a.m === 'todo') {
         const prio = (this.data.qaPrios[this.data.qaPrioIdx] || {}).n;
         if (prio) setTag('todoPrio', prio);
+        rec.dueTs = this.data.qaDueTs || 0;   // 计划完成是顶层字段（不在 ext 里）
       }
       rec.txt = txt;
-      const changed = (rec.txt || '') + '' + (rec.ext || []).join('') !== before;
+      // 改动判定连计划完成一起算：只改了计划时间也要落云（文本与 ext 都没动时上面那条比较会是 false）
+      const changed = ((rec.txt || '') + '' + (rec.ext || []).join('') !== before)
+        || ((rec.dueTs || 0) !== dueBefore);
       this.closeQa();
       if (!changed) return;
       store.updateRecord(rec).catch(() => {});

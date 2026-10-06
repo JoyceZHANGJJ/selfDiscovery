@@ -28,12 +28,46 @@
         <text>{{item.n}}</text>
       </view>
     </view>
+    <!-- 计划完成：只有待办类别才有这一格（与优先级同理）。
+         这一行就是为了**不弹选择器**——点一格就设好（今天 / 明天 / 本周末 / 下周一 / 无）；
+         只有「自定…」会开下面那个浮层。默认停在「无」：没计划是常态，不预选任何一档 -->
+    <view wx:if="{{qaIsTodo}}" class="qa-due">
+      <view class="qa-lab">计划完成</view>
+      <view class="qa-chips qa-dues">
+        <view wx:for="{{qaDues}}" wx:key="k" class="qa-chip {{qaDuePick===item.k?'on':''}}" data-k="{{item.k}}" catchtap="onQaDue">
+          <text>{{item.t}}</text>
+        </view>
+      </view>
+    </view>
     <view class="qa-row" catchtap="onQaNoop">
       <!-- adjust-position 关掉：面板的位置由我们自己按键盘高度给（见 _applyKb），
            不再让微信去「顶页面」——回看整页是 scroll-view（页面本身不滚），它顶不动，
            结果就是面板留在原地被键盘盖住；两边的调整叠在一起也会把面板抬过头 -->
       <input class="qa-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" bindkeyboardheightchange="onQaKb" confirm-type="done" adjust-position="{{false}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
       <view class="qa-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">{{qaEditId ? '保存' : '记下'}}</view>
+    </view>
+  </view>
+
+  <!-- 「自定…」的浮层：日期 + 时间两个原生选择器，与睡页「改时刻」同一套 sheet
+       （.sheet / .sh-* / .btn 都是 app.wxss 里的全局样式，本组件开了 addGlobalClass 才拿得到）。
+       这是整个快捷记里唯一会弹选择器的地方——平时靠上面那排档位，一次点击就设好了 -->
+  <view wx:if="{{qaDueOpen}}" class="sheet du-sheet">
+    <view class="sh-h"><view class="st">计划完成</view><view class="sx" bindtap="closeQaDue" aria-label="关闭">✕</view></view>
+    <view class="sh-sub">选到哪一天、哪一刻为止（不设就走上面那排档位）</view>
+    <view class="sh-list">
+      <view class="du-row">
+        <picker class="du-pk" mode="date" value="{{qaDueDate}}" bindchange="onQaDueDate">
+          <view class="du-pick"><text class="du-k">日期</text><text class="du-v">{{qaDueDate}}</text><text class="du-c">▸</text></view>
+        </picker>
+        <picker class="du-pk" mode="time" value="{{qaDueTime}}" bindchange="onQaDueTime">
+          <view class="du-pick"><text class="du-k">时间</text><text class="du-v">{{qaDueTime}}</text><text class="du-c">▸</text></view>
+        </picker>
+      </view>
+      <view class="du-hint">时间默认停在那天的 23:59（＝那天结束前），要精确到几点就改右边。</view>
+    </view>
+    <view class="sh-foot">
+      <view class="btn gh" bindtap="closeQaDue">取消</view>
+      <view class="btn" bindtap="okQaDue">好</view>
     </view>
   </view>
 
