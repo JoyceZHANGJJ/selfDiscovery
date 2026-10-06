@@ -5,7 +5,10 @@
 //   2) 客户端调用 action:'list'：返回当前用户的历史回看（按日期倒序）。
 //
 // 大模型密钥从「云函数环境变量」读（控制台 → 云函数 → 配置 → 环境变量），绝不写进代码。
-// 默认用 DeepSeek（OpenAI 兼容接口），改 LLM_BASE_URL / LLM_MODEL 即可换厂商。
+// 默认用智谱 GLM-4-Flash（OpenAI 兼容接口，官方永久免费、中文强，适合日记回顾这种轻量场景）。
+// 想换厂商：把 LLM_BASE_URL 设成「接口 base」（不含 /chat/completions），LLM_MODEL 设成对应模型名，
+// 再在控制台配 LLM_API_KEY 即可。例如硅基流动：LLM_BASE_URL=https://api.siliconflow.cn/v1 ，
+// LLM_MODEL=Qwen/Qwen2.5-7B-Instruct（9B 以下小模型也永久免费）。
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -15,8 +18,9 @@ const recCol = () => db.collection('records');
 const analysisCol = () => db.collection('analysis');
 
 // ---- 配置（非密钥项可放 config.json 的 env；密钥 LLM_API_KEY 必须在控制台环境变量里配） ----
-const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://api.deepseek.com/v1/chat/completions';
-const LLM_MODEL = process.env.LLM_MODEL || 'deepseek-chat';
+// LLM_BASE_URL 是「接口 base」，/chat/completions 由代码自动拼上，避免各家路径不一致写错。
+const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
+const LLM_MODEL = process.env.LLM_MODEL || 'glm-4-flash';
 
 // 维度中文名（与小程序 MODULES 对齐）
 const MODULE_LABELS = {
@@ -72,6 +76,21 @@ function buildMessages(recs, dateStr) {
   return [{ role: 'system', content: sys }, { role: 'user', content: user }];
 }
 
+// 把模型返回的文本尽可能解析成 JSON（免费档对 response_format:json_object 支持不如付费稳，
+// 模型偶尔会包一层 ```json 或前后加废话，这里逐层兜底。实在解析不出才抛错。）
+function parseContent(content) {
+  if (typeof content !== 'string') throw new Error('返回内容不是字符串');
+  let s = content.trim();
+  try { return JSON.parse(s); } catch (e) {}
+  const m = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (m) { try { return JSON.parse(m[1].trim()); } catch (e) {} }
+  const a = s.indexOf('{'), z = s.lastIndexOf('}');
+  if (a >= 0 && z > a) {
+    try { return JSON.parse(s.slice(a, z + 1)); } catch (e2) {}
+  }
+  throw new Error('无法从返回内容解析出 JSON：' + s.slice(0, 120));
+}
+
 // 调大模型（用内置 https，不引第三方依赖）
 function chatCompletion(messages) {
   return new Promise((resolve, reject) => {
@@ -85,9 +104,13 @@ function chatCompletion(messages) {
     });
     let u;
     try { u = new URL(LLM_BASE_URL); } catch (e) { return reject(new Error('LLM_BASE_URL 非法：' + LLM_BASE_URL)); }
+    // base 可能带或不带结尾斜杠，统一处理成 base + /chat/completions
+    let path = u.pathname || '/';
+    if (!path.endsWith('/')) path += '/';
+    path = path + 'chat/completions' + (u.search || '');
     const port = u.port || (u.protocol === 'http:' ? 80 : 443);
     const req = require('https').request({
-      hostname: u.hostname, port, path: (u.pathname || '/') + u.search, method: 'POST',
+      hostname: u.hostname, port, path, method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + key,
@@ -104,7 +127,7 @@ function chatCompletion(messages) {
           const j = JSON.parse(buf);
           const content = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
           if (!content) return reject(new Error('LLM 返回内容为空'));
-          resolve(JSON.parse(content));
+          resolve(parseContent(content));
         } catch (e) {
           reject(new Error('LLM 返回解析失败：' + e.message + ' | ' + buf.slice(0, 200)));
         }

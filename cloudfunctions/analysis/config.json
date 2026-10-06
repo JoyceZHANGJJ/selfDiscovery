@@ -7,7 +7,7 @@
     }
   ],
   "env": {
-    "LLM_BASE_URL": "https://api.deepseek.com/v1/chat/completions",
-    "LLM_MODEL": "deepseek-chat"
+    "LLM_BASE_URL": "https://open.bigmodel.cn/api/paas/v4",
+    "LLM_MODEL": "glm-4-flash"
   }
 }

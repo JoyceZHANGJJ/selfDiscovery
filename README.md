@@ -98,9 +98,9 @@ python3 tools/check-syntax.py utils/store.js pages/list/list.wxml   # 只查指�
 **部署步骤（一次性）**
 
 1. 控制台新建集合 `analysis`，权限同样「仅创建者可读写」。
-2. 去大模型厂商（默认 DeepSeek，[platform.deepseek.com](https://platform.deepseek.com)）拿一个 API Key。
-3. 微信开发者工具里右键 `cloudfunctions/analysis` → **上传并部署（云端安装依赖）**。上传时 `config.json` 里的 `triggers` 会在云端建好定时器。
-4. **配置密钥（关键，不写进代码）**：云函数上传后，在「云开发 → 云函数 → analysis → 配置 → 环境变量」里加一条 `LLM_API_KEY = 你的key`。换厂商就改 `LLM_BASE_URL` / `LLM_MODEL`（非密钥项已写在 `config.json` 的 env 里，也可在此覆盖）。
+2. 去大模型厂商拿 API Key。**默认用智谱 GLM-4-Flash（[open.bigmodel.cn](https://open.bigmodel.cn)，官方承诺永久免费、中文强、OpenAI 兼容），注册后在「API 密钥管理」创建密钥即可**，不用花钱。想用别的也行：硅基流动 `cloud.siliconflow.cn`（9B 以下模型如 `Qwen/Qwen2.5-7B-Instruct` 也永久免费）、DeepSeek（百万免费额度）、通义 / 智谱付费模型等。
+3. 微信开发者工具里右键 `cloudfunctions/analysis` → **上传并部署（云端安装依赖）**。上传时 `config.json` 里的 `triggers` 会在云端建好定时器，env 里已写好默认 `LLM_BASE_URL`（智谱 base）/ `LLM_MODEL`（`glm-4-flash`）。
+4. **配置密钥（关键，不写进代码）**：云函数上传后，在「云开发 → 云函数 → analysis → 配置 → 环境变量」里加一条 `LLM_API_KEY = 你的key`。换厂商就改 `LLM_BASE_URL` / `LLM_MODEL`（这里填的是「接口 base」，不含 `/chat/completions`，代码会自动拼）。
 5. 在云端「日志」里手动触发一次 `analysis` 验证能跑通；之后每天自动跑。
 
 **几个实现要点**
