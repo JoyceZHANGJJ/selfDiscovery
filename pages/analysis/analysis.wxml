@@ -1,0 +1,63 @@
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
+  <view class="statusbar-mask"></view>
+  <view class="screen">
+    <view class="body">
+      <view class="a-hd">
+        <view class="bk" bindtap="onClose">‹ 返回</view>
+        <view class="a-tt">AI 回看</view>
+      </view>
+      <view class="hint">每天凌晨自动生成，温柔陪你回顾这一天的觉察。</view>
+
+      <!-- 取数失败：给一句说明 + 一个能点的重试 -->
+      <view wx:if="{{loadFail}}" class="loadfail">
+        <view class="lft">没加载出来</view>
+        <view class="lfr" bindtap="load">点击重试</view>
+      </view>
+
+      <!-- 骨架屏：首屏数据未就绪时占位（与记 / 看 / 回看 同一套 .sk 样式） -->
+      <view wx:elif="{{!ready}}" class="sk skpage">
+        <view class="sk-line sk-w40 sk-sm"></view>
+        <view class="sk-box"></view>
+        <view class="sk-box"></view>
+      </view>
+
+      <block wx:else>
+        <!-- 还没有任何回看（多半是还没到第一次定时生成，或还没记过） -->
+        <view wx:if="{{list.length===0}}" class="empty">
+          <view class="empty-t">还没有 AI 回看</view>
+          <view class="empty-s">每天凌晨会自动生成一份。先去「记」里留下今天的觉察吧。</view>
+        </view>
+
+        <view wx:for="{{list}}" wx:key="_id" wx:for-item="a" wx:for-index="i"
+              class="acard {{openIdx===i?'open':''}}" data-i="{{i}}" bindtap="onTap">
+          <view class="ac-h">
+            <view class="ac-date">
+              <text class="ac-d">{{a.dateLabel}}</text>
+              <text class="ac-w">{{a.weekday}}</text>
+            </view>
+            <view class="ac-sum">{{a.summary}}</view>
+            <view class="ac-chev">▸</view>
+          </view>
+
+          <view wx:if="{{a.mood}}" class="ac-mood">今天基调 · {{a.mood}}</view>
+
+          <view wx:if="{{a.themes.length}}" class="ac-tags">
+            <text wx:for="{{a.themes}}" wx:for-item="t" wx:key="*this" class="ac-tag">{{t}}</text>
+          </view>
+
+          <view wx:if="{{openIdx===i}}" class="ac-detail">
+            <view wx:if="{{a.highlight}}" class="ac-sec">
+              <view class="ac-sec-l">值得记住</view>
+              <view class="ac-sec-v">{{a.highlight}}</view>
+            </view>
+            <view class="ac-sec">
+              <view class="ac-sec-l">随想</view>
+              <view class="ac-sec-v">{{a.detail}}</view>
+            </view>
+            <view wx:if="{{a.suggestion}}" class="ac-sug">明天 · {{a.suggestion}}</view>
+          </view>
+        </view>
+      </block>
+    </view>
+  </view>
+</view>

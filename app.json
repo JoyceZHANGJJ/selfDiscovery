@@ -3,6 +3,7 @@
     "pages/index/index",
     "pages/look/look",
     "pages/review/review",
+    "pages/analysis/analysis",
     "pages/sleep/sleep",
     "pages/set/set",
     "pages/list/list",

@@ -36,6 +36,15 @@ function mLabel(idx) { return Math.floor(idx / 12) + '年' + ((idx % 12) + 1) + 
 
 const WANT_ST = { '': '未做', doing: '在做', done: '做了', abandon: '不做' };
 
+// AI 回看页用的周几（'YYYY-MM-DD' → '周三'）
+const WEEK = '日一二三四五六';
+function weekday(ds) {
+  const p = (ds || '').split('-');
+  if (p.length < 3) return '';
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return '周' + WEEK[d.getDay()];
+}
+
 // 自然周（周一 0 点起）/ 自然月；offset：0 本期、-1 上一期（只往前翻）
 function periodOf(unit, offset) {
   const now = new Date();
@@ -85,7 +94,8 @@ Page(pageBase({
     docTotal: 0,
     docHead: '',
     ready: false,        // 首屏数据未就绪时先渲染骨架屏（与记 / 看 同一套 .sk 样式）
-    loadFail: false      // 取数失败：撤掉骨架屏，给一句说明 + 可点的重试
+    loadFail: false,     // 取数失败：撤掉骨架屏，给一句说明 + 可点的重试
+    aiLatest: null       // 最新一条 AI 回看（回看页顶部入口；没生成过 / 拉取失败则为 null）
   },
   _docs: [],             // 全量档案（不塞进 data，避免 setData 过大）
 
@@ -93,12 +103,36 @@ Page(pageBase({
     this.ensureTheme();
     this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, theme: wx.getStorageSync('theme') || 'mint' });
+    this.loadAiEntry();
     store.ensureAll().then(ok => {
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       this.setData({ ready: true });
       this.build();
     });
   },
+
+  // 拉最新一条 AI 回看，填到顶部入口。失败 / 还没生成过都静默隐藏入口。
+  loadAiEntry() {
+    if (this._aiLoading) return;
+    this._aiLoading = true;
+    wx.cloud.callFunction({ name: 'analysis', data: { action: 'list' } })
+      .then(res => {
+        const l = (res.result && res.result.list) || [];
+        const a = l[0];
+        this.setData({
+          aiLatest: a ? {
+            date: a.date,
+            dateLabel: (a.date || '').slice(5).replace('-', '月') + '日',
+            weekday: weekday(a.date),
+            summary: a.summary || ''
+          } : null
+        });
+        this._aiLoading = false;
+      })
+      .catch(() => { this._aiLoading = false; this.setData({ aiLatest: null }); });
+  },
+
+  goAnalysis() { wx.navigateTo({ url: '/pages/analysis/analysis' }); },
 
   /* 取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
   onRetry() {
@@ -394,6 +428,7 @@ Page(pageBase({
 
   /* 下拉刷新：从云端重新拉取全部数据 */
   onRefresh() {
+    this.loadAiEntry();
     store.reload().then(() => { this.build(); wx.stopPullDownRefresh(); })
       .catch(() => wx.stopPullDownRefresh());
   }

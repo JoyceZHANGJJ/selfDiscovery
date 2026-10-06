@@ -24,6 +24,16 @@
       <block wx:else>
       <view class="sect-t">回看</view>
 
+      <!-- AI 回看入口：有最新一份就显示，点开看完整历史 -->
+      <view wx:if="{{aiLatest}}" class="ai-entry" bindtap="goAnalysis">
+        <view class="ai-e-badge">AI</view>
+        <view class="ai-e-l">
+          <view class="ai-e-t">AI 回看 · {{aiLatest.dateLabel}} {{aiLatest.weekday}}</view>
+          <view class="ai-e-s">{{aiLatest.summary}}</view>
+        </view>
+        <view class="ai-e-go">›</view>
+      </view>
+
       <!-- 周 / 月复盘，以及最后的「全部」（主题档案，全历史） -->
       <view class="filters">
         <view class="ft {{view==='week'?'on':''}}" data-v="week" bindtap="onView">周</view>

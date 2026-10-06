@@ -18,16 +18,18 @@ pages/index         记：记卡 + 最近列表 + 就地编辑
 pages/look          看：筛选 + 分页时间线 + 统计 + 待办概览
 pages/list          清单：待办 / 随记的管理（筛选 + 折叠 + 操作条）
 pages/review        回看：周 / 月复盘 + 主题档案
+pages/analysis       AI 回看：每天一份的温柔回顾（列表，点开看全文）
 pages/set           设置：问候语、快捷记类别、主题与常用主题、导入导出
 pages/options       选项池「✎ 管理」
 components/         todo-list（待办三段）· rec-actions（操作条）· inline-editor · theme-switcher · due-sheet（「计划完成」的月历浮层，快捷记面板与记卡共用）
 custom-tab-bar/     底部 tab + 快捷记「＋」球（清单页以 quick-ball 复用同一个组件）
+cloudfunctions/analysis  每天定时为每位用户生成「昨天」的 AI 回看（见下方「AI 回看」一节）
 tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对
 ```
 
 ## 数据模型
 
-集合：`records` / `options` / `usercfg`（云开发，**没有云函数**）。
+集合：`records` / `options` / `usercfg` / `analysis`（云开发；`analysis` 是唯一的云函数，其余读写都在小程序端直连数据库）。
 
 一条记录 `records`：
 
@@ -88,3 +90,24 @@ python3 tools/check-syntax.py utils/store.js pages/list/list.wxml   # 只查指�
 - 记录按 `_openid` 隔离（云数据库默认「仅创建者可读写」），查询都带 `ts` 或 `m`，上面这些索引即可覆盖绝大多数查询。
 - `ext`（细节标签）是数组，等值 / `_.all` 筛选走不到索引；若「类别 / 喜恶」成为高频筛选，建议把该值冗余成标量字段（如 `kind`）再单独建索引。
 - 索引是**一次性**配置；集合新建后补建即可，不影响已有数据。刚建好时「命中次数」为 0 属正常，跑查询后会涨。
+
+## AI 回看（每日自动生成，回看页入口）
+
+每天凌晨（中国 01:00）由云函数 `cloudfunctions/analysis` 自动跑一次：取「昨天」全天的觉察记录，交给大模型生成一份温柔的回顾（一句话总结 / 主题 / 情绪基调 / 值得记住 / 给明天的建议 / 随想），存进 `analysis` 集合；回看页顶部出现入口，点进去是 `pages/analysis` 列出每天的历史、可展开看全文。
+
+**部署步骤（一次性）**
+
+1. 控制台新建集合 `analysis`，权限同样「仅创建者可读写」。
+2. 去大模型厂商（默认 DeepSeek，[platform.deepseek.com](https://platform.deepseek.com)）拿一个 API Key。
+3. 微信开发者工具里右键 `cloudfunctions/analysis` → **上传并部署（云端安装依赖）**。上传时 `config.json` 里的 `triggers` 会在云端建好定时器。
+4. **配置密钥（关键，不写进代码）**：云函数上传后，在「云开发 → 云函数 → analysis → 配置 → 环境变量」里加一条 `LLM_API_KEY = 你的key`。换厂商就改 `LLM_BASE_URL` / `LLM_MODEL`（非密钥项已写在 `config.json` 的 env 里，也可在此覆盖）。
+5. 在云端「日志」里手动触发一次 `analysis` 验证能跑通；之后每天自动跑。
+
+**几个实现要点**
+
+- 定时器触发**没有用户上下文**，所以云函数先用 `aggregate().group({_id:'$_openid'})` 捞出所有有记录的用户，再逐人生成；每条 `analysis` 都带上真实 `openid`，小程序端用 `action:'list'` 调同一云函数读回（云函数有管理员权限，能跨过「仅创建者可读写」读到对应用户的那份）。
+- 生成按 `openid + date` 幂等：那天已经有就跳过，定时器偶尔重跑不会叠两份。
+- 时间按**中国时区**算（`cnDay` 把当前时刻 +8h 再取日期），定时器 `0 0 17 * * * *` 是 UTC 17:00 ＝ 中国 01:00，生成的正是「昨天」。
+- 记录上限取当天前 100 条、prompt 截前 80 条，控制 token；输出要求大模型严格返回 JSON。
+- 没配密钥 / 还没到第一次触发时，回看页入口会静默不显示，AI 回看页是空态，不影响其它功能。
+
