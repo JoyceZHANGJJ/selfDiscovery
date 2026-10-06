@@ -100,7 +100,7 @@
           {{item.n}}
         </view>
       </view>
-      <view class="qhint">画像 = 全部历史记录；日 / 周 / 月 / 年 = 最近一个已结束的周期。</view>
+      <view class="qhint">画像 = 在现有画像基础上增量；深度报告 = 全部历史记录重算；日 / 周 / 月 / 年 = 最近一个已结束的周期。</view>
       <view wx:if="{{curLive.has}}" class="qhint live">当前线上生效的是 <text style="font-weight:700">{{curLive.name}} v{{curLive.rev}}</text>。不填提示词直接跑 = 拿这一版做基线，用来和改完的版本对比。</view>
 
       <!-- 提示词输入 -->
@@ -165,7 +165,7 @@
             class="hrow {{detailIdx===i?'open':''}}" data-i="{{i}}" bindtap="onItemTap">
         <view class="hr-l">
           <view class="hr-t">
-            <text class="hr-k">{{a.type==='profile'?'画像':a.type==='day'?'日回看':a.type==='week'?'周回看':a.type==='month'?'月回看':'年回看'}}</text>
+            <text class="hr-k">{{a.type==='persona'?'画像':a.type==='profile'?'深度报告':a.type==='day'?'日回看':a.type==='week'?'周回看':a.type==='month'?'月回看':'年回看'}}</text>
             <text class="hr-time">{{a.label || ''}}</text>
           </view>
           <view class="hr-d">{{a.overrideRules?'替换版':'追加/基线'}} · {{a.records}} 条 · {{a.ms}}ms · {{a.temperature}}</view>

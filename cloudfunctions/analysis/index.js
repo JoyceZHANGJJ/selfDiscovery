@@ -26,6 +26,16 @@
 //      下周一 00:00 按中国时区自动解锁；返回 cooling + retryAfter 省大模型额度），
 //      event.force:true 可绕过（仅控制台排查用）。
 //   7) action:'profileGet'：读取已存的画像（进页面先调，不花大模型额度）。
+//   7b) action:'persona' / 'personaGet' / 'personaVer'：**③ 增量个人画像**，与上面的
+//      profile（④ 深度报告）是**两个独立功能、两个集合**——
+//        · profile：定期全量重算的深度诊断（含推演与行动建议），贵，所以**每周限一次**；
+//        · persona：只沉淀跨周期稳定的特质，增量迭代，便宜，**不限频**（合集建议周跑
+//          轻量版、月年跑完整版）。
+//      两者的关键差别在实现上：generatePersona **必须把上一版画像当素材喂进去**，
+//      模型才能做「新增 / 修正 / 淘汰」而不是全盘重写；不传上一版就退化成了另一个
+//      profile，那违背了③ 的设计意图。persona **按版本追加留档**（不像 profile 只留
+//      最新一份）——画像的价值恰恰在于能看到它怎么一点点长出来。
+//      event.lite:true 走轻量版（周用），默认完整版（月年用）。
 //   8) action:'promptPreview'：只读预览「大模型实际看到的资料」（system/user 消息全文 +
 //      字数），用来核对喂给模型的原文长什么样；不调模型、不写库。
 //      event.type: profile（默认）/ day / week / month / year。
@@ -64,6 +74,10 @@ const profileCol = () => db.collection('profile');   // 个人画像（每 openi
 // 提示词试跑结果（action:'promptTest' 写入）。只增不覆盖，用来对比不同提示词版本；
 // 正式的回看 / 画像永远不写这里，所以试跑不会污染线上内容，也不会被幂等跳过。
 const ptestCol = () => db.collection('promptlog');
+// 增量个人画像（③）。**与 profile（④ 深度报告）是两个集合、两个功能**：
+// profile 每 openid 只留最新一份（定期全量重算，贵，所以限每周一次）；
+// persona 按版本追加留档（增量迭代，便宜，所以不限频——画像的价值在于看它怎么长出来）。
+const personaCol = () => db.collection('persona');
 
 // ---- 配置（非密钥项可放 config.json 的 env；密钥 LLM_API_KEY 必须在控制台环境变量里配） ----
 // LLM_BASE_URL 是「接口 base」，/chat/completions 由代码自动拼上，避免各家路径不一致写错。
@@ -283,7 +297,7 @@ const PROMPT_BUILTIN = {
     body: PROFILE_RULES
   },
   'persona.full': {
-    slot: 'persona.full', group: 'persona', state: 'reserved',
+    slot: 'persona.full', group: 'persona', state: 'active',
     name: '个人画像 · 完整版（增量迭代）',
     desc: '只沉淀跨周期稳定的特质，单次波动与偶发事件一律不进画像；每次更新附变更日志。',
     body: [
@@ -302,7 +316,7 @@ const PROMPT_BUILTIN = {
     ].join('\n')
   },
   'persona.lite': {
-    slot: 'persona.lite', group: 'persona', state: 'reserved',
+    slot: 'persona.lite', group: 'persona', state: 'active',
     name: '个人画像 · 轻量版（周迭代）',
     desc: '周用。只做小幅补充，不重写，适合每周跑一次。',
     body: [
@@ -488,6 +502,8 @@ function contractOf(slot) {
     return '【月复盘的输出字段】\n' + fieldsSpec('month') + '\n\n【年复盘的输出字段】\n' + fieldsSpec('year');
   }
   if (slot === 'report.core') return '【人物深度报告的输出字段】\n' + profileFieldsSpec();
+  if (slot === 'persona.full') return '【增量个人画像 · 完整版的输出字段】\n' + personaFieldsSpec(false);
+  if (slot === 'persona.lite') return '【增量个人画像 · 轻量版的输出字段】\n' + personaFieldsSpec(true);
   if (slot === 'common.review') {
     return '（本槽位只影响人设与语气，不决定输出结构。）\n回看的输出字段由「周期复盘·简版/完整版」两个槽位决定。';
   }
@@ -742,6 +758,138 @@ async function buildProfileMessages(rows, reviews, opt) {
   return [{ role: 'system', content: sys }, { role: 'user', content: user }];
 }
 
+// ============ ③ 增量个人画像（与社会画像 ④ 是两个功能）============
+// ④「人物深度报告」：定期全量重算，含推演与行动建议。
+// ③「个人画像」：**只沉淀跨周期稳定的特质**，单次波动与偶发事件一律不进画像。
+//   增量迭代，每次把「上一版画像」当素材喂进去 → 新增/修正/淘汰，而不是全盘重写。
+//   这是它与 ④ 的根本区别：**必须带上上一版**，否则就退化成另一个 ④。
+//
+// 存储也不同：profile 每 openid 只留最新一份；persona **按版本追加留档**——
+// 画像的价值恰恰在于能看到它怎么一点点长出来，所以历史不能丢。
+
+// 增量画像的输出字段：固定五大板块 + 变更日志。
+// 字段名同样是契约（前端按这些键渲染），所以写进 persona 文档后前端只读不改。
+function personaFieldsSpec(lite) {
+  const cap = lite ? 2 : 4;      // 轻量版条目更少，够用就行
+  return [
+    '【格式硬要求】除 rhythm 为字符串外，其余每个字段都必须是**字符串或字符串数组**，',
+    '  绝对不要返回嵌套对象、markdown 标题或代码块；需要分段时用「；」分隔写成一条字符串。',
+    lite
+      ? '（轻量版：每板块给最关键的 1~2 条即可，不要展开细节。）'
+      : '',
+    'energy（对象 · 精力与能量模式）：',
+    '  drain（数组 1~' + cap + ' 条：稳定消耗精力、容易触发疲惫或抵触的场景 / 任务类型，标注触发特征）',
+    '  charge（数组 1~' + cap + ' 条：稳定恢复精力、带来满足感的活动，标注特征）',
+    '  rhythm（40~80 字：精力起伏的典型规律、能量耗尽后的身心反应）',
+    'value（对象 · 偏好与价值取向）：',
+    '  like（数组 1~' + cap + ' 条：稳定吸引、愿意主动投入心力的事物，写清内在满足来源）',
+    '  dislike（数组 1~' + cap + ' 条：持续抵触、需要消耗意志力才能启动的场景与任务）',
+    '  core（数组 1~3 条：长期看重的生活目标，如自由 / 掌控感 / 自主创造）',
+    'thinking（对象 · 思维习惯与内在卡点）：',
+    '  patterns（数组 1~' + cap + ' 条：典型的思维模式，用行为描述，不用「敏感 / 内向」这类定性词）',
+    '  stuck（数组 1~' + cap + ' 条：反复出现的内耗 / 惯性卡点，**必须写明触发条件**）',
+    'tradeoff（对象 · 取舍决策模式）：',
+    '  choose（数组 1~' + cap + ' 条：做取舍时的底层逻辑）',
+    '  giveup（数组 1~' + cap + ' 条：主动放弃事项的共性特征 + 放弃后的心理变化）',
+    'health（对象 · 健康与情绪反应特征）：',
+    '  moodRule（30~70 字：情绪触发规律——情绪波动一般在什么事件 / 时段后出现）',
+    '  bodyLink（数组 0~3 条：身心联动反应，如精力耗尽 → 情绪迟钝 / 头疼；没信号给空数组 []）',
+    'changelog（对象 · 本次变更日志，**增量迭代必填**）：',
+    '  added（数组：本次新增的条目）',
+    '  changed（数组：本次修正的条目，写清「原来怎么写 → 改成什么」）',
+    '  dropped（数组：本次淘汰的条目，写清为什么不再适用）',
+    '  无任何变化时，added/changed/dropped 都给空数组——不要为了凑内容而编变更。'
+  ].filter(Boolean).join('\n');
+}
+
+// 拼装增量画像的消息。opt.prompts 由调用方预取（同其它 build）。
+// 关键：**上一版画像（prev）一定要传进来**，它是「增量」的前提。
+async function buildPersonaMessages(rows, reviews, prev, opt) {
+  const o = opt || {};
+  const prompts = o.prompts || await loadPrompts(['persona.full']);
+  const lite = !!o.lite;
+
+  const list = (rows || []).slice(0, 500).map(r => {
+    const mod = MODULE_LABELS[r.m] || r.m || '记录';
+    const parts = [];
+    if (r.txt) parts.push(r.txt);
+    const ext = (r.extSrc || []).map((s, idx) => (r.ext && r.ext[idx]) ? (s + '：' + r.ext[idx]) : null).filter(Boolean);
+    if (ext.length) parts.push('（' + ext.join('，') + '）');
+    return '[' + mod + '] ' + parts.join(' ') + (r.t ? ' ' + r.t : '');
+  }).join('\n');
+
+  // 回看里已提炼的稳定模式：它们是跨记录归纳出来的，比单条记录更接近稳定特质。
+  const rv = (reviews || []).slice(-24);
+  const rvLines = [];
+  rv.forEach(a => {
+    const p = a.patterns || {};
+    const bits = [];
+    const push = (label, v) => {
+      const arr = Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []);
+      if (arr.length) bits.push(label + '：' + arr.slice(0, 4).join('；'));
+    };
+    push('高频消耗场景', p.drain);
+    push('稳定充电方式', p.charge);
+    push('惯性卡点', p.stuck);
+    push('长期价值偏好', p.values);
+    if (p.moodRule) bits.push('情绪规律：' + p.moodRule);
+    if (bits.length) rvLines.push('· ' + (a.start || a.date || '') + '（' + (TYPE_LABEL[a.type] || '日') + '回看）' + bits.join('｜'));
+  });
+
+  // 上一版画像 → 纯文本。这是「增量」的锚：模型要在这里做新增 / 修正 / 淘汰。
+  function prevText() {
+    if (!prev) return '';
+    const L = [];
+    const sec = (title, arr) => { if (arr && arr.length) L.push('· ' + title + '：' + arr.join('；')); };
+    const e = prev.energy || {}, v = prev.value || {}, t = prev.thinking || {}, tr = prev.tradeoff || {}, h = prev.health || {};
+    sec('耗电场景', e.drain); sec('充电场景', e.charge);
+    if (e.rhythm) L.push('· 能量波动规律：' + e.rhythm);
+    sec('喜欢', v.like); sec('排斥', v.dislike); sec('核心价值', v.core);
+    sec('典型思维模式', t.patterns);
+    sec('惯性卡点', t.stuck);
+    sec('选择倾向', tr.choose); sec('放弃模式', tr.giveup);
+    if (h.moodRule) L.push('· 情绪触发规律：' + h.moodRule);
+    sec('身心联动反应', h.bodyLink);
+    return L.join('\n');
+  }
+  const pt = prevText();
+
+  const slot = lite ? 'persona.lite' : 'persona.full';
+  const slotBody = (prompts[slot] && prompts[slot].body) || '';
+  const fallback = (PROMPT_BUILTIN[slot] && PROMPT_BUILTIN[slot].body) || '';
+  const rulesSeg = [o.overrideRules ? '' : (slotBody || fallback), o.extraRules].filter(Boolean).join('\n');
+
+  const sys = (rulesSeg || '你是一位擅长从个人日志中提炼稳定特质的心理分析顾问。')
+    + '\n\n任务：' + (prev
+      ? '根据【下面已有的画像】+【新的观察素材】做一次**增量更新**。'
+        + '不是全盘重写——保留仍然成立的原有内容，只做三类改动：新增本次素材支持的条目、'
+        + '修正已被推翻的旧结论、淘汰不再符合现状的旧描述。'
+      : '这是第一次建立画像，请根据素材写出初始版本。')
+    + '\n只写**跨周期稳定**的特质：单次周期的临时情绪、偶然事件、一过性感受一律不进画像；'
+    + '一次性事件直接忽略。'
+    + '\n每条画像描述都必须是**可观测的行为模式**——用「在什么场景下会做什么、什么反应」'
+    + '来写，不要写「敏感 / 内向 / 追求完美」这类定性标签。'
+    + '\n区分「识己小程序开发」（自主创造类，大多为充电）与「本职工作」（外部约束，'
+    + '大多耗电）——两类精力反馈完全不同，必须分开记录，不要混为一谈。'
+    + '\n不要逐字引用用户的原话，全部用自己的话概括转述。'
+    + '\n输出严格 JSON，字段严格按下面结构，不要合并或删减板块：\n'
+    + personaFieldsSpec(lite);
+
+  let user = '';
+  if (pt) {
+    user += '【已有的画像】以下是上一版画像的结论：\n' + pt
+      + '\n\n请以它为基础做增量更新：仍然成立的**原样保留**，被素材推翻的**修正**，'
+      + '不再符合的**淘汰**。不要因为「要重新组织」而改写没变的条目。\n\n';
+  }
+  user += '【新的观察素材】以下是这段时间的记录（按时间先后）：\n\n' + (list || '（没有记录）');
+  if (rvLines.length) {
+    user += '\n\n以下是从历次日/周/月/年回看中提炼出的稳定模式（可作为画像素材）：\n' + rvLines.join('\n');
+  }
+  user += '\n\n请给出更新后的画像，并在 changelog 里写清本次的改动。';
+
+  return [{ role: 'system', content: sys }, { role: 'user', content: user }];
+}
+
 // 把模型返回的任意值「压成一行可读文字」。
 // 为什么要它：模型偶尔不听话，会把数组元素返回成对象（如 risks:[{触发,后果,预警}]），
 // 或者把本该是字符串的字段返回成对象。直接 String(obj) 会变成 "[object Object]"
@@ -841,6 +989,14 @@ async function ensurePtestCol() {
   ptestColEnsured = true;
 }
 
+// persona 同理（③ 增量画像）：不用手动建。
+let personaColEnsured = false;
+async function ensurePersonaCol() {
+  if (personaColEnsured) return;
+  try { await db.createCollection('persona'); } catch (e) { /* 已存在，忽略 */ }
+  personaColEnsured = true;
+}
+
 // 重新生成的冷却期：**每个自然周只能生成一次**（周一 00:00 按中国时区重置）。
 // 首次生成不受限制；force:true 可绕过（仅供控制台排查用）。
 // 判定用「上次生成时间是否还落在当前这一周」，而不是滚动 7×24h——
@@ -932,6 +1088,123 @@ async function getProfile(openid) {
   await ensureProfileCol();
   const ex = await profileCol().where({ openid }).orderBy('updatedAt', 'desc').limit(1).get();
   return (ex.data && ex.data.length) ? ex.data[0] : null;
+}
+
+// ============ ③ 增量个人画像 ============
+// 与 ④ 的差异有两处，都体现在实现上：
+//  1) **带上一版画像**（prev）作为素材 → 增量更新，不全盘重写；
+//  2) **按版本追加留档**，不像 profile 只留最新一份——画像的价值在于看它怎么长出来。
+//
+// 为什么**不设冷却锁**：profile（深度报告）是全量重算、贵，所以限每周一次；
+// persona 是增量、便宜，且合集明确建议周跑轻量版、月年跑完整版。硬锁只会挡住正常节奏，
+// 所以改成「提示本次已生成过」而不是硬拦。
+async function generatePersona(openid, lite) {
+  await ensurePersonaCol();
+  if (genBudget <= 0) return { error: '本次调用额度已用完，请稍后或加大 maxGen 再试' };
+
+  const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
+  const rows = (recs.data || []).map(d => ({
+    m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
+  }));
+  if (!rows.length) return { empty: true, summary: '还没有记录，先去「记」里留下一点觉察，再回来生成画像。' };
+
+  // 上一版画像：增量迭代的前提。没有它就只能从零起，那不是「画像」是「又一份报告」。
+  let prev = null;
+  try {
+    const pv = await personaCol().where({ openid }).orderBy('rev', 'desc').limit(1).get();
+    prev = (pv.data && pv.data[0]) || null;
+  } catch (e) { prev = null; }
+
+  let reviews = [];
+  try {
+    const rv = await analysisCol().where({ openid }).orderBy('start', 'desc').limit(24).get();
+    reviews = rv.data || [];
+  } catch (e) {
+    try {
+      const rv2 = await analysisCol().where({ openid }).limit(24).get();
+      reviews = rv2.data || [];
+    } catch (e2) { reviews = []; }
+  }
+
+  const msgs = await buildPersonaMessages(rows, reviews, prev, { lite: !!lite });
+  const parsed = await chatCompletion(msgs, 0.7);
+  genBudget--;
+
+  const arr = (v, cap) => arrOf(v, cap);
+  const str = (v, cap) => flatText(v).slice(0, cap || 400);
+  const e = parsed.energy || {}, val = parsed.value || {}, t = parsed.thinking || {};
+  const tr = parsed.tradeoff || {}, h = parsed.health || {}, cl = parsed.changelog || {};
+
+  const rev = (prev && prev.rev ? prev.rev : 0) + 1;
+  const doc = {
+    openid: openid,
+    rev: rev,                                   // 画像版本号 v1 / v2 / …
+    energy: {
+      drain: arr(e.drain, 6), charge: arr(e.charge, 6), rhythm: str(e.rhythm, 300)
+    },
+    value: {
+      like: arr(val.like, 6), dislike: arr(val.dislike, 6), core: arr(val.core, 5)
+    },
+    thinking: { patterns: arr(t.patterns, 6), stuck: arr(t.stuck, 6) },
+    tradeoff: { choose: arr(tr.choose, 6), giveup: arr(tr.giveup, 6) },
+    health: { moodRule: str(h.moodRule, 300), bodyLink: arr(h.bodyLink, 5) },
+    changelog: {
+      added: arr(cl.added, 12), changed: arr(cl.changed, 12), dropped: arr(cl.dropped, 12)
+    },
+    basedOn: {
+      records: rows.length,
+      reviews: reviews.length,
+      fromRev: prev ? prev.rev : 0        // 从哪一版迭代而来（0 = 首次建立）
+    },
+    promptRev: await personaPromptRev(!!lite),   // 记下用的是哪版提示词，回头对得上账
+    lite: !!lite,
+    model: LLM_MODEL,
+    createdAt: Date.now()
+  };
+
+  // 按版本**追加**留档，不覆盖：画像的价值在于看它怎么一点点长出来。
+  // 先查这个 rev 是不是已经存在（重复提交同一版时别写出两条一样的），
+  // 并发下两个请求可能算出同一个 rev，那时要以先落地的那份为准。
+  try {
+    const dup = await personaCol().where({ openid, rev: rev }).limit(1).get();
+    if (dup.data && dup.data.length) {
+      return { _id: dup.data[0]._id, ok: true, rev: rev, reused: true };
+    }
+  } catch (e) { /* 查不到就照常写 */ }
+
+  const add = await personaCol().add({ data: doc });
+  return Object.assign({ _id: add._id, ok: true, rev: rev }, doc);
+}
+
+// 记下这次用的是哪一版提示词。取不到就记 0——只是记账，不该因此失败。
+async function personaPromptRev(lite) {
+  try {
+    const slot = lite ? 'persona.lite' : 'persona.full';
+    const r = await loadPrompt(slot);
+    return r.rev || 0;
+  } catch (e) { return 0; }
+}
+
+// 读画像：返回最新版 + 历史版本列表（只给 rev / 时间 / 变更条数，不含正文）
+async function getPersona(openid) {
+  await ensurePersonaCol();
+  let cur = null;
+  try {
+    const pv = await personaCol().where({ openid }).orderBy('rev', 'desc').limit(1).get();
+    cur = (pv.data && pv.data[0]) || null;
+  } catch (e) { cur = null; }
+  let vers = [];
+  try {
+    const hs = await personaCol().where({ openid }).orderBy('rev', 'desc').limit(20).get();
+    vers = (hs.data || []).map(d => ({
+      _id: d._id, rev: d.rev, createdAt: d.createdAt, lite: !!d.lite,
+      records: (d.basedOn && d.basedOn.records) || 0,
+      changed: ((d.changelog && (d.changelog.added || []).length) || 0)
+        + ((d.changelog && (d.changelog.changed || []).length) || 0)
+        + ((d.changelog && (d.changelog.dropped || []).length) || 0)
+    }));
+  } catch (e) { vers = []; }
+  return { cur: cur, versions: vers };
 }
 
 // 为某个用户生成某个周期的回看（幂等：已有则跳过；期间无记录则跳过且不落空卡）
@@ -1073,6 +1346,35 @@ async function previewProfileMessages(openid) {
   };
 }
 
+// 预览增量画像喂给模型的内容。要特意返回 fromRev——让人看出这次是「基于第几版迭代」，
+// 这一点决定了他看到的是增量结果还是从零生成，两者的效果完全不同。
+async function previewPersonaMessages(openid) {
+  const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
+  const rows = (recs.data || []).map(d => ({
+    m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
+  }));
+  let reviews = [];
+  try {
+    const rv = await analysisCol().where({ openid }).orderBy('start', 'desc').limit(24).get();
+    reviews = rv.data || [];
+  } catch (e) { reviews = []; }
+  let prev = null;
+  try {
+    await ensurePersonaCol();
+    const pv = await personaCol().where({ openid }).orderBy('rev', 'desc').limit(1).get();
+    prev = (pv.data && pv.data[0]) || null;
+  } catch (e) { prev = null; }
+  const msgs = await buildPersonaMessages(rows, reviews, prev);
+  return {
+    records: rows.length,
+    reviewsUsed: reviews.length,
+    fromRev: prev ? prev.rev : 0,
+    userHead: msgs[1].content.slice(0, 4000),
+    userChars: msgs[1].content.length,
+    systemChars: msgs[0].content.length
+  };
+}
+
 // 预览某一周期回看喂给模型的内容（event.type，默认 day）
 async function previewReviewMessages(openid, type) {
   const t = ['day', 'week', 'month', 'year'].indexOf(type) >= 0 ? type : 'day';
@@ -1106,18 +1408,19 @@ async function previewReviewMessages(openid, type) {
 async function runPromptTest(openid, event) {
   const t = event.type || 'profile';
   const isProfile = t === 'profile';
-  if (!isProfile && ['day', 'week', 'month', 'year'].indexOf(t) < 0) {
-    return { error: 'type 只能是 profile / day / week / month / year' };
+  const isPersona = t === 'persona';          // ③ 增量画像，与 ④ 深度报告分开
+  if (!isProfile && !isPersona && ['day', 'week', 'month', 'year'].indexOf(t) < 0) {
+    return { error: 'type 只能是 persona / profile / day / week / month / year' };
   }
   // 温度：画像 0.7（报告要稳），回看沿用线上默认 0.8；允许 event.temperature 覆盖
-  const temp = typeof event.temperature === 'number' ? event.temperature : (isProfile ? 0.7 : 0.8);
+  const temp = typeof event.temperature === 'number' ? event.temperature : (isProfile || isPersona ? 0.7 : 0.8);
   const opt = {
     extraRules: (typeof event.rules === 'string' ? event.rules.trim() : ''),
     overrideRules: !!event.overrideRules
   };
 
   let msgs, meta = {};
-  if (isProfile) {
+  if (isProfile || isPersona) {
     const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
     const rows = (recs.data || []).map(d => ({
       m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
@@ -1128,8 +1431,21 @@ async function runPromptTest(openid, event) {
       reviews = rv.data || [];
     } catch (e) { reviews = []; }
     if (!rows.length) return { error: '没有记录可试' };
-    msgs = await buildProfileMessages(rows, reviews, opt);
-    meta = { records: rows.length, reviewsUsed: reviews.length };
+    if (isPersona) {
+      // 带上上一版画像：试跑必须和线上用同一套素材，否则看到的不是真实效果
+      // （增量画像没有「上一版」就退化成从零生成，那不是线上会发生的事）。
+      let prev = null;
+      try {
+        await ensurePersonaCol();
+        const pv = await personaCol().where({ openid }).orderBy('rev', 'desc').limit(1).get();
+        prev = (pv.data && pv.data[0]) || null;
+      } catch (e) { prev = null; }
+      msgs = await buildPersonaMessages(rows, reviews, prev, opt);
+      meta = { records: rows.length, reviewsUsed: reviews.length, fromRev: prev ? prev.rev : 0 };
+    } else {
+      msgs = await buildProfileMessages(rows, reviews, opt);
+      meta = { records: rows.length, reviewsUsed: reviews.length };
+    }
   } else {
     // 与线上同一套取数：day 可指定 offset 往前推几天，周 / 月 / 年取最近一个已结束的周期
     const p = t === 'day'
@@ -1271,6 +1587,7 @@ exports.main = async (event) => {
   if (event && event.action === 'promptPreview') {
     if (!openid) return { error: 'no openid' };
     const t = event.type || 'profile';
+    if (t === 'persona') return previewPersonaMessages(openid);
     if (t === 'profile') return previewProfileMessages(openid);
     return previewReviewMessages(openid, t);
   }
@@ -1427,7 +1744,10 @@ exports.main = async (event) => {
     // 试跑的 type（day/week/...）要映射到对应槽位；overrideRules 为真说明它整段替换了
     // 规则段——那次的正文就是完整规则段，存进同一个槽位即可。
     const t = hit.type || 'profile';
-    const slot = t === 'profile' ? 'report.core'
+    // type → 槽位。必须与前端 pages/prompt 的 TYPE_SLOT 完全一致，否则采纳一次试跑
+    // 会把提示词写进错误的槽位（很隐蔽：能采纳成功，但以后回看用的还是旧规则）。
+    const slot = t === 'persona' ? 'persona.full'
+      : t === 'profile' ? 'report.core'
       : (t === 'day' || t === 'week') ? 'review.dayWeek' : 'review.monthYear';
     const body = (typeof hit.rules === 'string' ? hit.rules : '').trim();
     if (!body) {
@@ -1443,6 +1763,32 @@ exports.main = async (event) => {
     if (!openid) return { error: 'no openid' };
     const p = await getProfile(openid);
     return { profile: p };
+  }
+
+  // ============ ③ 增量个人画像（与上面的 profile / 深度报告是两个功能）============
+  // 读：最新版 + 历史版本摘要。前端进页先调这个（秒回、不花额度）。
+  if (event && event.action === 'personaGet') {
+    if (!openid) return { error: 'no openid' };
+    const r = await getPersona(openid);
+    return { persona: r.cur, versions: r.versions };
+  }
+
+  // 生成 / 迭代一次画像。event.lite:true 走轻量版（周用），默认完整版（月年用）。
+  // **不设冷却锁**：它是增量的、便宜，合集明确建议周跑轻量版；硬锁只会挡住正常节奏。
+  if (event && event.action === 'persona') {
+    if (!openid) return { error: 'no openid' };
+    return generatePersona(openid, !!event.lite);
+  }
+
+  // 读某个历史版本的完整画像（用来对比「上一版长什么样」）
+  if (event && event.action === 'personaVer') {
+    if (!openid) return { error: 'no openid' };
+    if (typeof event.rev !== 'number') return { error: 'no rev' };
+    await ensurePersonaCol();
+    const q = await personaCol().where({ openid, rev: event.rev }).limit(1).get();
+    const hit = (q.data || [])[0];
+    if (!hit) return { error: '找不到 v' + event.rev };
+    return { persona: hit };
   }
 
   // 个人画像：根据全部记录（重新）生成并落库（默认的「重新生成」按钮 / 下拉触发）

@@ -34,11 +34,24 @@
         <view class="ai-e-go">›</view>
       </view>
 
-      <!-- 个人画像入口：已生成显示摘要；没生成过则提示「去生成」，点开进画像页 -->
-      <view wx:if="{{profileLatest}}" class="ai-entry" bindtap="goProfile">
+      <!-- 两个 AI 入口，刻意分开：
+           · 个人画像（③）= 长期沉淀，只留跨周期一直成立的那些特质，可随时增量更新；
+           · 深度报告（④）= 定期全量重算，含未来推演与行动方案，每周最多一次。
+           之前只有一个入口、名字叫「个人画像」但跑的是深度报告，所以两者混在一起说不清。 -->
+      <view wx:if="{{personaLatest}}" class="ai-entry" bindtap="goPersona">
         <view class="ai-e-badge prof">像</view>
         <view class="ai-e-l">
-          <view class="ai-e-t">个人画像</view>
+          <view class="ai-e-t">个人画像 <text class="ai-e-v" wx:if="{{personaLatest.rev}}">v{{personaLatest.rev}}</text></view>
+          <view wx:if="{{personaLatest.empty}}" class="ai-e-s">还没有建立 · 让 AI 从你的记录里提炼出稳定的特质，之后每次都往上增量</view>
+          <view wx:else class="ai-e-s">{{personaLatest.brief}}</view>
+        </view>
+        <view class="ai-e-go">›</view>
+      </view>
+
+      <view wx:if="{{profileLatest}}" class="ai-entry" bindtap="goProfile">
+        <view class="ai-e-badge deep">深</view>
+        <view class="ai-e-l">
+          <view class="ai-e-t">人物深度报告</view>
           <view wx:if="{{profileLatest.empty}}" class="ai-e-s">还没有生成过 · 点这里让 AI 根据你的全部记录做一份深度分析</view>
           <view wx:elif="{{profileBroken}}" class="ai-e-s">上次生成的内容损坏了 · 点这里重新生成一份</view>
           <view wx:else class="ai-e-s">{{profileLatest.summary}}</view>

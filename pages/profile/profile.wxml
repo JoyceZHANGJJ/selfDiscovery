@@ -4,7 +4,7 @@
     <view class="body">
       <view class="a-hd">
         <view class="bk" bindtap="onClose">‹ 返回</view>
-        <view class="a-tt">个人画像</view>
+        <view class="a-tt">人物深度报告</view>
       </view>
       <view class="hint-row">
         <view class="hint">基于你的全部记录，做一份「专属人物深度分析报告」：你是哪种人、适合往哪走、容易卡在哪、怎么决策。只用你的记录，不脑补；推断会标【推论】，没信号的章节宁可留空。写实，不美化。下拉可刷新；重新生成每周一次（周一0点后可再来）。</view>
@@ -33,17 +33,17 @@
       <block wx:else>
         <!-- 还没生成过：空态 + 生成按钮 -->
         <view wx:if="{{empty}}" class="empty">
-          <view class="empty-t">还没有个人画像</view>
-          <view class="empty-s">先去「记」里留下一些觉察，再回来生成属于你的深度画像。生成需要一点时间，提交后可以先去做别的。</view>
-          <view wx:if="{{!pending}}" class="empty-btn" bindtap="onGenerate">生成个人画像</view>
+          <view class="empty-t">还没有人物深度报告</view>
+          <view class="empty-s">先去「记」里留下一些觉察，再回来生成属于你的深度报告。生成需要一点时间，提交后可以先去做别的。</view>
+          <view wx:if="{{!pending}}" class="empty-btn" bindtap="onGenerate">生成深度报告</view>
         </view>
 
         <block wx:else>
           <!-- 内容损坏（旧版落库残留 [object Object]）：明确提示重新生成，别显示一堆乱码 -->
           <view wx:if="{{p.broken}}" class="empty">
-            <view class="empty-t">这份画像的内容损坏了</view>
+            <view class="empty-t">这份报告的内容损坏了</view>
             <view class="empty-s">上一版生成时部分内容没有正确保存（显示为乱码），无法修复，请重新生成一份。</view>
-            <view wx:if="{{!cooling && !pending}}" class="empty-btn" bindtap="onGenerate">{{cooling?'本周已生成过，下周一可再来':'重新生成个人画像'}}</view>
+            <view wx:if="{{!cooling && !pending}}" class="empty-btn" bindtap="onGenerate">{{cooling?'本周已生成过，下周一可再来':'重新生成深度报告'}}</view>
           </view>
 
           <block wx:else>

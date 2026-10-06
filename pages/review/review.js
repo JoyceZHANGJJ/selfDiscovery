@@ -96,7 +96,8 @@ Page(pageBase({
     ready: false,        // 首屏数据未就绪时先渲染骨架屏（与记 / 看 同一套 .sk 样式）
     loadFail: false,     // 取数失败：撤掉骨架屏，给一句说明 + 可点的重试
     aiLatest: null,      // 最新一条 AI 回看（回看页顶部入口；没生成过 / 拉取失败则为 null）
-    profileLatest: null  // 个人画像入口（已生成就显示摘要；没生成过 / 拉取失败则为 null）
+    profileLatest: null, // 人物深度报告入口（④ · 定期全量重算）
+    personaLatest: null  // 个人画像入口（③ · 长期沉淀增量迭代）
   },
   _docs: [],             // 全量档案（不塞进 data，避免 setData 过大）
 
@@ -106,6 +107,7 @@ Page(pageBase({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, theme: wx.getStorageSync('theme') || 'mint' });
     this.loadAiEntry();
     this.loadProfileEntry();
+    this.loadPersonaEntry();
     store.ensureAll().then(ok => {
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       this.setData({ ready: true });
@@ -137,6 +139,7 @@ Page(pageBase({
 
   goAnalysis() { wx.navigateTo({ url: '/pages/analysis/analysis' }); },
   goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+  goPersona() { wx.navigateTo({ url: '/pages/persona/persona' }); },
 
   // 拉已存的个人画像，填到顶部入口。失败 / 还没生成过都静默隐藏入口。
   loadProfileEntry() {
@@ -155,6 +158,36 @@ Page(pageBase({
         this._pfLoading = false;
       })
       .catch(() => { this._pfLoading = false; this.setData({ profileLatest: null }); });
+  },
+
+  // 拉已存的个人画像（③ 增量沉淀），填到顶部入口。与上面的深度报告入口分开。
+  loadPersonaEntry() {
+    if (this._psLoading) return;
+    this._psLoading = true;
+    wx.cloud.callFunction({ name: 'analysis', data: { action: 'personaGet' } })
+      .then(res => {
+        const p = res.result && res.result.persona;
+        // 摘要取「核心价值 + 惯性卡点」这两条最耐看的；都没有就退到耗电/充电场景。
+        // 不给 summary 字段——画像本来就没有一句话概括（那是深度报告的东西）。
+        let brief = '';
+        if (p) {
+          const core = (p.value && p.value.core) || [];
+          const stuck = (p.thinking && p.thinking.stuck) || [];
+          const drain = (p.energy && p.energy.drain) || [];
+          const charge = (p.energy && p.energy.charge) || [];
+          const bits = [];
+          if (core.length) bits.push('重视' + core.slice(0, 2).join('、'));
+          if (stuck.length) bits.push('容易卡在：' + stuck[0]);
+          if (!bits.length && charge.length) bits.push('靠' + charge.slice(0, 2).join('、') + '回血');
+          if (!bits.length && drain.length) bits.push('耗电：' + drain.slice(0, 2).join('、'));
+          brief = bits.join('；');
+        }
+        this.setData({
+          personaLatest: p ? { rev: p.rev || 1, brief: brief } : { empty: true }
+        });
+        this._psLoading = false;
+      })
+      .catch(() => { this._psLoading = false; this.setData({ personaLatest: null }); });
   },
 
   /* 取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
@@ -319,7 +352,7 @@ Page(pageBase({
     const c = all.filter(r => inR(r.ts || 0, cur));      // 本期记下的（按创建时间归属）
     const pv = all.filter(r => inR(r.ts || 0, pre));     // 上期，用来算增减
 
-    // 「今日」是��日一记，一天最多一条：按天取当天那条（没有就 null）
+    // 「今日」是每日一记，一天最多一条：按天取当天那条（没有就 null）
     const dayFirst = (t0) => c.find(r => r.m === 'today' && date.dayStart(r.ts) === t0) || null;
 
     const days = new Set(c.map(r => date.dayStart(r.ts))).size;
@@ -394,7 +427,7 @@ Page(pageBase({
     const trendSum = act ? ('有记录 ' + act + ' 天 · 最多一天 ' + dmx + ' 条') : '本期还没有记录';
 
     /* 剩余能量趋势：本期每天一条「今日」记录的能量（1..5），画成折线看走势。
-       没有的��子不补0、也不连线——断开更诚实（补0会画出「能量掉到 0」的假象）。
+       没有的格子不补0、也不连线——断开更诚实（补0会画出「能量掉到 0」的假象）。
        单位与上面「本期每天」一致（周=7 天，月=28~31 天），x 轴按 index等分。 */
     const batOf = (r) => {
       if (!r || r.m !== 'today') return 0;
@@ -453,6 +486,7 @@ Page(pageBase({
   onRefresh() {
     this.loadAiEntry();
     this.loadProfileEntry();
+    this.loadPersonaEntry();
     store.reload().then(() => { this.build(); wx.stopPullDownRefresh(); })
       .catch(() => wx.stopPullDownRefresh());
   }

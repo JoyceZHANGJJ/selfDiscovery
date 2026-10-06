@@ -15,7 +15,8 @@ const store = require('../../utils/store.js');
 const pageBase = require('../../utils/pageBase.js');
 
 const TYPES = [
-  { k: 'profile', n: '画像' },
+  { k: 'profile', n: '深度报告' },
+  { k: 'persona', n: '画像' },
   { k: 'day', n: '日' },
   { k: 'week', n: '周' },
   { k: 'month', n: '月' },
@@ -23,9 +24,10 @@ const TYPES = [
 ];
 
 // 试跑类型 → 对应哪个提示词槽位。「设为线上生效」时要知道往哪写。
-// 必须与云函数 PROMPT_BUILTIN 的槽位名一致。
+// 必须与云函数 PROMPT_BUILTIN 的槽位名、以及云函数 promptAdopt 里的映射完全一致。
 const TYPE_SLOT = {
   profile: 'report.core',
+  persona: 'persona.full',
   day: 'review.dayWeek',
   week: 'review.dayWeek',
   month: 'review.monthYear',
