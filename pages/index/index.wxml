@@ -250,7 +250,7 @@
           <!-- 待办的右侧那一格：与清单页 / 看页的 todo-list **逐字相同**（同一份 vm.baseVM + 同一段结构）——
                原因照常显示，后面跟一个时间：有计划完成就显示计划完成、没计划才显示创建时间，
                同一个位置只挂一个日子。点计划完成＝取消这条待办的计划。 -->
-          <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onRecentDue" aria-label="计划完成 {{item.due}}，点一下取消计划">{{item.due}}</view><text wx:else class="twt">{{item.tt}}</text></view>
+          <view wx:if="{{item.task}}" class="twr"><text wx:if="{{item.reason || item.usefor}}" class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onRecentDue" aria-label="计划完成 {{item.due}}，点一下取消计划">{{item.due}}</view><text wx:else class="twt">{{item.tt}}</text></view>
           <text wx:if="{{!item.task}}" class="tw">{{item.d}}{{item.t}}</text>
         </view>
         <!-- 「今日」：附属内容＝能量说明那句话（没写就不占这一行——只留能量格是正常的） -->

@@ -351,8 +351,13 @@ textarea.mini-in { height: auto; min-height: 44px; line-height: 21px; padding: 1
 /* 时间那行不伸展（flex-grow:0）：否则会和事项标题平分宽度，把标题挤成两行、右侧留一片空白 */
 .rec.list .twr { display: flex; align-items: baseline; gap: 5px; flex: 0 1 auto; justify-content: flex-end; min-width: 0; font-size: 11.5px; color: var(--ink3); }
 /* 原因 / 放弃原因：最多折两行，超出第二行省略。
-   已放弃的待办，「放弃原因」在 store.decorate 里就被映射到了 reason，所以和原因是同一个元素、同一套样式 */
+   已放弃的待办，「放弃原因」在 store.decorate 里就被映射到了 reason，所以和原因是同一个元素、同一套样式。
+   **必须是 -webkit-box 才能 line-clamp，而 -webkit-box 即使内容为空也占一个盒子高度**：
+   模板层已用 wx:if 让「没原因」时整个不渲染，这里再加一道 :empty 兜底 —— 少了它，
+   .twr 会被撑到两行高，同格里那个 align-self:center 的计划完成胶囊就被顶到下一行（看着像错位）。
+   原因本身与胶囊 / 时间的分隔点「·」另有 wx:if，不受这条影响 */
 .rec.list .twx { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: normal; word-break: break-all; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.rec.list .twx:empty { display: none; }
 .rec.list .twd { flex-shrink: 0; }
 .rec.list .twt { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rec.list .tw { flex-shrink: 0; white-space: nowrap; margin-left: auto; }
