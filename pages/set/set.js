@@ -1,5 +1,6 @@
 // pages/set/set.js —— 设置
 const store = require('../../utils/store.js');
+const exporter = require('../../utils/exporter.js');
 const pageBase = require('../../utils/pageBase.js');
 const CHANGELOG = require('../../utils/changelog.js');
 const app = getApp();
@@ -219,22 +220,30 @@ Page(pageBase({
   },
 
   /* 数据：导出 / 导入 / 清空 */
-  exportText(recs) {
-    const head = '# ' + (app.APP_NAME || '识己手札') + ' · 导出\n# 时间：' + fmtDay(Date.now()) + ' · 共 ' + recs.length + ' 条\n# 格式：日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）\n';
-    const body = recs.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0)).map(r =>
-      fmtDay(r.ts) + ' ' + (r.t || '') + ' | ' + store.mname(r.m) + ' | ' + String(r.txt || '') + ((r.ext && r.ext.length) ? ' | ' + r.ext.join('、') : '')
-    );
-    return head + body.join('\n') + '\n';
-  },
-  // 导出：单独全量拉取（不依赖被截断的本地内存，覆盖全部历史记录）
+  // 导出（可读 / 备份）—— 见utils/exporter.js；一次全量拉取，不依赖可能被截断的本地内存。
+  // 以后要支持「选维度 / 选天导出」，入口层把选择结果当 filter 传给 exporter.build 即可。
   onExport() {
-    wx.showLoading({ title: '导出中', mask: true });
-    store.loadAllRecords({}).then(recs => {
-      wx.hideLoading();
-      wx.setClipboardData({ data: this.exportText(recs), success: () => wx.showToast({ title: '已复制到剪贴板', icon: 'none' }) });
-    }).catch(() => {
-      wx.hideLoading();
-      wx.setClipboardData({ data: this.exportText(app.globalData.records || []), success: () => wx.showToast({ title: '已复制到剪贴板', icon: 'none' }) });
+    const run = (mode) => {
+      wx.showLoading({ title: '导出中', mask: true });
+      store.loadAllRecords({}).then(recs => {
+        wx.hideLoading();
+        this._copy(exporter.build(recs, mode), mode);
+      }).catch(() => {
+        // 全量拉取失败：退到本地内存（可能不完整），并说清是哪一种
+        wx.hideLoading();
+        this._copy(exporter.build(app.globalData.records || [], mode), mode, true);
+      });
+    };
+    wx.showActionSheet({
+      itemList: ['可读导出（给人看）', '备份导出（导入用）'],
+      success: r => run(r.tapIndex === 0 ? 'read' : 'backup'),
+      fail: () => {}
+    });
+  },
+  _copy(text, mode, partial) {
+    wx.setClipboardData({
+      data: text,
+      success: () => wx.showToast({ title: partial ? '已复制（可能不完整）' : '已复制到剪贴板', icon: 'none' })
     });
   },
   onImportTap() { this.setData({ importOverlay: true, importText: '' }); this.setTabHidden(true); },
@@ -264,11 +273,14 @@ Page(pageBase({
     const parsed = this.parseImport(txt);
     if (!parsed.recs.length) { wx.showToast({ title: '没有可导入的记录', icon: 'none' }); return; }
     // 判重：同一模块 + 内容 + 时间戳 视为同一条，避免重复导入（如同一份文本导入两次）
+    // 状态也计入：同一条待办「未完成 → 已完成」是**该覆盖的状态变化**，不该被当重复丢掉
+    const recKey = r => (r.m || '') + '\u0001' + (r.txt || '') + '\u0001' + (r.ts || '')
+      + '\u0001' + (r.done ? 1 : 0) + (r.status || '');
     const existing = app.globalData.records || [];
-    const seen = new Set(existing.map(r => (r.m || '') + '\u0001' + (r.txt || '') + '\u0001' + (r.ts || '')));
+    const seen = new Set(existing.map(recKey));
     const toAdd = [], dup = [];
     parsed.recs.forEach(r => {
-      const key = (r.m || '') + '\u0001' + (r.txt || '') + '\u0001' + (r.ts || '');
+      const key = recKey(r);
       if (seen.has(key)) { dup.push(r); return; }
       seen.add(key); toAdd.push(r);
     });
@@ -330,7 +342,16 @@ Page(pageBase({
       const p = (ln.indexOf('|') >= 0 ? ln.split(/\s*\|\s*/) : ln.split(/\s*·\s*/));
       if (p.length < 3 || !p[2].trim()) { bad++; return; }
       const head = p[0].trim(), mk = p[1].trim(), main = p[2].trim();
-      let ext = p.length > 3 ? p.slice(3).join(' | ').split(/[、,，]/).map(x => x.trim()).filter(x => x) : [];
+      let segs = p.slice(3);
+      // 备份格式的状态段以「状态：」开头，必须先摘出来，否则会被当成细节喂进 mapExtSrc
+      //（老的备份文件没有这一段，行为完全不变）
+      let st = {};
+      const si = segs.findIndex(s => s.indexOf('状态：') === 0);
+      if (si >= 0) {
+        st = exporter.readStateTags(segs[si].slice(3));
+        segs = segs.filter((_, i) => i !== si);
+      }
+      let ext = segs.join(' | ').split(/[、,，]/).map(x => x.trim()).filter(x => x);
       const aliasCat = LEGACY_TASK[mk];
       const k = aliasCat ? 'todo' : (N2K[mk] || mk);
       const known = store.FIELDS[k] || (app.globalData.dims || []).some(d => d.k === k) || store.isQuiet(k);
@@ -338,8 +359,25 @@ Page(pageBase({
       if (aliasCat) ext = [aliasCat].concat(ext);   // 类别与 srcList('todo') 的首位对齐
       const { ts, t } = this.parseHeadLine(head);
       // 细节按标签匹配回真实来源（怎么开始/沉浸/精力/心情…），匹配不到才用 fallback
-      const extSrc = store.mapExtSrc(k, ext);
-      out.push({ m: k, t, txt: main, ext, extSrc, ts });
+      let extSrc = store.mapExtSrc(k, ext);
+      // 备份里的「优先级 X」还原回细节（它本来就在 ext 里，只是导出时被单独标了出来）
+      if (st.prio && k === 'todo') {
+        const pi = store.srcList('todo').findIndex(it => it.src === 'todoPrio');
+        if (pi >= 0) {
+          if (ext[pi] !== st.prio) {
+            ext = ext.slice();
+            extSrc = extSrc.slice();
+            while (ext.length < pi) { ext.push(''); extSrc.push(''); }
+            ext[pi] = st.prio; extSrc[pi] = 'todoPrio';
+          }
+        }
+      }
+      const rec = { m: k, t, txt: main, ext: ext.filter(x => x !== ''), extSrc, ts };
+      if (st.done) { rec.done = 1; rec.doneAt = st.doneAt || 0; }
+      if (st.status) { rec.status = st.status; }
+      if (st.abandonedAt) { rec.abandonedAt = st.abandonedAt; }
+      if (st.dueTs) { rec.dueTs = st.dueTs; rec.calTs = 0; }   // 计划时间与「已推日历」联动，带过来就得清掉旧标记
+      out.push(rec);
     });
     return { recs: out, bad };
   },
