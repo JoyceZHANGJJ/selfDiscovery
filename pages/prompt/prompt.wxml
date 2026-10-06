@@ -4,13 +4,16 @@
     <view class="body">
       <view class="a-hd">
         <view class="bk" bindtap="onClose">‹ 返回</view>
-        <view class="a-tt">提示词</view>
+        <view class="a-tt" bindtap="onTitleTap">提示词</view>
       </view>
 
-      <!-- 两个 tab：管理 / 试跑 -->
-      <view class="mtabs">
+      <!-- 两个 tab：管理 / 试跑。
+           试跑是开发调试用的，默认**不露出入口**：它一次要真调大模型、花额度，
+           误点进去的人只看到一堆 JSON，还以为出了错。改成连点标题 5 次才进（见 onTitleTap）。
+           真进了试跑之后 tab 才显示——否则没有回来的路。 -->
+      <view wx:if="{{tab==='test'}}" class="mtabs">
         <view class="mtab {{tab==='manage'?'on':''}}" data-v="manage" bindtap="onTabTap">提示词</view>
-        <view class="mtab {{tab==='test'?'on':''}}" data-v="test" bindtap="onTabTap">试跑</view>
+        <view class="mtab on" data-v="test" bindtap="onTabTap">试跑</view>
       </view>
 
       <!-- ============ 提示词管理 ============ -->
@@ -19,18 +22,52 @@
 
         <view wx:if="{{plErr}}" class="err">提示词读不到：{{plErr}}</view>
 
+        <!-- 加载中：先给骨架，别先说「还没有提示词槽位」。
+             云函数这一来一回通常要一秒多，那一秒里屏幕是空的，
+             用户会以为是自己没配过，或者以为页面坏了。 -->
+        <block wx:if="{{plLoading}}">
+          <view wx:for="{{skRows}}" wx:key="*this" class="prow skrow">
+            <view class="pr-l">
+              <view class="sk-line sk-w60"></view>
+              <view class="sk-line sk-sm sk-w40" style="margin-top:7px"></view>
+            </view>
+            <view class="sk-line sk-sm" style="width:44px"></view>
+          </view>
+        </block>
+
+        <block wx:else>
         <block wx:for="{{groups}}" wx:key="group" wx:for-item="g">
           <view class="sect-t">{{g.name}}</view>
+          <view wx:if="{{g.group==='preset'}}" class="qhint" style="margin:-2px 0 8px">这几条不会自己生效——它们是备用的附加指令：用的时候把正文复制到上面某个槽位的末尾（或粘到「试跑」里的追加框）。</view>
           <view wx:for="{{g.slots}}" wx:key="slot" wx:for-item="s"
                 class="prow" data-slot="{{s.slot}}" bindtap="openSlot">
             <view class="pr-l">
-              <view class="pr-t">{{s.name}} <text class="pr-v">v{{s.rev}}</text><text wx:if="{{s.edited}}" class="pr-ed">已改过</text><text wx:if="{{s.state==='reserved'}}" class="pr-re">未接入</text></view>
+              <view class="pr-t">{{s.name}} <text class="pr-v">v{{s.rev}}</text><text wx:if="{{s.edited}}" class="pr-ed">已改过</text><text wx:if="{{s.state==='opt'}}" class="pr-re">不自动生效</text></view>
               <view class="pr-d">{{s.desc}}</view>
             </view>
             <view class="pr-n">{{s.chars}} 字 ›</view>
           </view>
         </block>
         <view wx:if="{{!plErr && !groups.length}}" class="qhint">还没有提示词槽位。</view>
+        </block>
+
+        <!-- 一键全部恢复：放在列表读完的位置，不放顶部。
+             它一次改掉所有被改过的槽位，是本页破坏性最大的操作，得让人先看完清单再决定。
+             editedCount 是唯一判据——一个都没改过时不该弹确认框（见 resetAllDefault 注释）。 -->
+        <view wx:if="{{!plLoading && editedCount > 0}}" class="sect-t" style="margin-top:20px">全部恢复</view>
+        <view wx:if="{{!plLoading && editedCount > 0}}" class="card">
+          <view class="c-h">
+            <view class="c-t">恢复出厂默认</view>
+            <view class="c-clear" bindtap="resetAllDefault">{{resetting?'恢复中…':'一键全部恢复'}}</view>
+          </view>
+          <view class="qhint" style="margin-top:0">
+            当前有 <text style="font-weight:700">{{editedCount}}</text> 个提示词被你改过。
+            点右边会把它们<text style="font-weight:700">全部</text>换回内置版本——每个旧版都会留成历史，需要的话还能逐个切回来。
+          </view>
+        </view>
+        <view wx:if="{{!plLoading && editedCount === 0 && groups.length}}" class="qhint">
+          所有提示词都还是出厂默认，没有需要恢复的。
+        </view>
 
         <!-- 打开一个槽位后的编辑区 -->
         <block wx:if="{{cur}}">
@@ -74,7 +111,7 @@
                 class="vrow {{verIdx===i?'open':''}}">
             <view class="vr-h" data-i="{{i}}" bindtap="openVer">
               <view class="vr-l">
-                <view class="vr-t">v{{v.rev}} <text wx:if="{{v.note}}" class="vr-note">{{v.note}}</text></view>
+                <view class="vr-t">v{{v.rev}} <text wx:if="{{v.note}}" class="vr-note">{{v.note}}</text><text wx:if="{{v.base}}" class="vr-base">基线</text></view>
                 <view class="vr-d">{{v.time}} · {{v.chars}} 字</view>
               </view>
               <view class="vr-x" data-i="{{i}}" catchtap="revertVer">切回</view>
@@ -83,6 +120,7 @@
               <view class="rules-b contract">{{verBody}}</view>
             </view>
           </view>
+          <view wx:if="{{vers.length}}" class="qhint" style="margin-top:8px">只保留最近 {{verKeep}} 个版本（出厂默认那一版永久保留）；更早的会被自动清掉。</view>
 
           <view class="btn gh" bindtap="closeSlot">关闭</view>
         </block>
@@ -160,7 +198,12 @@
       <!-- 历史 -->
       <view class="sect-t" style="margin-top:18px">历史试跑 <text style="font-weight:400;color:var(--ink3);font-size:11.5px">（留着对比哪一版更好）</text></view>
       <view wx:if="{{listErr}}" class="err">历史读不到：{{listErr}}</view>
-      <view wx:elif="{{list.length===0}}" class="qhint">还没有试跑记录。</view>
+      <view wx:elif="{{listLoading}}" class="skline-only">
+        <view class="sk-line sk-w40" style="height:11px"></view>
+        <view class="sk-line sk-w60" style="height:11px"></view>
+        <view class="sk-line sk-w30" style="height:11px"></view>
+      </view>
+      <view wx:elif="{{!list.length}}" class="qhint">还没有试跑记录。</view>
       <view wx:for="{{list}}" wx:key="_id" wx:for-item="a" wx:for-index="i"
             class="hrow {{detailIdx===i?'open':''}}" data-i="{{i}}" bindtap="onItemTap">
         <view class="hr-l">

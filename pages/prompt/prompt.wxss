@@ -101,6 +101,14 @@
 .pr-d { font-size: 11.5px; color: var(--ink3); line-height: 1.6; margin-top: 3px; }
 .pr-n { flex-shrink: 0; font-size: 11.5px; color: var(--ink3); }
 
+/* 加载骨架：复用 app.wxss 的 .sk-line（动画、圆角都现成）。
+   但灰条要压在**白底卡片**上，而 --soft 只比白深一档，对比太弱、几乎看不见。
+   所以这里按 profile / persona 页的既有做法压一层半透明黑——天然跟着卡片底色走。 */
+.skrow { align-items: flex-start; }
+.skrow .sk-line, .skline-only .sk-line { background: rgba(0, 0, 0, .06); }
+.skrow .sk-line::after, .skline-only .sk-line::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); }
+.skline-only { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 12px 13px; margin-bottom: 7px; }
+
 /* 历史版本行 */
 .vrow { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 10px 12px; margin-bottom: 7px; }
 .vrow.open { border-color: var(--accent); }
@@ -108,6 +116,8 @@
 .vr-l { flex: 1; min-width: 0; }
 .vr-t { font-size: 13px; font-weight: 700; color: var(--ink); }
 .vr-note { font-size: 11.5px; font-weight: 400; color: var(--ink2); margin-left: 5px; word-break: break-word; }
+/* 基线标记：出厂默认那版永远不会被清掉，得一眼能认出来 */
+.vr-base { display: inline-block; font-size: 10px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 0 6px; margin-left: 5px; vertical-align: 1px; }
 .vr-d { font-size: 11px; color: var(--ink3); margin-top: 2px; }
 /* 「切回」做成描边小按钮而不是纯文字：它会改掉正在生效的内容，得像个体操 */
 .vr-x { flex-shrink: 0; font-size: 12px; color: var(--ink2); border: 1px solid var(--line); border-radius: 99px; padding: 4px 11px; }

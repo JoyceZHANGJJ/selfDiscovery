@@ -99,19 +99,25 @@ Page(pageBase({
     errText: '',
     list: [],             // 历史试跑（摘要）
     listErr: '',          // 历史列表读不到时的真实原因（别把失败显示成「没有记录」）
+    listLoading: true,    // 区分「还没加载完」和「真的没有记录」——见下方 loadList 注释
     detail: null,         // 展开看的那一条（含完整结果）
     detailIdx: -1,
 
     // ---- 提示词管理 ----
     groups: [],           // 分组槽位（不含正文，只含 rev / 字数 / 是否改过）
     plErr: '',            // 列表读不到的真实原因
+    plLoading: true,      // 同上：这个页面所有的「还没有…」都必须区分「没加载完」
+    skRows: [1, 2, 3, 4, 5],   // 骨架占位的行数（槽位一共 10 个，先给 5 行，别铺满一屏）
     cur: null,            // 正在编辑的槽位 { slot,name,desc,body,builtin,rev,edited,contract,state }
     curErr: '',
     saveNote: '',         // 保存时的备注（进历史版本）
     saving: false,
+    editedCount: 0,       // 被改过的槽位有几个——「全部恢复」按钮据此决定要不要给确认框
+    resetting: false,     // 批量恢复在途中（拦重复点击：这操作一秒内不该被点两次）
     showContract: false,  // 契约层默认折叠：多数人不需要看，但要看的人一定要看得到
     vers: [],             // 该槽位的历史版本（摘要）
     verErr: '',
+    verKeep: 10,           // 云端保留上限（真值在云端，这里只用于显示说明文案）
     verBody: '',          // 展开看的历史版本正文
     verIdx: -1,
     liveRev: {}           // 各槽位当前线上 rev，试跑时用来显示「我拿的是哪版做的基线」
@@ -129,17 +135,66 @@ Page(pageBase({
     this.setData({ tab: v, errText: '', plErr: '' });
   },
 
+  /* 连点标题 5 次进试跑（隐藏入口）。
+     为什么要藏：试跑一次是真调大模型、真花额度，返回的还只是一屏摊平的 JSON。
+     它是改提示词时的开发工具，不是日常功能，摆成明摆着的 tab 只会让误点的人
+     以为页面出了错。藏起来不是不让人用，而是别让人「碰巧」用。
+     为什么是 5 次：3 次容易在点标题时顺手触发（返回键就在旁边一点），
+     10 次记不住；5 次是「我明确知道自己在做什么」的手感。
+     计数按 1.5 秒窗口重置 —— 不重置的话，一天里随便点几下标题就凑够了，
+     藏入口就等于没藏。 */
+  onTitleTap() {
+    const now = Date.now();
+    // 中间隔太久就重新数（而不是接着数）：否则「今天点过 3 次、明天点 2 次」会进得去
+    const n = (now - (this._ttAt || 0) <= 1500) ? (this._ttN || 0) + 1 : 1;
+    this._ttAt = now;
+    this._ttN = n;
+    if (n < 5) {
+      // 最后两次给个提示：连点是有节奏的，用户得知道系统在数他
+      if (n === 3) wx.showToast({ title: '再点 2 次进入试跑', icon: 'none', duration: 1200 });
+      return;
+    }
+    this._ttN = 0; this._ttAt = 0;
+    this.setData({ tab: 'test', errText: '', plErr: '' });
+    wx.showToast({ title: '已进入试跑', icon: 'none' });
+  },
+
   // ===== 提示词管理 =====
 
   // 拉槽位列表。失败时显示真实原因，不要静默显示成「还没有提示词」——
   // 那样会让人以为是自己没配过。
+  //
+  // **这一次调用同时干两件事**（原来分成loadPrompts + loadLiveRevs 两次请求打同一个
+  // action，白白多跑一趟，还会让「列表先出来、线上版本号后补上」闪一下）：
+  //   1) 填groups —— 管理页要显示的槽位卡片；
+  //   2) 填 liveRev —— 试跑页要显示的「当前线上 vN」。
   loadPrompts() {
+    // 只有「一份都还没有」时才点亮骨架。保存 / 切回之后也会重拉，
+    // 那时列表本来就在屏幕上，再闪一下骨架反而像清空了。
+    if (!this.data.groups.length) this.setData({ plLoading: true });
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'promptList' } })
       .then(res => {
         const r = res.result || {};
-        this.setData({ groups: r.groups || [], plErr: r.error || '' });
+        const groups = r.groups || [];
+        const live = {};
+        let edited = 0;
+        groups.forEach(g => (g.slots || []).forEach(s => {
+          live[s.slot] = s.rev;
+          if (s.edited) edited++;
+        }));
+        this.setData({
+          groups: groups,
+          plErr: r.error || '',
+          plLoading: false,
+          liveRev: live,
+          // wxml 不能在for 里累加，所以在JS 里数好——「全部恢复」按钮靠它决定
+          // 是给确认框还是直接告诉用户「本来就都是默认值」
+          editedCount: edited,
+          // curLive 依赖 liveRev，所以拿到之后要重算一次，否则切类型时显示的还是旧值
+          curLive: this.curLiveFor(this.data.type)
+        });
       })
-      .catch(() => { this.setData({ plErr: '调用失败（网络或云函数报错）' }); });
+      .catch(() => { this.setData({ plErr: '调用失败（网络或云函数报错）', plLoading: false }); });
   },
 
   // 打开一个槽位。正文几百上千字，所以**只在打开单个槽位时才拉**（promptList 不带正文）。
@@ -166,7 +221,7 @@ loadVersions(slot) {
       .then(res => {
         const r = res.result || {};
         const list = (r.list || []).map(v => Object.assign({}, v, { time: fmtTs(v.createdAt) }));
-        this.setData({ vers: list, verErr: r.error || '' });
+        this.setData({ vers: list, verErr: r.error || '', verKeep: r.keep || 10 });
       })
       .catch(() => { this.setData({ verErr: '版本列表读不到（网络或云函数报错）' }); });
   },
@@ -242,6 +297,73 @@ loadVersions(slot) {
             this.loadVersions(cur.slot);
           })
           .catch(() => { wx.hideLoading(); wx.showToast({ title: '操作失败', icon: 'none' }); });
+      }
+    });
+  },
+
+  // **一键恢复全部出厂默认** —— 调乱了提示词时的整体退路。
+  //
+  // 为什么要单独有这个，而不能只靠单槽位的 resetDefault：真实场景是「我改了五六个槽位，
+  // 现在想全部推倒重来」。一个个点开恢复，既慢又容易漏掉几个，而且漏掉的那几个
+  // 还留在生效状态——更糟的是你以为自己全恢复了。
+  //
+  // 为什么按钮在列表底部而不是顶部的显眼处：它一次改掉 10 个槽位，是这个页面上
+  // 破坏性最大的操作，必须放在「已经读完整个列表、确认自己要什么」的位置，
+  // 还得二次确认。只列出**真的被改过**的那些，让确认框直接告诉他会失去什么。
+  resetAllDefault() {
+    if (this.data.resetting) return;
+    // 从已加载的列表里挑出被改过的槽位。
+    // 云函数也会自己再比一遍（没改过的直接跳过），这里先筛是为了让确认框说清
+    // 「会改哪几个」——如果只说「全部恢复」，用户根本不知道自己要放弃什么。
+    const changed = [];
+    (this.data.groups || []).forEach(g => (g.slots || []).forEach(s => {
+      if (s.edited) changed.push(s.name);
+    }));
+    if (!changed.length) {
+      // 一个都没改过还来点这个，多数是以为页面没刷新。在提示里说清楚，
+      // 比默默弹一个空操作让人以为坏了要好。
+      wx.showToast({ title: '所有提示词都还是出厂默认', icon: 'none', duration: 2000 });
+      return;
+    }
+    const names = changed.slice(0, 6).join('、') + (changed.length > 6 ? ' 等 ' + changed.length + ' 个' : '');
+    wx.showModal({
+      title: '全部恢复出厂默认',
+      content: '会把 ' + changed.length + ' 个被改过的提示词全部换回内置版本：' + names +
+               '\n\n每个旧版都会留成历史，需要的话还能逐个切回来。已经生成好的回看与画像不受影响。',
+      confirmText: '全部恢复',
+      confirmColor: '#B4544E',
+      success: (res) => {
+        if (!res.confirm) return;
+        this.setData({ resetting: true });
+        wx.showLoading({ title: '恢复中', mask: true });
+        wx.cloud.callFunction({ name: 'analysis', data: { action: 'promptResetAll' } })
+          .then(r2 => {
+            wx.hideLoading();
+            this.setData({ resetting: false });
+            const rr = r2.result || {};
+            if (rr.error) { wx.showToast({ title: rr.error, icon: 'none', duration: 3000 }); return; }
+            // 部分失败必须说出来。静默只报成功，会让人以为全恢复了，
+            // 而实际上还有一两个槽位保留着改过的内容在生效。
+            if (rr.failed && rr.failed.length) {
+              wx.showModal({
+                title: '大部分恢复了',
+                content: '成功 ' + rr.restored + ' 个，还有 ' + rr.failed.length + ' 个失败：\n' +
+                         rr.failed.map(f => f.slot).join('、') + '\n\n可以重新进一次页面再试，或单独打开对应槽位恢复。',
+                showCancel: false, confirmText: '知道了'
+              });
+            } else {
+              wx.showToast({ title: '已全部恢复 · ' + rr.restored + ' 个', icon: 'none', duration: 2200 });
+            }
+            // 列表的「已改过」标记和 rev 都变了，两处都要重拉；
+            // 正则开着编辑区的话，那份正文也得跟着刷新。
+            this.loadPrompts();
+            if (this.data.cur) this.refreshCurMeta();
+          })
+          .catch(() => {
+            wx.hideLoading();
+            this.setData({ resetting: false });
+            wx.showToast({ title: '操作失败（网络或云函数报错）', icon: 'none' });
+          });
       }
     });
   },
@@ -424,11 +546,9 @@ loadVersions(slot) {
               showCancel: false, confirmText: '知道了'
             });
             this.refreshCurMeta();
+            // loadPrompts 会顺带刷新 liveRev（它是唯一读线上版本号的地方），
+            // 所以这里不用再手动改一次——两处各改一次迟早会对不上。
             this.loadPrompts();
-            // 让「当前线上 v?」立刻跟上，否则用户会以为没生效
-            const lv = Object.assign({}, this.data.liveRev);
-            lv[rr.slot || slot] = rr.rev;
-            this.setData({ liveRev: lv, curLive: this.curLiveFor(this.data.type) });
           })
           .catch(() => { wx.hideLoading(); wx.showToast({ title: '操作失败（网络或云函数报错）', icon: 'none' }); });
       }
@@ -437,28 +557,13 @@ loadVersions(slot) {
 
   // 历史列表（摘要，不含结果正文）
   loadList() {
+    this.setData({ listLoading: true });
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'ptestList' } })
       .then(res => {
         const r = res.result || {};
-        this.setData({ list: (r.list || []), listErr: r.error || '' });
-        // 顺手把各槽位当前线上 rev 拉下来：试跑时要知道「基线是哪一版」
-        this.loadLiveRevs();
+        this.setData({ list: (r.list || []), listErr: r.error || '', listLoading: false });
       })
-      .catch(() => { this.setData({ listErr: '调用失败（网络或云函数报错）' }); });
-  },
-
-  // 各槽位当前生效的 rev。用来在试跑页显示「当前线上 vN」——
-  // 没有它就没法确认「我这次拿的是线上那版做的基线，还是已经改过的」。
-  loadLiveRevs() {
-    wx.cloud.callFunction({ name: 'analysis', data: { action: 'promptList' } })
-      .then(res => {
-        const groups = (res.result && res.result.groups) || [];
-        const live = {};
-        groups.forEach(g => (g.slots || []).forEach(s => { live[s.slot] = s.rev; }));
-        // curLive 依赖 liveRev，所以拿到之后要重算一次，否则切类型时显示的还是旧值
-        this.setData({ liveRev: live, curLive: this.curLiveFor(this.data.type) });
-      })
-      .catch(() => { /* 拿不到不影响试跑，只是少了「线上 vN」这行提示 */ });
+      .catch(() => { this.setData({ listErr: '调用失败（网络或云函数报错）', listLoading: false }); });
   },
 
   onItemTap(e) {
