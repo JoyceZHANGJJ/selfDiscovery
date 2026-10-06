@@ -35,6 +35,7 @@ Page(pageBase({
     quickMax: store.QUICKCATS_MAX,   // 上限（store 里单一来源，不写死）
     _selKeys: [],      // 已勾选的 key 有序列表（todo:<类别> / jot:<类别>）
     themeOpts: [],     // 主题表：每项 k / n / c（主色）/ on（当前）/ fav（常用）
+    themeOpen: false,  // 「外观 · 主题」是否展开：**默认收起**（10 个主题铺开占大半屏），与「问候语轮换」同一套折叠
     themeName: '',     // 当前主题的中文名（设置页那一行显示）
     favCount: 0,       // 常用主题已勾数量
     favMax: store.FAVTHEMES_MAX,   // 常用主题上限（store 里单一来源）
@@ -154,6 +155,10 @@ Page(pageBase({
     this.setData({ _selKeys: sel, quickOpts, quickCount: sel.length });
   },
   _keyToCat(k) { return k.indexOf('jot:') === 0 ? { m: 'jot', cat: k.slice(4) } : { m: 'todo', cat: k.slice(5) }; },
+
+  /* 点「主题」那一行 = 展开 / 收起主题列表（默认收起，见 data.themeOpen）。
+     只是折叠，不影响当前主题与「常用」的勾选 */
+  toggleTheme() { this.setData({ themeOpen: !this.data.themeOpen }); },
 
   /* 外观 · 主题：像「快捷创建」一样直接铺在设置页里（不用浮层 / 子页面——
      tab 页无法拦截系统返回键，浮层按返回会退出小程序、子页面又多一次跳转）。
