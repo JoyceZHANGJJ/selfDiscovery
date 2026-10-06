@@ -1,5 +1,6 @@
 // pages/profile/profile.js —— 个人画像
-// 基于全部历史记录，由云函数 analysis 的 action:'profile' 生成一份「人物深度分析报告」。
+// 基于全部历史记录，由云函数 analysis 的 action:'profile' 生成一份「专属人物深度分析报告」
+// （七章：基础画像 / 核心盘点 / 适配方向 / 未来推演 / 行动方案 / 决策辅助 / 总结）。
 // 每 openid 一份最新：进页面先 profileGet（只读、秒回、不花大模型额度）。
 //
 // 交互约定：
@@ -44,14 +45,20 @@ function mapProfile(p) {
   };
   const s = (v) => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
   const f = (p.future && typeof p.future === 'object') ? p.future : {};
+  const d = (p.decision && typeof p.decision === 'object') ? p.decision : {};
   return {
     _id: p._id,
     summary: s(p.summary).slice(0, 300),
-    basic: o(p.basic, ['info', 'traits', 'body', 'finance', 'life']),
+    basic: o(p.basic, ['info', 'energy', 'decision', 'body', 'finance', 'env']),
     core: o(p.core, ['strengths', 'downsides', 'conflicts']),
-    fit: o(p.fit, ['work', 'life', 'avoid']),
+    fit: o(p.fit, ['workFirst', 'workCareful', 'workAvoid', 'life', 'risks']),
     future: { neutral: s(f.neutral), optimistic: s(f.optimistic), cautious: s(f.cautious) },
     action: o(p.action, ['quick', 'rules', 'metrics']),
+    decision: {
+      rhythm: s(d.rhythm),
+      framework: Array.isArray(d.framework) ? d.framework : [],
+      trial: Array.isArray(d.trial) ? d.trial : []
+    },
     conclusion: s(p.conclusion).slice(0, 500),
     n: p.n || 0,
     updatedAt: p.updatedAt || 0,

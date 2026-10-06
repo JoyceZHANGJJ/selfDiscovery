@@ -54,7 +54,10 @@
 .sub-li.act { color: var(--ink); font-weight: 600; }
 .sub-p { font-size: 13.5px; color: var(--ink2); line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
 
-/* 第六章 总结卡 */
+/* 风险清单：带因果链条（触发条件 → 后果 → 预警信号），左描边区分于普通列表 */
+.risk-li { font-size: 13px; color: var(--ink2); line-height: 1.75; word-break: break-word; padding: 8px 10px; border-left: 3px solid #B0556E; background: rgba(176, 85, 110, .06); border-radius: 0 8px 8px 0; }
+
+/* 总结卡 */
 .pcard.concl { background: var(--accent-soft); border-color: var(--accent); }
 .concl-t { font-size: 14.5px; font-weight: 700; color: var(--ink); line-height: 1.8; }
 

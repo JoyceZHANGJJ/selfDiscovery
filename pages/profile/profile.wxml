@@ -7,7 +7,7 @@
         <view class="a-tt">个人画像</view>
       </view>
       <view class="hint-row">
-        <view class="hint">基于你的全部记录，做一份「人物深度分析报告」——你是哪种人、适合往哪走、容易卡在哪。资料里没有的不脑补，推论会标【推论】。下拉可刷新；重新生成每周一次（周一0点后可再来）。</view>
+        <view class="hint">基于你的全部记录，做一份「专属人物深度分析报告」：你是哪种人、适合往哪走、容易卡在哪、怎么决策。只用你的记录，不脑补；推断会标【推论】，没信号的章节宁可留空。写实，不美化。下拉可刷新；重新生成每周一次（周一0点后可再来）。</view>
         <view wx:if="{{p}}" class="a-regen {{cooling||pending?'off':''}}" bindtap="onGenerate">{{cooling?'本周已生成':(pending?'生成中…':'↻ 重新生成')}}</view>
       </view>
 
@@ -52,37 +52,41 @@
               <view class="sub-l">客观基础信息</view>
               <view class="sub-list"><view wx:for="{{p.basic.info}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
-            <view wx:if="{{p.basic.traits.length}}" class="sub">
-              <view class="sub-l">性格特质 / 认知模式 / 内在偏好</view>
-              <view class="sub-list"><view wx:for="{{p.basic.traits}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            <view wx:if="{{p.basic.energy.length}}" class="sub">
+              <view class="sub-l">能量模式（充电 / 耗电场景）</view>
+              <view class="sub-list"><view wx:for="{{p.basic.energy}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.basic.decision.length}}" class="sub">
+              <view class="sub-l">决策模式（倾向 / 漏洞 / 思维陷阱）</view>
+              <view class="sub-list"><view wx:for="{{p.basic.decision}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
             <view wx:if="{{p.basic.body.length}}" class="sub">
-              <view class="sub-l">身体状态 / 精力特点</view>
+              <view class="sub-l">身体约束（健康 / 精力 / 体力）</view>
               <view class="sub-list"><view wx:for="{{p.basic.body}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
             <view wx:if="{{p.basic.finance.length}}" class="sub">
-              <view class="sub-l">财务现状 / 核心目标 / 底层顾虑</view>
+              <view class="sub-l">财务现状 / 底线 / 顾虑</view>
               <view class="sub-list"><view wx:for="{{p.basic.finance}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
-            <view wx:if="{{p.basic.life.length}}" class="sub">
-              <view class="sub-l">生活 / 环境偏好</view>
-              <view class="sub-list"><view wx:for="{{p.basic.life}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            <view wx:if="{{p.basic.env.length}}" class="sub">
+              <view class="sub-l">环境 & 社交偏好（能接受 / 绝对排斥）</view>
+              <view class="sub-list"><view wx:for="{{p.basic.env}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
           </view>
 
           <!-- 第二章 核心盘点 -->
           <view class="chap">
-            <view class="chap-h"><text class="chap-no">二</text>核心盘点：优势 & 短板 & 内在冲突</view>
+            <view class="chap-h"><text class="chap-no">二</text>核心盘点：优势 / 短板 / 内在冲突</view>
             <view wx:if="{{p.core.strengths.length}}" class="sub">
-              <view class="sub-l good">核心优势</view>
+              <view class="sub-l good">核心优势（何时发挥 / 何时失效）</view>
               <view class="sub-list"><view wx:for="{{p.core.strengths}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
             <view wx:if="{{p.core.downsides.length}}" class="sub">
-              <view class="sub-l warn">短板与天然限制</view>
+              <view class="sub-l warn">短板与天然限制（触发条件 → 后果）</view>
               <view class="sub-list"><view wx:for="{{p.core.downsides}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
             <view wx:if="{{p.core.conflicts.length}}" class="sub">
-              <view class="sub-l bad">内在矛盾</view>
+              <view class="sub-l bad">内在矛盾（两边诉求 → 爆发场景）</view>
               <view class="sub-list"><view wx:for="{{p.core.conflicts}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
           </view>
@@ -90,33 +94,41 @@
           <!-- 第三章 适配方向推荐 -->
           <view class="chap">
             <view class="chap-h"><text class="chap-no">三</text>适配方向推荐</view>
-            <view wx:if="{{p.fit.work.length}}" class="sub">
-              <view class="sub-l">工作模式 / 任务 / 环境</view>
-              <view class="sub-list"><view wx:for="{{p.fit.work}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            <view wx:if="{{p.fit.workFirst.length}}" class="sub">
+              <view class="sub-l good">优先尝试 · 工作模式 / 任务 / 环境</view>
+              <view class="sub-list"><view wx:for="{{p.fit.workFirst}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.fit.workCareful.length}}" class="sub">
+              <view class="sub-l">谨慎尝试（设边界 / 限量）</view>
+              <view class="sub-list"><view wx:for="{{p.fit.workCareful}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.fit.workAvoid.length}}" class="sub">
+              <view class="sub-l bad">尽量避开（耗精力 / 放大短板）</view>
+              <view class="sub-list"><view wx:for="{{p.fit.workAvoid}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
             <view wx:if="{{p.fit.life.length}}" class="sub">
-              <view class="sub-l">生活方案 / 习惯 / 调节</view>
+              <view class="sub-l">生活习惯 / 自我调节（具体动作 + 何时执行）</view>
               <view class="sub-list"><view wx:for="{{p.fit.life}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
-            <view wx:if="{{p.fit.avoid.length}}" class="sub">
-              <view class="sub-l warn">需要规避（风险清单）</view>
-              <view class="sub-list"><view wx:for="{{p.fit.avoid}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            <view wx:if="{{p.fit.risks.length}}" class="sub">
+              <view class="sub-l warn">风险清单（触发条件 → 连锁后果 → 预警信号）</view>
+              <view class="sub-list"><view wx:for="{{p.fit.risks}}" wx:key="*this" wx:for-item="it" class="risk-li">{{it}}</view></view>
             </view>
           </view>
 
           <!-- 第四章 未来图景推演 -->
           <view class="chap">
-            <view class="chap-h"><text class="chap-no">四</text>未来图景推演（三种情景）</view>
+            <view class="chap-h"><text class="chap-no">四</text>未来图景推演（条件推演，非预言）</view>
             <view wx:if="{{p.future.neutral}}" class="sub">
-              <view class="sub-l">中性情景</view>
+              <view class="sub-l">中性情景 · 维持现状</view>
               <view class="sub-p">{{p.future.neutral}}</view>
             </view>
             <view wx:if="{{p.future.optimistic}}" class="sub">
-              <view class="sub-l good">乐观情景</view>
+              <view class="sub-l good">乐观情景 · 做到哪几件关键事</view>
               <view class="sub-p">{{p.future.optimistic}}</view>
             </view>
             <view wx:if="{{p.future.cautious}}" class="sub">
-              <view class="sub-l bad">保守风险情景</view>
+              <view class="sub-l bad">保守风险情景 · 触发行为与预警信号</view>
               <view class="sub-p">{{p.future.cautious}}</view>
             </view>
           </view>
@@ -125,22 +137,39 @@
           <view class="chap">
             <view class="chap-h"><text class="chap-no">五</text>实操行动方案</view>
             <view wx:if="{{p.action.quick.length}}" class="sub">
-              <view class="sub-l good">优先尝试的小行动</view>
+              <view class="sub-l good">低成本试错行动（优先，可随时终止）</view>
               <view class="sub-list"><view wx:for="{{p.action.quick}}" wx:key="*this" wx:for-item="it" class="sub-li act">· {{it}}</view></view>
             </view>
             <view wx:if="{{p.action.rules.length}}" class="sub">
-              <view class="sub-l">长期要建立的规则 / 边界</view>
+              <view class="sub-l">长期规则 / 个人边界红线</view>
               <view class="sub-list"><view wx:for="{{p.action.rules}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
             <view wx:if="{{p.action.metrics.length}}" class="sub">
-              <view class="sub-l">监测指标（自我复盘）</view>
+              <view class="sub-l">复盘监测指标（可量化）</view>
               <view class="sub-list"><view wx:for="{{p.action.metrics}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
             </view>
           </view>
 
-          <!-- 第六章 总结 -->
+          <!-- 第六章 决策辅助专项 -->
+          <view wx:if="{{p.decision.rhythm || p.decision.framework.length || p.decision.trial.length}}" class="chap">
+            <view class="chap-h"><text class="chap-no">六</text>决策辅助专项</view>
+            <view wx:if="{{p.decision.rhythm}}" class="sub">
+              <view class="sub-l">适合的决策节奏</view>
+              <view class="sub-p">{{p.decision.rhythm}}</view>
+            </view>
+            <view wx:if="{{p.decision.framework.length}}" class="sub">
+              <view class="sub-l">思考框架 & 要避开的思维陷阱</view>
+              <view class="sub-list"><view wx:for="{{p.decision.framework}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.decision.trial.length}}" class="sub">
+              <view class="sub-l">试错策略（哪些可大胆试 / 哪些绝不能试）</view>
+              <view class="sub-list"><view wx:for="{{p.decision.trial}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+          </view>
+
+          <!-- 第七章 总结 -->
           <view wx:if="{{p.conclusion}}" class="pcard concl">
-            <view class="chap-h sm">六 · 总结</view>
+            <view class="chap-h sm">七 · 总结</view>
             <view class="concl-t">{{p.conclusion}}</view>
           </view>
         </block>
