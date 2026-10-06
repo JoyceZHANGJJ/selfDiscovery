@@ -37,10 +37,24 @@
 | `ptestDel` | 小程序（试跑页） | 是 | 否 | 是（删一条） | 删掉一条试跑记录 |
 | `profileGet` | 小程序（进页先调） | 是 | 否 | 否 | 读已存画像（秒回，不花额度） |
 | `profile` | 小程序（生成按钮）+ 控制台 | 是 | **是** | 是 | 按**全部历史记录**生成/ 覆盖个人画像（七章报告） |
+| `promptList` | 小程序（提示词管理页）+ 控制台 | 否 | 否 | 否 | 列出全部提示词槽位（分组 / rev / 是否被改过；**不含正文**） |
+| `promptGet` | 小程序（提示词管理页） | 是 | 否 | 否 | 读一个槽位的正文 + 出厂值 + 只读的输出字段契约 |
+| `promptSave` | 小程序（提示词管理页） | 是 | 否 | 否 | **保存提示词正文，立即生效**；自动给旧版留快照，rev 恒 +1 |
+| `promptReset` | 小程序（提示词管理页） | 是 | 否 | 否 | 恢复出厂默认（也是一次正常保存，同样留快照） |
+| `promptVersions` | 小程序（提示词管理页） | 是 | 否 | 否 | 某槽位的历史版本列表（摘要，不含正文） |
+| `promptVersionGet` | 小程序（提示词管理页） | 是 | 否 | 否 | 取某个历史版本的正文 |
+| `promptRevert` | 小程序（提示词管理页） | 是 | 否 | 否 | 切回某个历史版本（走一次正常保存，新 rev 恒 +1） |
+| `promptAdopt` | 小程序（试跑页） | 是 | 否 | 否 | **把某次试跑用的正文设为线上生效**——试跑→线上的桥 |
 
 > `list` / `profileGet` / `ptestList` / `ptestGet` / `promptPreview` 不花大模型额度，可以随便点。
 > `gen` / `backfill` / `profile` / `promptTest` 每次真正调用大模型都算一次额度，见「额度与幂等」。
 > `promptTest` 是唯一「调模型但**不写正式文档**」的 action——试跑错多少次都不影响线上回看与画像。
+>
+> **提示词注册表**（`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptVersions` /
+> `promptVersionGet` / `promptRevert` / `promptAdopt`）只读写 `promptset` 与 `promptsetver`，
+> **不调大模型、不碰任何业务集合**，所以随便调、不花额度。
+> 提示词正文现在存在数据库里，改完保存即生效，**不用再「改代码 + 上传部署」**。
+> 详见「五、提示词注册表」。
 
 ---
 
@@ -307,6 +321,131 @@
 
 ---
 
+## 五、提示词注册表（换提示词不用再部署云函数）
+
+以前换提示词只能「改代码 → 上传部署 → 等 1~2 分钟」，一轮几分钟。
+现在提示词正文存在 `promptset`里，在小程序里改完保存**立即生效**。
+
+### 为什么要分两层（重要）
+
+现在的提示词由三段拼成：
+
+```
+common.review（人设与共同原则）
+  + review.dayWeek / review.monthYear（任务规则）
+  + fieldsSpec() / profileFieldsSpec()（**输出字段契约**）
+```
+
+**只有前两层可改，最后一层锁死。** 原因：输出字段说明是**机器契约**——
+`fieldsSpec()` 生成的字段名，和云函数 `generateFor` 里的 JSON 解析、和 `review.wxml`
+里的渲染，是一一对应的。如果把它开放给用户改，用户把 `patterns.drain` 改成别的名字，
+模型会照着新名字返回，云函数解析不到 → **页面白屏，而且很难查出是自己改了字段名**。
+
+所以 `promptGet` 会把契约层原文返回给前端**只读展示**（让人看懂模型被要求返回什么结构），
+但**不提供编辑入口**。
+
+### 槽位清单
+
+| 槽位名 | 界面名 | 接在哪 |
+|---|---|---|
+| `common.review` | 回看人设与共同原则 | 所有周期回看的开头 |
+| `review.dayWeek` | 周期复盘 · 简版（日 / 周） | 日、周回看的规则段 |
+| `review.monthYear` | 周期复盘 · 完整版（月 / 年） | 月、年回看的规则段 |
+| `report.core` | 人物深度报告 · 核心规则 | 「人物深度报告」的全部硬性要求 |
+| `persona.full` | 个人画像 · 完整版 | 增量画像（后续阶段接入） |
+| `persona.lite` | 个人画像 · 轻量版 | 增量画像（后续阶段接入） |
+| `preset.focusBody` | 附加 · 聚焦身心 | 可勾选的附加指令 |
+| `preset.riskFirst` | 附加 · 强化风险 | 可勾选的附加指令 |
+| `preset.sleepEnergy` | 附加 · 睡眠-能量关联 | 可勾选的附加指令 |
+| `preset.keepShort` | 附加 · 压缩篇幅 | 可勾选的附加指令 |
+
+### 出厂值兜底：绝不报错
+
+`loadPrompt()` 在任何情况下都会返回一段可用的提示词，**不会抛错**：
+
+| 情况 | 行为 |
+|---|---|
+| 集合不存在（新环境没部署过） | 静默返回 `PROMPT_BUILTIN` 里的出厂值 |
+| 某条记录不存在 / 读取报错 | 同上 |
+| 正文是空字符串 | 同上（不会给模型一段空规则） |
+
+**这是硬性要求**：提示词是增强项，绝不能成为 AI 回看的单点故障。
+桩测确认：集合完全不存在时，system 消息仍有完整内容，回看照常工作。
+
+出厂值就写在代码里（`PROMPT_BUILTIN`），它同时是「恢复默认」的还原目标——
+改它等于改出厂设定。首次调用 `promptList` / `promptGet` / `promptSave` 时会自动播种。
+
+### 版本与回滚
+
+- 每次保存：**先把旧正文写进 `promptsetver` 快照**，再更新 `promptset`，`rev` 恒 +1。
+- `rev` **恒 +1 而不复用旧号**。这样「rev=N」永远唯一对应一份内容——
+  否则切回 rev=5 之后，rev=5 的含义会随时间漂移，历史记录就不可信了。
+- 留快照前会先查「这一版是不是已经有快照了」。**为什么必须查**：并发保存时两次调用
+  可能读到同一个 `curRev`，都往`promptsetver` 写同 rev 的快照，而「切回 rev=N」用的是
+  `where().limit(1)`，命中哪条不确定——这种不一致是**静默的**。单用户手动点几乎撞不上，
+  但多一次极轻的查询就能堵住，值得。
+
+### 控制台测试模板
+
+```json
+{ "action": "promptList", "openid": "你的openid" }
+```
+
+```json
+{ "action": "promptGet", "openid": "你的openid", "slot": "review.dayWeek" }
+```
+
+```json
+{ "action": "promptSave", "openid": "你的openid", "slot": "review.dayWeek",
+  "body": "角色：日志复盘分析师。\n任务：只抓睡眠与精力。\n行动上限 2 条。",
+  "note": "试一下只看睡眠" }
+```
+
+```json
+{ "action": "promptVersions", "openid": "你的openid", "slot": "review.dayWeek" }
+```
+
+```json
+{ "action": "promptVersionGet", "openid": "你的openid", "slot": "review.dayWeek", "rev": 1 }
+```
+
+```json
+{ "action": "promptRevert", "openid": "你的openid", "slot": "review.dayWeek", "rev": 1 }
+```
+
+```json
+{ "action": "promptReset", "openid": "你的openid", "slot": "review.dayWeek" }
+```
+
+```json
+{ "action": "promptAdopt", "openid": "你的openid", "id": "promptlog里的那条_id" }
+```
+
+### 返回值
+
+| 返回 | 含义 |
+|---|---|
+| `{ groups:[{ group, name, slots:[{ slot,name,desc,state,rev,chars,edited }] }] }` | `promptList`。**正文不进列表**（几百上千字），只给字数与 rev |
+| `{ slot,name,desc,body,builtin,edited,rev,updatedAt,contract }` | `promptGet`。`contract` 是**只读**的输出字段说明 |
+| `{ ok:true, rev:N }` | `promptSave` / `promptReset` / `promptRevert` 成功，`rev` 是新的版本号 |
+| `{ ok:true, rev:N, fromRev:M }` | `promptRevert` 成功，`fromRev` 是切回去的那一版 |
+| `{ ok:true, rev:N, slot, slotName }` | `promptAdopt` 成功，`slotName` 是这次改的是哪个槽位 |
+| `{ list:[{ rev,note,chars,createdAt }] }` | `promptVersions`。**不含正文**，正文要 `promptVersionGet` 单条取 |
+| `{ error:"提示词正文不能为空…" }` | 想清空正文。点「恢复默认」而不是删内容 |
+| `{ error:"这次试跑没有改提示词正文…" }` | `promptAdopt` 拿的是基线试跑（没改正文），没什么可采纳 |
+
+### 排错
+
+| 现象 | 原因 | 怎么办 |
+|---|---|---|
+| `promptList` 返回的 `edited` 一直是 `false` | 说明一直是出厂值（没保存过） | 正常。`promptSave` 一次后就会变true |
+| 保存成功但生成结果没变化 | 该槽位没接到这个功能上（看 `state`） | `state:"reserved"` 的槽位是后续阶段才接入的 |
+| 改了提示词，输出结构乱了 | 不该发生——契约层不给编辑 | 若确实需要改结构，必须改代码里的 `fieldsSpec()` |
+| 看不到历史版本 | 之前一直是出厂值，rev=1 从没被替换过 | 出厂值不算「旧版」，没有快照；改一次就有了 |
+| `promptGet` 报 `没有这个提示词槽位` | `slot` 名拼错了 | 对照上面的槽位清单 |
+
+---
+
 ## 三、配置
 
 ### 环境变量
@@ -338,10 +477,19 @@
 | `analysis` | 仅创建者可读写 | 回看文档（day / week / month / year） |
 | `profile` | 仅创建者可读写 | 个人画像，**每 openid 只保留最新一份** |
 | `promptlog` | 仅创建者可读写 | **提示词试跑结果**（`promptTest` 写入）。只增不删，供对比不同提示词版本；正式文档一个字都不碰 |
+| `promptset` | **仅云函数读写** | 提示词注册表，**每个槽位一条**（`_id` 就是槽位名）。小程序不直读，全走云函数 |
+| `promptsetver` | **仅云函数读写** | 提示词历史快照，每次保存追加一条 |
 
 `profile` 不存在会报 `-502005`；云函数首次用到时会自动创建，所以**手动建或不管都行**。
 `promptlog` 同理，**云函数也会自动创建**，不用手动建（缺了试跑仍可用，只是 `saved:false`）。
+`promptset` / `promptsetver` 也自动创建；**而且就算它们完全不存在，AI 回看和画像照常工作**
+（`loadPrompt` 会静默退回代码里的出厂值），见「五、提示词注册表」。
 （集合是**整个云环境共享**的，不是每个用户各有一份——用户靠文档里的 `openid` 字段区分。）
+
+> 💡 `promptset` / `promptsetver` 里存的是**提示词**，对所有用户共用一份（不是每人各存一份）。
+> `openid` 字段只用于记录「最后是谁改的」，不做权限隔离。
+> `savePrompt` 用 `doc(slot).set({ data })` **按槽位覆盖**，所以同一个槽位永远只有一条当前记录；
+> 历史全在 `promptsetver` 里另存。
 
 > ⚠️ **写库姿势提醒（踩过）**：云函数端 `wx-server-sdk` 的写入方法必须包一层 `data`：
 > `collection.add({ data: doc })`、`doc(id).update({ data: {...} })`。
@@ -493,6 +641,7 @@
 
 | 日期 | 变更 |
 | --- | --- |
+| 2026-10-06 | **阶段一：提示词从代码搬进数据库（提示词注册表）。** 新增 `promptset`（每槽位一条当前值）+ `promptsetver`（每次保存留快照），以及 8 个只读写提示词、**不调大模型不碰业务集合**的 action：`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptVersions` / `promptVersionGet` / `promptRevert` / `promptAdopt`。`buildMessages` / `buildProfileMessages` 改为从库里取提示词——**换提示词不用再「改代码 + 上传部署」，保存即生效**。三条硬约束：①**出厂值兜底绝不报错**（集合不存在 / 读失败 / 正文为空，一律静默退回 `PROMPT_BUILTIN` 里的出厂值，桩测确认集合完全不存在时 system 仍有完整内容，AI 回看照常工作——提示词是增强项，不能成为单点故障）；②**输出字段契约锁死**（`fieldsSpec` / `profileFieldsSpec` 只在 `promptGet` 里只读展示、不给编辑：字段名与云函数解析、页面渲染一一对应，改了会让页面白屏且极难自查）；③`rev` **恒 +1 不复用旧号**，让「rev=N」唯一对应一份内容、回滚后历史不漂移。留快照前先查该 rev 是否已有快照——并发保存会写出同 rev 的两条快照，「切回 rev=N」用 `where().limit(1)` 命中哪条不确定，这类不一致是**静默的**，多一次极轻的查询即可堵住。`promptAdopt` 是「试跑→线上」的桥：把某次试跑用的正文设为线上生效（此前试跑只能看、改不了线上）。两个 build 函数改成 async，**6 处调用点全部补 `await`**（漏 await 不报错，只会静默拿到 Promise）。本阶段行为与改动前完全一致，是纯重构。 |
 | 2026-10-06 | 修「库里有试跑记录、页面却永远显示还没有试跑记录」：`ptestList` 里 `.get()` **漏了 `await`**，`list.data` 恒为 `undefined`，被 `|| []` 兜成空数组，于是无论库里有多少条都显示为空。补上 `await`（已全项目扫过，其余数据库调用都带 await）。同时试跑页不再吞掉列表读取的错误——读不到时显示真实原因，而不是一律显示「还没有记录」。 |
 | 2026-10-06 | 修「试跑结果存不进历史（库里只有 `_id`）」：`promptTest` 写入时写成了 `add(doc)`，**漏包 `{ data: ... }`**。云函数端 `wx-server-sdk` 的 `add` 必须包 `data`（与小程序端相反），漏包时**不报错、照样返回 `_id`**，但插进去的是一条只有 `_id` 的空文档——所以表现是「提示已存进历史，列表却永远空着」，属于静默失败。同文件另三处写入都包了，只有这一处漏。修复：① 包上 `data`；② 加**回读校验**（读回确认 `openid`/`createdAt` 真落库才认成功），同类静默失败当场暴露；③ `promptlog` 改为**云函数自动创建**，不用手动建；④ 落库失败时回真实原因 `saveError`，不再笼统说「集合可能不存在」。**已写入的空壳文档需手动删除**（它们没有内容）。 |
 | 2026-10-06 | 新建本文档：把散落在 README 与代码注释里的测试模板、参数、返回、额度、幂等、排错整理成一份；补上 `promptPreview` / `profileGet` / `force` 等此前只在README 一句话里带过的用法；给 `tools/check-syntax.py` 加了「action 必须在本文档里有模板」的同步检查。 |
