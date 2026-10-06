@@ -42,7 +42,7 @@
 /* ================= AI 回看入口 ================= */
 .ai-entry { display: flex; align-items: center; gap: 11px; background: var(--accent-soft); border-radius: var(--r-card); padding: 12px 14px; margin: 0 0 12px; }
 .ai-e-badge { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-.ai-e-badge.prof { background: #B0853A; }   // 个人画像：琥珀色，和 AI 回看的绿色区分
+.ai-e-badge.prof { background: #B0853A; }   /* 个人画像：琥珀色，和 AI 回看的绿色区分 */
 .ai-e-l { flex: 1; min-width: 0; }
 .ai-e-t { font-size: 12.5px; font-weight: 700; color: var(--ink); }
 .ai-e-s { font-size: 12.5px; color: var(--ink2); margin-top: 2px; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
