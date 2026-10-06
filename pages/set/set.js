@@ -220,30 +220,60 @@ Page(pageBase({
   },
 
   /* 数据：导出 / 导入 / 清空 */
-  // 导出（可读 / 备份）—— 见utils/exporter.js；一次全量拉取，不依赖可能被截断的本地内存。
+  // 导出——见 utils/exporter.js；一次全量拉取，不依赖可能被截断的本地内存。
+  // 两种格式（可读 / 备份）× 两种去向（复制 / 存成txt 文件）。
   // 以后要支持「选维度 / 选天导出」，入口层把选择结果当 filter 传给 exporter.build 即可。
   onExport() {
-    const run = (mode) => {
+    const run = (mode, how) => {
       wx.showLoading({ title: '导出中', mask: true });
       store.loadAllRecords({}).then(recs => {
         wx.hideLoading();
-        this._copy(exporter.build(recs, mode), mode);
+        this._out(exporter.build(recs, mode), mode, how);
       }).catch(() => {
         // 全量拉取失败：退到本地内存（可能不完整），并说清是哪一种
         wx.hideLoading();
-        this._copy(exporter.build(app.globalData.records || [], mode), mode, true);
+        this._out(exporter.build(app.globalData.records || [], mode), mode, how, true);
       });
     };
     wx.showActionSheet({
-      itemList: ['可读导出（给人看）', '备份导出（导入用）'],
-      success: r => run(r.tapIndex === 0 ? 'read' : 'backup'),
+      itemList: ['可读 · 复制到剪贴板', '可读 · 存成 txt 文件', '备份 · 复制到剪贴板', '备份 · 存成 txt 文件'],
+      success: r => {
+        const m = (r.tapIndex < 2 ? 'read' : 'backup');
+        run(m, (r.tapIndex % 2 === 0 ? 'copy' : 'file'));
+      },
       fail: () => {}
     });
   },
-  _copy(text, mode, partial) {
+  _out(text, mode, how, partial) {
+    if (how === 'copy') return this._copy(text, partial);
+    this._saveTxt(text, mode, partial);
+  },
+  _copy(text, partial) {
     wx.setClipboardData({
       data: text,
       success: () => wx.showToast({ title: partial ? '已复制（可能不完整）' : '已复制到剪贴板', icon: 'none' })
+    });
+  },
+  // 存成 txt：写到小程序自己的目录（USER_DATA_PATH），存完直接用 openDocument 打开。
+  // openDocument 官方只列了 doc/xls/ppt/pdf，但客户端实际能开 txt；万一某个端开不了，
+  // 退回「文件已存好」+ 路径，不让用户以为导出失败了。
+  _saveTxt(text, mode, partial) {
+    const name = (app.APP_NAME || '识己手札') + '-' + (mode === 'read' ? '记录' : '备份') + '-' + fmtDay(Date.now()) + '.txt';
+    const filePath = wx.env.USER_DATA_PATH + '/' + name;
+    wx.getFileSystemManager().writeFile({
+      filePath, data: text, encoding: 'utf8',
+      success: () => {
+        wx.showToast({ title: '已保存', icon: 'none' });
+        wx.openDocument({
+          filePath, showMenu: true,     // showMenu：打开后右上角能转发出去（小程序里的文件出不去）
+          fail: () => wx.showModal({
+            title: '已存成文件',
+            content: name + (partial ? '\n（这次是从本地缓存导出的，可能不完整）' : '') + '\n存放在小程序自己的目录里，可从右上角菜单或「文件」里找到。',
+            showCancel: false
+          })
+        });
+      },
+      fail: () => wx.showToast({ title: '保存失败', icon: 'none' })
     });
   },
   onImportTap() { this.setData({ importOverlay: true, importText: '' }); this.setTabHidden(true); },

@@ -106,8 +106,8 @@
 
       <!-- 数据 -->
       <view class="sect-t" style="margin-top:18px">数据</view>
-      <view class="srow" bindtap="onExport"><view class="sl">导出记录</view><view class="sr">复制 ▸</view></view>
-      <view class="qc-hint" style="margin:-4px 0 6px">点一下选格式：<text style="opacity:.9">可读导出</text>按天分组、人能直接读，待办的完成 / 放弃与完成日期、可做的「未做 / 在做 / 做了 / 不做」都会写出来；<text style="opacity:.8">备份导出是给「导入」用的，能把状态原样带回去。</text></view>
+      <view class="srow" bindtap="onExport"><view class="sl">导出记录</view><view class="sr">选格式 ▸</view></view>
+      <view class="qc-hint" style="margin:-4px 0 6px">点一下选格式与去向：<text style="opacity:.9">可读导出</text>按天分组、人能直接读，待办的完成 / 放弃与完成日期、可做的「未做 / 在做 / 做了 / 不做」都会写出来；<text style="opacity:.8">备份导出是给「导入」用的，能把状态原样带回去。两种都可以复制到剪贴板，或直接存成 txt 文件（存完自动打开，可从右上角菜单转发出去）。</text></view>
       <view class="srow"><view class="sl">导入记录</view><view class="sr" bindtap="onImportTap">粘贴</view></view>
       <view class="srow"><view class="sl">清空所有记录</view><view class="sr danger" bindtap="onClear">清空</view></view>
 
