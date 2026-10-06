@@ -1066,6 +1066,37 @@ function dueLabel(ts) {
   if (d.getHours() !== DUE_END_H || d.getMinutes() !== DUE_END_M) day += ' ' + date.hhmm(ts);
   return day;
 }
+
+/* 「自定…」浮层里的时刻快捷档：一天里最常被当成「截止」的几个点。
+   不用滚轮也能一次点到；想要真的任意时刻，下面还留着一个 time picker。
+   第一档是「不设时刻」＝当天 23:59，与四个日期档位同一个口径（「那天结束前」）。 */
+const DUE_TIMES = [
+  { k: 'none', n: '不设时刻', h: DUE_END_H, m: DUE_END_M },
+  { k: 'am', n: '早上 9:00', h: 9, m: 0 },
+  { k: 'noon', n: '中午 12:00', h: 12, m: 0 },
+  { k: 'pm', n: '下午 6:00', h: 18, m: 0 },
+  { k: 'eve', n: '晚上 9:00', h: 21, m: 0 }
+];
+// 某个时间戳落在哪一档时刻（回显高亮用）；对不上任何一档 → ''（＝picker 自定的任意时刻）
+function dueTimeKey(ts) {
+  if (!ts) return 'none';
+  const d = new Date(ts);
+  for (const t of DUE_TIMES) {
+    if (d.getHours() === t.h && d.getMinutes() === t.m) return t.k;
+  }
+  return '';
+}
+// 'YYYY-MM-DD' + 'HH:MM' -> 时间戳。日月任一认不出来 → 0（不猜，宁可不给）
+function dueFrom(dateStr, timeStr) {
+  const d0 = date.parseYmd(dateStr);
+  if (!d0) return 0;
+  const p = String(timeStr || '').split(':');
+  const h = +p[0], mi = +p[1];
+  const d = new Date(d0);
+  d.setHours(p.length >= 2 && h >= 0 && h < 24 && mi >= 0 && mi < 60 ? h : DUE_END_H,
+             p.length >= 2 && h >= 0 && h < 24 && mi >= 0 && mi < 60 ? mi : DUE_END_M, 0, 0);
+  return d.getTime();
+}
 // 逾期：过了那一刻还没完成。文案（昨天 / 10月2日）本身已经说明了过期，
 // 颜色只是再补一层「一眼扫到」的提示——色弱用户只看字也读得出来
 function dueOver(ts) { return !!ts && ts < Date.now(); }
@@ -2154,7 +2185,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, duePresetTs, dueNext, duePresetOf, dueLabel, dueOver, dueRank, dueDayEnd, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, dueNext, duePresetOf, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

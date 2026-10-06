@@ -59,4 +59,47 @@ function fmtDur(ms) {
   return (Math.round(d * 10) / 10) + ' 天';
 }
 
-module.exports = { DAY, dayStart, agoOf, datePrefix, dayLabel, hhmm, fmtDur };
+// ---------- 日历（选日期用） ----------
+
+function pad2(n) { return ('0' + n).slice(-2); }
+// 时间戳 -> 'YYYY-MM-DD'
+function ymd(ts) {
+  const d = new Date(ts || Date.now());
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+// 'YYYY-MM-DD' -> 当天 0 点的时间戳；认不出来给 0（不猜）
+function parseYmd(s) {
+  const p = String(s || '').split('-');
+  if (p.length !== 3) return 0;
+  const y = +p[0], mo = +p[1], d = +p[2];
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return 0;
+  return new Date(y, mo - 1, d, 0, 0, 0, 0).getTime();
+}
+
+/* 某个月的日历格子：固定 6 行 × 7 列（周一起始，与「回看」的自然周一致），
+   前后补空格补到 42 格——**固定高度**是故意的：翻月时格子不会整体跳一下。
+   每格 { ymd, d, inMonth, today, sel, past }
+     inMonth 本月那几号（前后补的空格为 false，画淡一点）
+     today 今天 / sel 等于传入的选中日 / past 早于今天（画淡，但仍可点）
+   past 仍可点：改一条已经逾期的待办时，它的计划时间就在过去，得能原样看到、也能重挑一天。 */
+function monthGrid(y, m, selYmd) {
+  const lead = (new Date(y, m, 1).getDay() + 6) % 7;   // 1 号是周日 → 前面空 6 格
+  const start = new Date(y, m, 1 - lead);
+  const t = ymd(Date.now());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const key = ymd(d.getTime());
+    cells.push({
+      ymd: key,
+      d: d.getDate(),
+      inMonth: d.getMonth() === m && d.getFullYear() === y,
+      today: key === t,
+      sel: !!selYmd && key === selYmd,
+      past: key < t
+    });
+  }
+  return cells;
+}
+
+module.exports = { DAY, dayStart, agoOf, datePrefix, dayLabel, hhmm, fmtDur, ymd, parseYmd, monthGrid };
