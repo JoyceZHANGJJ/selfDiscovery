@@ -1574,6 +1574,14 @@ Page(pageBase({
     this.recompute();
   },
 
+  /* 记页「最近」里待办行尾的「计划完成」胶囊：点一下＝取消计划。
+     确认框、清标记、提示全走 pageBase.clearDue（清单页 / 看页同一份），
+     这里只负责把 dataset 里的 id 取出来——记页的待办行是自己写的，取值路径与组件那条不同 */
+  onRecentDue(e) {
+    if (this.guardEdit()) return;
+    this.clearDue(this._id(e));
+  },
+
   /* 删除一条记录并给出撤销机会（操作条「删除」与就地编辑的「删除」共用） */
   _delRec(r) {
     const i = (app.globalData.records || []).indexOf(r);

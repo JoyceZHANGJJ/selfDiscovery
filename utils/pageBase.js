@@ -137,6 +137,40 @@ function pageBase(extra) {
       return true;
     },
 
+/* 待办行尾的「计划完成」胶囊：点一下＝**取消计划**（dueTs 归 0，胶囊随即消失）。
+       三页逐字相同，收在这里。要设／改具体日子走行尾左滑的快捷记面板或记卡那一行 chips。
+       ・这里只提供「清掉」，不提供「换下一档」：随手一点就换成另一个还没想清楚的日期，
+         事后往往说不清是哪天定的，而「不设计划」是常态、误改的代价比多点一次大。
+         清掉则方向唯一（回到没计划这个常态），不会把人带到一个意外的日子上。
+       ・清计划是少不了的破坏性操作，所以先问一句——胶囊很小，别让人为一次误点丢掉已定的日子。
+       ・走 store.setDue：真变了会连带清掉「已推日历」标记（手机日历里那条已经是旧时间了，
+         而小程序读不回也改不了系统日程，见 utils/calendar.js 的能力边界）。 */
+    onDueTap(e) { this.clearDue(this._id(e)); },
+    clearDue(id) {
+      const r = this.findRec(id);
+      if (!r || !store.isTask(r.m) || !r.dueTs) return;
+      const had = store.dueLabel(r.dueTs);
+      wx.showModal({
+        title: '取消计划完成',
+        content: '「' + had + '」这个计划要去掉吗？之后可以在左滑面板或记卡里重新定。',
+        confirmText: '取消计划',
+        confirmColor: '#B4544E',
+        success: (res) => {
+          if (!res.confirm) return;
+          store.setDue(r, 0);
+          store.updateRecord(r).catch(() => {});
+          this._refreshAfterDue();
+          wx.showToast({ title: '已取消计划' + (r.calTs === 0 ? '' : ' · 日历需重推'), icon: 'none' });
+        }
+      });
+    },
+    /* 改完 dueTs 后把当前页那几段列表重铺一遍：三页刷新入口不统一（rebuild / recompute），
+       记在这里免得每页各写一遍 typeof 判断 */
+    _refreshAfterDue() {
+      if (typeof this.rebuild === 'function') this.rebuild();           // 清单页 / 看页
+      else if (typeof this.recompute === 'function') this.recompute();  // 记页
+    },
+
 /* 操作条上的「推到日历」：把这一条的「计划完成」写进手机系统日历。
        记 / 看 / 清单 三页逐字相同，收在这里；真正干活的是 utils/calendar.js。
        三个页面各自在 onRecAction 里加一句 `if (type === 'cal') return this.pushCal(id);`

@@ -57,6 +57,12 @@ Component({
     },
     onCheck(e) { this.triggerEvent('check', { id: e.currentTarget.dataset.id }); },
     onTapRow(e) { if (!this.data.manage) return; this.triggerEvent('select', { id: e.currentTarget.dataset.id }); },
+    // 行尾「计划完成」胶囊：点一下＝取消计划。清计划是破坏性的，属于「管理」动作，
+    // 所以和左滑改一样只在清单页派发（概览态的看页照样不派发）
+    onDueTap(e) {
+      if (!this.data.manage) return;
+      this.triggerEvent('due', { id: e.currentTarget.dataset.id });
+    },
     // 长按＝复制，不是「管理」动作：概览态（看页）也照样派发
     onLongPress(e) { this.triggerEvent('longpress', { id: e.currentTarget.dataset.id }); },
     /* 行内触摸：只在「行尾起手的左滑」上插手——那是「就地改这一条」（派发 swipeleft 给页面）。
