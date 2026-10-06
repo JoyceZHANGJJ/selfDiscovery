@@ -1058,6 +1058,21 @@ function duePresetOf(ts, base) {
   }
   return '自定';
 }
+/* 「计划完成」那一行 chips 的**单一来源**：四个快捷键 + 「无」+「自定…」。
+   快捷记面板（custom-tab-bar）与记卡的待办维度共用这一份——两处要是各写一份，
+   加档位 / 改文案时必然慢慢走偏（面板改了记卡没改，同一件事两个说法）。
+   这一行的存在就是为了**不弹选择器**：点一格就设好；「自定…」是唯一的例外。
+   档位值一律现算（今天 23:59 / 明天 23:59 / 本周末 / 下周一），所以面板放一晚再点
+   也还是「从现在算的今天」。
+   「自定…」那一格的文字会换成已选的具体日期，这样点完自定一眼能看出选的是哪天 */
+function dueChips(ts) {
+  ts = ts || 0;
+  const pick = duePresetOf(ts);
+  const chips = DUE_STEPS.map(k => ({ k, t: k }));
+  chips.push({ k: '无', t: '无' });
+  chips.push({ k: '自定', t: pick === '自定' ? dueLabel(ts) : '自定…' });
+  return { ts, pick, chips };
+}
 // 行尾胶囊的文案：今天 / 明天 / 后天 / 昨天 / 10月12日（跨年才带年份），
 // 自定过具体时刻的再把时刻带出来（「明天 18:00」）。
 // **按当前时间现算**——库里存的只是那一刻的时间戳，「今天」是显示时才有的说法，
@@ -2189,7 +2204,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, dueNext, duePresetOf, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, dueNext, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

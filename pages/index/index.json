@@ -2,7 +2,8 @@
   "usingComponents": {
     "theme-switcher": "/components/theme-switcher/index",
     "rec-actions": "/components/rec-actions/rec-actions",
-    "inline-editor": "/components/inline-editor/inline-editor"
+    "inline-editor": "/components/inline-editor/inline-editor",
+    "due-sheet": "/components/due-sheet/index"
   },
   "navigationStyle": "custom",
   "enablePullDownRefresh": true

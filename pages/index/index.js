@@ -44,6 +44,10 @@ Page(pageBase({
     recentTab: 'recent',   // 「最近」这一段的切换：'recent'（最近）/ 'done'（已完成的最新十条）
     editing: false,
     focusIdx: -1,
+    // 待办的「计划完成」日历浮层（components/due-sheet，与快捷记面板共用同一个）：
+    // dueOpen＝开没开；dueTs＝打开时喂给它的当前值（只在点「自定…」那一刻写一次）
+    dueOpen: false,
+    dueTs: 0,
     // 维度标签行的「可滚动」渐变提示：只有标签真的超出、右侧还有内容时才显示
     tagFade: false,
     recSel: null,
@@ -82,6 +86,9 @@ Page(pageBase({
 
   st: {
     tag: 'obs', main: '', mainPick: null, pick: {}, typed: {}, free: {},
+    // 待办的「计划完成」（记录顶层字段 dueTs，不在 ext 里）：0＝没计划，是常态。
+    // 不点就一直是 0，绝不自动补日期；点「无」也能回到 0
+    due: 0,
     edit: null, ren: null, optUndo: null,
     startMode: false, completing: false, doing: false, showDoing: false, showDone: false,
     abandoning: false, showAbandon: false, ending: false, focusFree: '',
@@ -334,6 +341,8 @@ Page(pageBase({
     if (O.indexOf(r.txt) >= 0) { this.st.mainPick = r.txt; this.st.main = ''; }
     else { this.st.main = r.txt; this.st.mainPick = null; }
     this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    // 待办的计划完成：回显这条自己的（非待办 / 老记录都是 0）。它是顶层字段，不在 ext 里
+    this.st.due = r.dueTs || 0;
     (r.ext || []).forEach((v, i) => {
       let src = (r.extSrc || [])[i] || '', val = v;
       // 「今日」电池：纯图示档位，把任意值（档位 '0'..'4' 或旧 emoji）归一化成档位 v
@@ -588,13 +597,16 @@ Page(pageBase({
     // 其余细节行（如待办的「原因」「放弃原因」）仍在输入框下方
     const catItems = plain ? items.filter(it => it.type === 'g') : [];
     const bodyItems = plain ? items.filter(it => it.type !== 'g') : items;
+    // 待办的「计划完成」：档位表与文案都用 store.dueChips 那一份（与快捷记面板同源），
+    // 记卡里只是换个位置渲染。只有待办有这一行——随记 / 今日没有「打算哪天做完」这回事
+    const due = tag === 'todo' ? store.dueChips(this.st.due) : null;
     // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 放弃原因；结束(觉察) → 感受。
     // 索引按**真正渲染的那份**列表算：plain 时类别行不进 composer.items，用 items 会偏一位，
     // 聚焦与 #fld{idx} 都会落空（「放弃待办」要聚焦的正是这类被挤掉一位的框）
     const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
     const focusIdx = focusKey ? bodyItems.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
     // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
-    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', catItems, items: bodyItems, plain, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
+    return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', catItems, items: bodyItems, plain, due: due && { ts: due.ts, pick: due.pick, opts: due.chips }, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
       // 「归类」不需要输入框：从选项池点选即可（要靠「✎ 管理」增删），
       // 所以带描述的模块把主输入框整个去掉，输入框只留给「具体的描述」
       mainInput: !descItem,
@@ -719,6 +731,7 @@ Page(pageBase({
     }
     this.st.tag = k;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.st.due = 0;
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
     this.st.todayLocked = null;
     this.ensureModuleDefaults();
@@ -772,6 +785,30 @@ Page(pageBase({
     // 觉察与此刻的情绪都是 obsMood，联动同一套；取值行见 buildComposer 的 showDeg
     if (g === 'obsMood' && !arr.length) this.st.pick['obsDeg'] = [];
     this.recompute();
+  },
+
+  /* 待办那一行「计划完成」：点一格就设好（今天 / 明天 / 本周末 / 下周一 / 无），
+     只有「自定…」会开日历浮层——和快捷记面板同一条口径，这里只是换了个位置。
+     dueTs 不进 ext（那两条数组是按位置对齐的，见 store 里的说明），所以不走 onChip 那套 */
+  onDueChip(e) {
+    if (this.data.todayLocked && !this.data.editing) return;
+    const k = e.currentTarget.dataset.k;
+    if (k === '自定') { this.setData({ dueOpen: true, dueTs: this.st.due || 0 }); return; }
+    this.st.due = k === '无' ? 0 : store.duePresetTs(k);
+    this._refreshDue();
+  },
+  // 浮层点「好」：时间戳（认不出来是 0＝没计划）
+  onDuePicked(e) {
+    this.st.due = (e.detail && e.detail.ts) || 0;
+    this.setData({ dueOpen: false });
+    this._refreshDue();
+  },
+  onDueClose() { this.setData({ dueOpen: false }); },
+  /* 只把那一行刷新掉（不整页 recompute）：点一格 chip 只影响这一行的选中态与
+     「自定…」的文字，没必要顺带把最近列表也重铺一遍 */
+  _refreshDue() {
+    const d = store.dueChips(this.st.due);
+    this.setData({ 'composer.due.ts': d.ts, 'composer.due.pick': d.pick, 'composer.due.opts': d.chips });
   },
   onGroupInput(e) {
     const g = e.currentTarget.dataset.g, idx = e.currentTarget.dataset.idx;
@@ -866,6 +903,7 @@ Page(pageBase({
     this.st.edit = null;
     this.st.tag = def;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.st.due = 0;
     this.st.startMode = false; this.st.doing = false; this.st.completing = false;
     this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
@@ -909,6 +947,7 @@ Page(pageBase({
     const s = this.st;
     if ((s.main || '').trim()) return true;
     if (s.mainPick) return true;
+    if (s.due) return true;   // 挑过「计划完成」也算内容：切维度会把 st 整块重置，那是白挑
     const def = this._defaultPicks();
     const pk = s.pick || {};
     for (const g in pk) {
@@ -985,10 +1024,10 @@ Page(pageBase({
     // 保留流转相关字段（状态 / 开始时间 / 来源），避免编辑时被丢
     rec.status = er.status || '';
     rec.startedAt = startedAt;
-    // 计划完成 / 已推日历：记卡里没有这两格（改它们走行尾胶囊与左滑面板），
-    // 但保存后内存里那条会用 decorate 重建一次——不把原值搬过来就会被归 0，
-    // 行尾胶囊当场消失、得等下次刷新才回来
-    rec.dueTs = er.dueTs || 0;
+    // 计划完成：待办在记卡里就能设（那一行 chips）。其余维度沿用原值——
+    // 它们是顶层字段，不在 ext 里，漏搬就会在保存后内存那条被 decorate 归 0
+    rec.dueTs = this.st.tag === 'todo' ? (this.st.due || 0) : (er.dueTs || 0);
+    // 已推日历：记卡里仍然没有这一格（要重新推走操作条上的按钮），只把原值搬过来
     rec.calTs = er.calTs || 0;
     // 「开始」流转进入：保存时才落「进行中感受」这一刻——状态置在做、开始时间记当前
     if (this.st.startMode) { rec.status = 'doing'; rec.startedAt = Date.now(); }
@@ -1125,6 +1164,7 @@ Page(pageBase({
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.st.due = 0;   // 计划完成也一并归零：下一条待办默认又没有计划（「没计划」是常态）
     this.ensureModuleDefaults();   // 记下后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
     // 锁定态只对**今天**成立：把这条改到昨天 / 前几天后，今天并没有记录，
     // 不能进锁定态（否则用户以为今天记过了、结果再也记不了今天）。
@@ -1164,7 +1204,7 @@ Page(pageBase({
     // 又能选一次剩余能量、再写一句，而今天其实已经记过了（保存时才不会重复，取消却露出空表单）。
     // 这里与 afterSave 同一口径：今天有「今日」记录 → 回只读锁定态，显示已记的那条
     const locked = (rec && rec.m === 'today') ? this._todayLockedNow(rec) : this.st.todayLocked;
-    this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+    this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {}; this.st.due = 0;
     this.ensureModuleDefaults();   // 取消编辑后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
     this.st.todayLocked = locked;   // 与展示同步：接下来的判定（点 chip、切维度）都按这一份
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', todayLocked: locked });
@@ -1539,6 +1579,7 @@ Page(pageBase({
       wx.stopPullDownRefresh();
       this._refreshing = false;
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
+      this.st.due = 0;
       this.st.startMode = false; this.st.completing = false; this.st.abandoning = false; this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false; this.st.ending = false;
       // 刷新后仍在「可做」/「待办」/「随记」时，补回默认分类 / 类别（避免被清空）
       this.ensureModuleDefaults();

@@ -94,44 +94,8 @@
 .qa-dues { margin-bottom: 0; }
 .qa-dues .qa-chip { font-size: 12px; color: var(--ink2, #55524A); }
 
-/* 「自定…」浮层：月历 + 时刻快捷档。
-   样式照抄全局的 .sheet / .sh-*（组件里能拿到全局那份），这里只写自己的一层。
-   日历用 7 列 grid：格子宽高固定 → 6 行高度恒定，翻月时不跳 */
-.du-mon { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 8px; }
-.du-mon-t { font-size: 14.5px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-.du-arrow {
-  width: 34px; height: 34px; border-radius: 50%; background: var(--soft); color: var(--ink2);
-  font-size: 17px; line-height: 1; display: flex; align-items: center; justify-content: center; position: relative;
-}
-.du-arrow::after { content: ''; position: absolute; left: -8px; right: -8px; top: -8px; bottom: -8px; }
-.du-wk { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
-.du-wk1 { text-align: center; font-size: 11px; color: var(--ink4, #A9A498); }
-.du-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.du-cell {
-  height: 38px; line-height: 38px; text-align: center; border-radius: 10px;
-  font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; position: relative;
-}
-/* 前后补的空格：留着位置但画淡，免得这个月的 1 号看着像月初开始 */
-.du-cell.out { color: var(--ink4, #A9A498); opacity: .45; }
-/* 今天：不填色，只加一圈（选中态才是实心，两个别打架） */
-.du-cell.today { box-shadow: inset 0 0 0 1.5px var(--line2, #E2DCD1); font-weight: 700; }
-.du-cell.past { color: var(--ink4, #A9A498); }
-.du-cell.sel { background: var(--accent); color: #fff; font-weight: 700; }
-.du-lab { font-size: 12px; color: var(--ink4, #A9A498); padding: 16px 2px 6px; }
-.du-times { display: flex; flex-wrap: wrap; gap: 7px; }
-.du-time {
-  font-size: 12.5px; color: var(--ink2, #55524A); background: var(--surface, #FFFFFF);
-  border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; line-height: 1.2;
-}
-.du-time.on { background: var(--accent-soft, #E6F4F0); border-color: var(--accent, #2F8F7B); color: var(--accent, #2F8F7B); font-weight: 700; }
-.du-pk { display: block; padding-top: 10px; }
-.du-pick { display: flex; align-items: center; gap: 8px; background: var(--surface, #FFFFFF); border: 1px solid var(--line); border-radius: 12px; padding: 12px 13px; }
-.du-k { font-size: 12px; color: var(--ink4, #A9A498); flex: none; }
-.du-v { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-.du-c { font-size: 12px; color: var(--ink4, #A9A498); flex: none; }
-.du-hint { font-size: 11.5px; color: var(--ink4, #A9A498); line-height: 1.7; padding: 11px 2px 0; }
-/* 浮层压过页面浮层（.sheet 本来是 60）：面板是 62，不抬起来会被面板盖住上半截 */
-.sheet.du-sheet { z-index: 70; }
+/* 「自定…」浮层的 .du-* 样式已收敛到 components/due-sheet（记卡的待办那一行也用同一个组件）。
+   这里只留「谁压谁」的那一条：组件里的浮层是 70，盖得住本组件自己的面板 */
 .qa-row { display: flex; align-items: center; }
 .qa-in {
   flex: 1; min-width: 0; height: 38px; line-height: 38px; border: 1px solid var(--line2, #E2DCD1);

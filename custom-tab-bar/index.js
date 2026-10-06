@@ -64,27 +64,12 @@ function buildQaPrios() {
   return (store.getOPT('todoPrio') || []).map(n => ({ n, c: store.prioColor(n) }));
 }
 
-/* 「计划完成」的一行档位（同样只有待办才有）：四个快捷键 + 「无」+「自定…」。
-   这一行的存在就是为了**不弹选择器**——点一格就设好；「自定…」是唯一的例外。
-   档位值一律现算（today 23:59 / 明天 23:59 / 本周末 / 下周一），所以面板放一晚再点
-   也还是「从现在算的今天」。
-   「自定…」那一格的文字会换成已选的具体日期，这样点完自定一眼能看出选的是哪天 */
+/* 「计划完成」那一行的档位不是这里算的——档位表（今天 / 明天 / 本周末 / 下周一 / 无 / 自定…）
+   与文字都是 store.dueChips 一份，记卡待办那一行用的是同一个（两处各写一份必然走偏）。
+   这里只把键名换成本组件 data 上的名字 */
 function dueState(ts) {
-  ts = ts || 0;
-  const pick = store.duePresetOf(ts);
-  const chips = store.DUE_STEPS.map(k => ({ k, t: k }));
-  chips.push({ k: '无', t: '无' });
-  chips.push({ k: '自定', t: pick === '自定' ? store.dueLabel(ts) : '自定…' });
-  return { qaDueTs: ts, qaDues: chips, qaDuePick: pick };
-}
-// 浮层里两个选择器要的串：2026-10-06 / 23:59
-function ymd(ts) {
-  const d = new Date(ts);
-  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-}
-function hm(ts) {
-  const d = new Date(ts);
-  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  const d = store.dueChips(ts);
+  return { qaDueTs: d.ts, qaDues: d.chips, qaDuePick: d.pick };
 }
 // 默认选中的那档＝默认档「不紧急不重要」（与记卡一致：不点也有值，但列表不插旗）
 function qaPrioDefIdx() {
@@ -129,16 +114,8 @@ Component({
     qaDueTs: 0,          // 面板里当前选的计划时间戳（0＝没计划）
     qaDues: [],          // 那一行档位 chips（今天 / 明天 / 本周末 / 下周一 / 无 / 自定…）
     qaDuePick: '无',     // 高亮哪一格
-    // 「自定…」的浮层：默认停在某一天某时刻上，直接点格子 / 时刻档，不用先开滚轮
+    // 「自定…」浮层开没开。月历 / 时刻那些 state 都在 due-sheet 组件里（那边自己管）
     qaDueOpen: false,
-    qaDueDate: '',        // 当前选中的那天 'YYYY-MM-DD'
-    qaDueTime: '',        // 当前选中的时刻 'HH:MM'
-    qaDueYM: '',   // 浮层正在看哪个月 'YYYY-MM'（翻月只改这个，日期不动）
-    qaDueMonT: '',       // 月份头的文字（当年只写「10月」，跨年才带年份）
-    qaDueGrid: [],    // 42 格日历（date.monthGrid）
-    qaDueTimeKey: 'none', // 时刻落在哪一档（高亮；''＝picker 里的任意时刻）
-    qaDueTimes: store.DUE_TIMES,
-    qaDueWeek: ['一', '二', '三', '四', '五', '六', '日'],   // 周一起始，与「回看」的自然周一致
     qaIsTodo: true,      // 当前类别是不是待办（决定优先级那一行出不出）
     qaName: '',          // 当前类别名字（撤销条展示用）
     qaPh: '',            // 当前类别占位符
@@ -432,79 +409,21 @@ Component({
        与类别 / 优先级 chip 同一套：不动输入框里已写的内容，键盘也不闪断 */
     onQaDue(e) {
       const k = e.currentTarget.dataset.k;
-      if (k === '自定') { this._openQaDue(); return; }
+      if (k === '自定') { this.openQaDue(); return; }
       const keepFocus = !!this.data.qaFocus;
       this._qaChipAt = Date.now();
       this.setData(dueState(k === '无' ? 0 : store.duePresetTs(k)));
       if (keepFocus) this._qaKeepFocus();
     },
     /* 「自定…」：面板里唯一会展开一层的地方（要具体到某一天才用得上）。
-       里面是月历 + 时刻快捷档，**不用滚轮也能设好**；下面另留一个 picker 兜底
-       （真要 14:37 这种时刻才用）。
-       起点取当前值；当前是「无」就从「今天」起——别让浮层停在 1970 年 */
-  _openQaDue() {
-    const ts = this.data.qaDueTs || store.duePresetTs('今天');
-    this.setData({
-      qaDueOpen: true,
-      qaDueDate: ymd(ts),
-      qaDueTime: hm(ts),
-      qaDueTimeKey: store.dueTimeKey(ts)
-    });
-    this._setDueYM(ymd(ts).slice(0, 7));
-  },
-  /* 翻月只改「在看哪个月」，选中的日期不动——否则翻一下月份就把选好的那天弄丢了 */
-  _setDueYM(ym) {
-  const p = String(ym || '').split('-');
-    const y = +p[0], m = +p[1] - 1;
-    if (!y || m < 0 || m > 11) return;
-    const now = new Date();
-    this.setData({
-      qaDueYM: y + '-' + ('0' + (m + 1)).slice(-2),
-      // 当年不重复写年份（跨年才带）
-      qaDueMonT: (y === now.getFullYear() ? '' : y + '年') + (m + 1) + '月',
-      qaDueGrid: date.monthGrid(y, m, this.data.qaDueDate)
-    });
-  },
-  onQaDuePrev() {
-    const p = this.data.qaDueYM.split('-');
-    this._setDueYM((+p[1] === 1 ? (+p[0] - 1) + '-12' : p[0] + '-' + ('0' + (+p[1] - 1)).slice(-2)));
-  },
-  onQaDueNext() {
-    const p = this.data.qaDueYM.split('-');
-    this._setDueYM((+p[1] === 12 ? (+p[0] + 1) + '-01' : p[0] + '-' + ('0' + (+p[1] + 1)).slice(-2)));
-  },
-  // 点日历上的一天：只换日期，时刻保持不变（先点「不设时刻」再点日期的话，顺序反过来也一样）
-  onQaDueDay(e) {
-    const d = e.currentTarget.dataset.d;
-    if (!d) return;
-    this.setData({
-      qaDueDate: d,
-      qaDueGrid: date.monthGrid(+d.slice(0, 4), +d.slice(5, 7) - 1, d)
-    });
-  },
-  // 点时刻快捷档：换时刻，日期不动
-  onQaDueTimePick(e) {
-    const k = e.currentTarget.dataset.k;
-    const t = store.DUE_TIMES.find(x => x.k === k);
-    if (!t) return;
-    this.setData({
-      qaDueTimeKey: k,
-      qaDueTime: ('0' + t.h).slice(-2) + ':' + ('0' + t.m).slice(-2)
-    });
-  },
-  // 兜底的 picker：任意时刻。选完把高亮撤掉（它不属于任何一档）
-  onQaDueTime(e) {
-    this.setData({ qaDueTime: e.detail.value, qaDueTimeKey: '' });
-  },
-  closeQaDue() { this.setData({ qaDueOpen: false }); },
-  /* 浮层保存：日期串 + 时刻串拼回时间戳（store.dueFrom 里兜底 23:59——
-     与四个档位同一个口径：「那天结束前」） */
-  okQaDue() {
-    const ts = store.dueFrom(this.data.qaDueDate, this.data.qaDueTime);
-    if (!ts) { this.setData({ qaDueOpen: false }); return; }
-    this.setData(Object.assign({ qaDueOpen: false }, dueState(ts)));
-    wx.showToast({ title: '计划 · ' + store.dueLabel(ts), icon: 'none' });
-  },
+       月历 + 时刻快捷档都在 due-sheet 组件里（记卡的待办那一行用的是同一个），
+       这里只负责开与收；选完由组件的 change 事件把时间戳带回来 */
+    openQaDue() { this.setData({ qaDueOpen: true }); },
+    onQaDueClose() { this.setData({ qaDueOpen: false }); },
+    onQaDueChange(e) {
+      const ts = (e.detail && e.detail.ts) || 0;
+      this.setData(Object.assign({ qaDueOpen: false }, dueState(ts)));
+    },
 
     /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条。
        编辑模式（qaEditId 非空）走 _qaUpdate——更新原来那条，不是新建 */

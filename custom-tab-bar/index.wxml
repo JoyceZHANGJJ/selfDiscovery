@@ -48,43 +48,9 @@
     </view>
   </view>
 
-  <!-- 「自定…」的浮层：一个月历 + 一排时刻快捷档，点格子就设好（不用滚轮）。
-       下面留一个 time picker 兜底，真要 14:37 这种时刻才用得上。
-       样式：.sheet / .sh-* / .btn 是 app.wxss 的全局样式（本组件开了 addGlobalClass 才拿得到），
-       .du-* 是这个浮层自己的 -->
-  <view wx:if="{{qaDueOpen}}" class="sheet du-sheet">
-    <view class="sh-h"><view class="st">计划完成</view><view class="sx" bindtap="closeQaDue" aria-label="关闭">✕</view></view>
-    <view class="sh-sub">点一天，再点一个大致时刻；都不设就按那天结束前算</view>
-    <view class="sh-list">
-      <!-- 月份头：‹ 10月 ›。翻月只改「在看哪个月」，选中的日期不动 -->
-      <view class="du-mon">
-        <view class="du-arrow" bindtap="onQaDuePrev" aria-label="上一月">‹</view>
-        <view class="du-mon-t">{{qaDueMonT}}</view>
-        <view class="du-arrow" bindtap="onQaDueNext" aria-label="下一月">›</view>
-      </view>
-      <!-- 周一起始（与「回看」的自然周一致）。固定 6 行，格子不跳 -->
-      <view class="du-wk">
-        <view wx:for="{{qaDueWeek}}" wx:key="*this" class="du-wk1">{{item}}</view>
-      </view>
-      <view class="du-grid">
-        <view wx:for="{{qaDueGrid}}" wx:key="ymd" class="du-cell {{item.inMonth ? '' : 'out'}} {{item.today ? 'today' : ''}} {{item.sel ? 'sel' : ''}} {{item.past ? 'past' : ''}}" data-d="{{item.ymd}}" bindtap="onQaDueDay">{{item.d}}</view>
-      </view>
-      <!-- 时刻快捷档：一次点到，不开滚轮 -->
-      <view class="du-lab">时刻</view>
-      <view class="du-times">
-        <view wx:for="{{qaDueTimes}}" wx:key="k" class="du-time {{qaDueTimeKey===item.k ? 'on' : ''}}" data-k="{{item.k}}" catchtap="onQaDueTimePick">{{item.n}}</view>
-      </view>
-      <!-- 兜底：任意时刻（只有真的要 14:37 才用） -->
-      <picker mode="time" value="{{qaDueTime}}" bindchange="onQaDueTime">
-        <view class="du-pk"><view class="du-pick"><text class="du-k">其它时刻</text><text class="du-v">{{qaDueTime}}</text><text class="du-c">▸</text></view></view>
-      </picker>
-      <view class="du-hint">「不设时刻」＝那天 23:59（＝那天结束前），和今天 / 明天那几档同一个口径。</view>
-    </view>
-    <view class="sh-foot">
-      <view class="btn gh" bindtap="closeQaDue">取消</view>
-      <view class="btn" bindtap="okQaDue">好</view>
-    </view>
-  </view>
+  <!-- 「自定…」的浮层（月历 + 时刻快捷档）：组件化的，记卡那边递给待办用的是同一个
+       （见 components/due-sheet）——两处同一套交互、同一份档位，不各写一份慢慢走偏 -->
+  <due-sheet open="{{qaDueOpen}}" value="{{qaDueTs}}" bind:change="onQaDueChange" bind:close="onQaDueClose" />
 
   <!-- 记下后给一次撤销（与其它页同一套样式：屏幕正中的小卡片，见 app.wxss 的 .undo-bar） -->
   <view wx:if="{{qaUndo}}" class="toastline undo-bar qa-undo">

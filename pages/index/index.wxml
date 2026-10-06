@@ -98,6 +98,17 @@
               </block>
             </view>
           </view>
+          <!-- 待办的「计划完成」：与上面类别 / 优先级同一个位置——先定是什么、多紧要、打算哪天做完，
+               再写内容。dueTs 是记录的**顶层字段**（不在 ext 那两条对齐数组里），
+               所以它不走上面 catItems 那个循环，单独一行。
+               档位与文字都与快捷记面板同源（store.dueChips）；点「自定…」开的是同一个
+               due-sheet 组件（月历 + 时刻档），不在页面里再养一份 -->
+          <view wx:if="{{composer.due}}" class="extra cattop">
+            <view class="qrow"><view class="ql">计划完成</view></view>
+            <view class="chips">
+              <view wx:for="{{composer.due.opts}}" wx:key="k" class="chip {{composer.due.pick===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onDueChip">{{item.t}}</view>
+            </view>
+          </view>
           <!-- 今日的「能量说明」：这句话写长了要能折行、跟着内容自己变高，所以用 textarea（auto-height）——
                其余类别（备忘 / 购物 / 随记）仍是一行的 input：一句话就够，不需要换行。
                注：textarea 没有键盘上的「完成」键（回车＝换行），保存走底部「记下 / 保存修改」 -->
@@ -266,6 +277,11 @@
   <!-- 就地编辑（待办 / 随记：改这一句话 + 删除）：与清单 / 看页共用同一个组件。
        最近里行上「左滑」即弹出（见 index.js 的 onRowTouchend → swipeEdit）；长按是复制 -->
   <inline-editor visible="{{qeOn}}" focus="{{qeFocus}}" rect="{{qe}}" value="{{qeTxt}}" bind:save="onQSave" bind:del="onQDel" />
+
+  <!-- 「计划完成」的日历浮层（待办那一行的「自定…」开它）：与快捷记面板共用同一个组件。
+       放在 .screen **外面**——.screen 上挂着 onBodyTap（点空白＝收浮层、编辑态还会拦一下），
+       放里面每点一格日历都会顺带触发一次 -->
+  <due-sheet open="{{dueOpen}}" value="{{dueTs}}" bind:change="onDuePicked" bind:close="onDueClose" />
 
   <theme-switcher lock="{{editing}}" bind:locked="onLocked" />
 </view>

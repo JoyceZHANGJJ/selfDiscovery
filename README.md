@@ -20,7 +20,7 @@ pages/list          清单：待办 / 随记的管理（筛选 + 折叠 + 操作
 pages/review        回看：周 / 月复盘 + 主题档案
 pages/set           设置：问候语、快捷记类别、主题与常用主题、导入导出
 pages/options       选项池「✎ 管理」
-components/         todo-list（待办三段）· rec-actions（操作条）· inline-editor · theme-switcher
+components/         todo-list（待办三段）· rec-actions（操作条）· inline-editor · theme-switcher · due-sheet（「计划完成」的月历浮层，快捷记面板与记卡共用）
 custom-tab-bar/     底部 tab + 快捷记「＋」球（清单页以 quick-ball 复用同一个组件）
 tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对
 ```
@@ -40,6 +40,8 @@ tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对
 | `done` / `doneAt` | 完成标记与完成时间 |
 | `status` / `startedAt` / `abandonedAt` | 流转：可做与待办的 `doing` / `done` / `abandon` |
 | `endTs` | 觉察的结束时间 |
+| `dueTs` | 待办的**计划完成**时间（0＝没计划，是常态）。**放顶层而不是 ext**：ext/extSrc 是按位置对齐的两条数组，导出导入 / 迁移 / 改名都挂在这套对齐上，往里塞时间戳会让对齐变别扭 |
+| `calTs` | 最后一次「推到手机日历」的时间（0＝没推过）。只作回显——小程序读不回系统日历 |
 | `ref` / `refTxt` / `refTs` | 老数据（原「做了」模块）遗留的引用 |
 
 **`ext` 与 `extSrc` 是按顺序对齐的两条数组**——这是细节回显、改名、迁移、导出导入的地基：
