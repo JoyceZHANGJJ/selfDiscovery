@@ -182,7 +182,8 @@ const REVIEW_RULES_LITE = [
   '【硬性】禁止空话套话：不许写「调整心态、多休息、好好反思」这类无效建议；推论必须依托日志内容，禁止脑补资料里没有的信息。',
   '【硬性】事件分级：常态重复 / 短期波动 / 单次偶发——偶发事件不放大解读、不写成模式。',
   '【硬性】行动上限：日最多 2 条、周最多 3 条；每条严格写成「动作｜执行时机或频率｜目标｜自检指标」，四段缺一不可。',
-  '【硬性】精简文字、突出重点，降低手机阅读负担；记录少就写得轻，不硬凑（没有的字段给空数组或空字符串）。'
+  '【硬性】精简文字、突出重点，降低手机阅读负担；记录少就写得轻，不硬凑（没有的字段给空数组或空字符串）。',
+  '【硬性·不重复】summary 是全文一句话结论，facts 里**不要**再把 summary 复读一遍；facts 与 patterns / compare / risks 之间也不要出现同一句话说两遍、或换个标签重说同一件事。'
 ].join('\n');
 
 const REVIEW_RULES_FULL = [
@@ -194,7 +195,8 @@ const REVIEW_RULES_FULL = [
   '【硬性 4】行动建议上限 3 条，侧重中长期规划与方向校准，不写细碎每日小事；每条写明动作 + 执行时机或频率 + 判断是否有效的简易自检指标；拒绝空泛话术。',
   '【硬性 5】重点识别：能量消耗场景、能量充电场景、内耗触发条件、情绪波动规律、重复踩坑点、长期偏好与价值取向。',
   '【硬性 6】跨周期对比：只把多次重复的信号标记为风险，一次性事件不进风险；行动要有方向性、能落地、能自检。',
-  '【硬性 7】精简文字、突出重点，降低手机阅读负担；记录少就写得轻，不硬凑（没有的字段给空数组或空字符串）。'
+  '【硬性 7】精简文字、突出重点，降低手机阅读负担；记录少就写得轻，不硬凑（没有的字段给空数组或空字符串）。',
+  '【硬性 8·不重复】summary 是全文一句话结论，facts 里**不要**再把 summary 复读一遍；facts 与 patterns / compare / risks 之间也不要出现同一句话说两遍、或换个标签重说同一件事。'
 ].join('\n');
 
 // 个人画像（人物深度分析报告）专属规则：在 COMMON_RULES 的「温暖专业 / 不引用原话 /
@@ -481,6 +483,48 @@ function objOf(v, keys) {
   return o;
 }
 
+// ============ 跨板块去重 ============
+// 为什么要它：模型常把同一句话说两遍——最典型是**卡片头的 summary 和 facts 第一条一模一样**
+// （用户看到的是：折叠时一句、展开第一行又是同一句）；还爱给同一句套两个标签各说一次，
+// 如「感觉疲惫：各项数据都比一般日常记录都低」与 compare 里的「整体状态：各项数据都比一般日常记录都低」。
+// 提示词已要求「不要重复」，但免费档不保证；这里做一次兜底去重。
+//
+// 判重不只看字面完全相同：中文里换几个字换标点就是另一句字面，
+// 但语义其实一样（「整体状态：X」vs「感觉疲惫：X」）。所以按下面两步走：
+//   1) 归一化：去掉标点、空白、常见前后缀标签后比对；
+//   2) 归一化后完全相同，或其中一条的归一化结果是另一条的前缀/子串 → 判为重复。
+// 只做**保守**去重：宁可漏掉一条近义句，也不要误删掉真正不同的内容。
+function normKey(s) {
+  return String(s || '')
+    .replace(/[（(【\[][^）)】\]]{0,12}[）)】\]]/g, '')   // 去掉短括号补充，如「（精力低）」
+    .replace(/[\s，。、；：！？,.;:!?"'"'｜|/·\-—…]/g, '')            // 标点与空白
+    .replace(/^(整体状态|主观感受|客观事实|核心课题|今日核心|本日核心|总体|状态)+/, '')   // 常见标签前缀
+    .slice(0, 60);                                                  // 只看前60 字，够判重且快
+}
+// a 与 b 是否算重复
+function isDup(a, b) {
+  const ka = normKey(a), kb = normKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  // 一条是另一条的前缀或子串（长度差够大才认，避免「工作」和「工作模式」这类误删）
+  const [short, long] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
+  if (short.length >= 6 && long.indexOf(short) >= 0) return true;
+  return false;
+}
+// 数组内去重 + 与「参照文本」（如 summary）之间去重，保序
+function dedupe(arr, refs) {
+  const base = Array.isArray(refs) ? refs.filter(Boolean) : (refs ? [refs] : []);
+  const kept = [];
+  (Array.isArray(arr) ? arr : []).forEach(x => {
+    const t = flatText(x);
+    if (!t) return;
+    if (base.some(r => isDup(t, r))) return;
+    if (kept.some(k => isDup(t, k))) return;
+    kept.push(t);
+  });
+  return kept;
+}
+
 // profile 集合可能还不存在（新环境首次使用，-502005）：首次用到时自动创建。
 // createCollection 幂等失败（已存在 -502004 / 并发冲突）一律吞掉，让后续查询报真实错误。
 let profileColEnsured = false;
@@ -609,9 +653,11 @@ async function generateFor(openid, type, p) {
 
   const parsed = await chatCompletion(buildMessages(rows, type, p));
   genBudget--;
-  const clean = v => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
+  const clean = v => flatText(v);                 // 对象/数组也压成文字，绝不落[object Object]
   const listOf = (v, cap2) => (Array.isArray(v) ? v.map(clean).filter(Boolean).slice(0, cap2 || 5) : []);
   const pat = (parsed.patterns && typeof parsed.patterns === 'object') ? parsed.patterns : {};
+  const summary = clean(parsed.summary).slice(0, 300);
+  const compare = clean(parsed.compare).slice(0, 500);
   const doc = {
     openid,
     type,                                  // day / week / month / year
@@ -619,20 +665,22 @@ async function generateFor(openid, type, p) {
     start: p.startStr,
     end: p.endStr,
     // ---- 新版六板结构 ----
-    summary: clean(parsed.summary).slice(0, 300),
-    facts: listOf(parsed.facts, 5),
+    // summary 是卡片头那句话；facts 若把它又说一遍，展开第一行就与折叠态重复，
+    // compare 若是 facts 某条的换句话说，也一并去掉（保留先出现的那句）。
+    summary: summary,
+    facts: dedupe(listOf(parsed.facts, 5), [summary, compare]),
     patterns: {
-      drain: listOf(pat.drain, 5),
-      charge: listOf(pat.charge, 5),
+      drain: dedupe(listOf(pat.drain, 5)),
+      charge: dedupe(listOf(pat.charge, 5)),
       moodRule: clean(pat.moodRule).slice(0, 300),
-      stuck: listOf(pat.stuck, 5),
-      values: listOf(pat.values, 4)
+      stuck: dedupe(listOf(pat.stuck, 5)),
+      values: dedupe(listOf(pat.values, 4))
     },
-    compare: clean(parsed.compare).slice(0, 500),
-    risks: listOf(parsed.risks, 4),
-    actions: listOf(parsed.actions, 3),
+    compare: compare,
+    risks: dedupe(listOf(parsed.risks, 4)),
+    actions: dedupe(listOf(parsed.actions, 3)),
     // ---- 旧字段（历史文档仍按这个渲染，保留以便统一展示）----
-    themes: listOf(parsed.themes, 6),
+    themes: dedupe(listOf(parsed.themes, 6)),
     mood: clean(parsed.mood).slice(0, 200),
     highlight: clean(parsed.highlight).slice(0, 500),
     insight: clean(parsed.insight).slice(0, 1000),
