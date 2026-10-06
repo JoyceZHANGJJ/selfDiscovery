@@ -32,9 +32,11 @@
                清单页的 recVM 把 t 覆盖成了 tt，看页没有，两边都读 tt 才真的同一份口径 -->
           <view class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           <!-- 计划完成：**没计划就不渲染**（多数待办本来就没计划时间）。
-               有计划时点一下＝换下一档（今天 → 明天 → 本周末 → 下周一 → 取消），
-               不用弹任何选择器；要具体到某一天走「左滑 → 快捷记面板」 -->
-          <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onDueTap" aria-label="计划完成 {{item.due}}">{{item.due}}</view>
+               **只作显示，不点它**——这里以前是「点一下换下一档」（无 → 今天 → 明天 → 本周末 → 下周一 → 无），
+               已下掉：随手一点就改掉一个自己还没想清楚的日期，事后往往说不清是哪天定的，
+               而「不设计划」是常态，误改的代价比多点一次大。
+               改时间仍两条路：行尾左滑的快捷记面板（档位 + 月历自定），或记卡里那一行 chips。 -->
+          <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" aria-label="计划完成 {{item.due}}">{{item.due}}</view>
         </view>
         <view wx:if="{{item.done}}" class="done-at">{{item.doneLabel}}</view>
       </view>

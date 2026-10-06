@@ -1525,11 +1525,6 @@ Page(pageBase({
     this.recompute();
   },
 
-  /* 「最近」里待办行尾的「计划完成」胶囊：点一下换下一档。
-     换档、清「已推日历」标记、提示文案全走 pageBase.cycleDue（清单页 / 看页同一份），
-     这里只负责把组件事件的 id 取出来——记页的行是自己写的，取值路径与组件那条不同 */
-  onRecentDue(e) { if (this.guardEdit()) return; this.cycleDue(this._id(e)); },
-
   /* 删除一条记录并给出撤销机会（操作条「删除」与就地编辑的「删除」共用） */
   _delRec(r) {
     const i = (app.globalData.records || []).indexOf(r);

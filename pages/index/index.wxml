@@ -249,11 +249,9 @@
           <view wx:else class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.desc}}" class="tdesc">{{item.desc}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
           <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           <!-- 待办的「计划完成」：与清单页 / 看页的 todo-list 逐字一致——
-               没计划就不渲染，有计划点一下换下一档（今天 → 明天 → 本周末 → 下周一 → 取消）。
-               之前只有清单页和看页有，记页这一段看不到，同一条待办三处长得不一样。
-               三个 wx:if 各自独立（不能写成 if/else 链）：待办也可能没有计划时间，
-               那时右边要空着而不是退回显示记录日期时间 -->
-          <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" data-id="{{item.id}}" catchtap="onRecentDue" aria-label="计划完成 {{item.due}}">{{item.due}}</view>
+               **只作显示，不点它**。改时间走行尾左滑的快捷记面板（档位 + 月历自定）
+               或进记卡那一行 chips。这里以前也是「点一下换下一档」，一并下掉了 -->
+          <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" aria-label="计划完成 {{item.due}}">{{item.due}}</view>
           <text wx:if="{{!item.task}}" class="tw">{{item.d}}{{item.t}}</text>
         </view>
         <!-- 「今日」：附属内容＝能量说明那句话（没写就不占这一行——只留能量格是正常的） -->

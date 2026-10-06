@@ -998,7 +998,7 @@ function taskPrio(r) {
      既保住「那天结束前做完」的意思，又保证设成「今天」的那一刻不会已经逾期。
    ・自定到具体时刻也允许（dueTs 带时分），显示时才把时刻带出来（见 dueLabel）。 */
 const DUE_END_H = 23, DUE_END_M = 59;
-// 档位循环顺序（面板里的 chips 与行尾点一下的顺序都用它）：无 → 今天 → … → 下周一 → 无
+// 档位表（面板 chips 与记卡那一行都用它，顺序即排列顺序）
 const DUE_STEPS = ['今天', '明天', '本周末', '下周一'];
 
 // 从 base 那天起往后 addDays 天的 23:59
@@ -1028,25 +1028,6 @@ function duePresetTs(k, base) {
   if (k === '明天') return dueDayEnd(base, 1);
   if (k === '本周末') return dueWeekend(base);
   if (k === '下周一') return dueNextMon(base);
-  return 0;
-}
-// 行尾胶囊点一下＝换下一档：无 → 今天 → 明天 → 本周末 → 下周一 → 无。
-// ・已经设成某一档的：按**档位**认（不看具体时刻），顺次往后；
-// ・自定过具体日期的：往后找最近的那一档，都没有就回到「无」——
-//   保证点一下永远有明确的下一步，不会点不动（面板里可以设成任何一天）
-function dueNext(ts, base) {
-  base = base || Date.now();
-  ts = ts || 0;
-  if (!ts) return duePresetTs('今天', base);
-  for (let i = 0; i < DUE_STEPS.length; i++) {
-    if (Math.abs(duePresetTs(DUE_STEPS[i], base) - ts) < 60000) {
-      return i + 1 < DUE_STEPS.length ? duePresetTs(DUE_STEPS[i + 1], base) : 0;
-    }
-  }
-  for (let i = 0; i < DUE_STEPS.length; i++) {
-    const p = duePresetTs(DUE_STEPS[i], base);
-    if (p > ts + 60000) return p;
-  }
   return 0;
 }
 // 当前是哪个档：返回档位名（'无' / '自定' / 四个档位之一）。面板高亮用它
@@ -1131,9 +1112,9 @@ function dueOver(ts) { return !!ts && ts < Date.now(); }
 // 排序用的粗档：0＝有计划（排在前面，内部按时间早的优先），1＝没计划（沉底）
 function dueRank(ts) { return ts ? 0 : 1; }
 
-/* 改「计划完成」的唯一入口：三处改 dueTs 的地方（行尾胶囊循环 pageBase.cycleDue、
-   快捷记面板保存 custom-tab-bar._qaUpdate、记卡保存 index.doSave）都走这里，
-   免得「改了时间却还挂着已推日历的标记」这种漏改只发生在一处。
+/* 改「计划完成」的唯一入口：两处改 dueTs 的地方（快捷记面板保存 custom-tab-bar._qaUpdate、
+   记卡保存 index.doSave）都走这里，免得「改了时间却还挂着已推日历的标记」这种漏改只发生在一处。
+   （行尾胶囊那个「点一下换下一档」已下掉，现在胶囊只作显示。）
 
    为什么必须连带清 calTs：calTs 只说明「我推过」，而推到手机日历里的日程
    带的是**当时那个** dueTs。小程序读不回也改不了系统日程（见 utils/calendar.js
@@ -2243,7 +2224,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, dueNext, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

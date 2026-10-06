@@ -241,7 +241,7 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
   border-top: 4px solid transparent; border-bottom: 4px solid transparent;
 }
 /* 待办行的「计划完成」胶囊（今天 / 明天 / 周五）：**没计划的行不渲染**（见 vm.js 的 dueHas），
-   所以不会每行都挂一个标签。点一下＝换下一档，没有选择器。
+   所以不会每行都挂一个标签。**只作显示、不可点**——改时间走行尾左滑的快捷记面板或记卡那一行 chips。
    ・平时用主题色浅底 + 主题色字（和「已记」胶囊同一族），一看就知道是「什么时候」；
    ・逾期（dueOv）换成低饱和红褐（与「紧急重要」同一族，不用高亮红）——
      文案本身已经写了「昨天 / 10月2日」，颜色只是补一层「一眼扫到」的提示，
