@@ -1,5 +1,27 @@
 const store = require('../utils/store.js');
 const date = require('../utils/date.js');
+const tabicons = require('../utils/tabicons.js');
+
+// 底部 tab：ic = 图标名（画法全在 utils/tabicons.js，同一视框 / 同一描边 / 同一视觉尺寸）。
+// 顺序与 app.json 的 tabBar.list 必须一致（switchTab 按下标查 pagePath），selected 索引不能错位。
+// 记 / 看 / 作息 是每天都要看的（作息一天两回：起床、入睡），回看是周 / 月的复盘，往后放。
+const TABS = [
+  { pagePath: '/pages/index/index', text: '记', ic: 'write' },
+  { pagePath: '/pages/look/look', text: '看', ic: 'look' },
+  // 「作息」：半明半暗的圆——一页里装着「起 / 睡」两半，昼夜各半正好是这个 tab 的意思
+  { pagePath: '/pages/sleep/sleep', text: '作息', ic: 'rest' },
+  { pagePath: '/pages/review/review', text: '回看', ic: 'review' },
+  { pagePath: '/pages/set/set', text: '设置', ic: 'set' }
+];
+
+// 按主题算一份完整的 list：图标不能靠 CSS 变量上色（<image> 里的 SVG 拿不到 currentColor），
+// 所以颜色在这里就写进图里——未选中取该主题的 ink3、选中取 accent。
+// 主题一变（各页 onShow 会 setData({theme})）就重算一对，切换时不会有旧色残留。
+function tabList(themeKey) {
+  const vars = (store.themeOf(themeKey) || {}).vars || {};
+  const ic = tabicons.iconsFor(vars.accent, vars.ink3);
+  return TABS.map(it => Object.assign({}, it, ic[it.ic] || {}));
+}
 
 // 快捷记（「＋」球面板）：不切换模块，而是把用户在「设置」里勾选的类别（待办类别 + 随记类别，
 // 上限见 store.QUICKCATS_MAX）平铺成 chips（多了自动换行），点哪个就在哪个类别下记。
@@ -48,16 +70,7 @@ Component({
     hidden: false,
     pulse: false,   // 回顶时图标轻弹一次
     hint: false,    // 滑到底部时图标跳动提示可回顶
-    list: [
-      { pagePath: '/pages/index/index', text: '记', icon: '✎' },
-      { pagePath: '/pages/look/look', text: '看', icon: '☰' },
-      // 「作息」排在「看」与「回看」之间（与 app.json 的 tabBar.list 同序，selected 索引不能错位）：
-      // 记 / 看 / 作息 是每天都要看的（作息一天两回：起床、入睡），回看是周 / 月的复盘，往后放。
-      // 图标 ◐＝半个亮半个暗：一页里装着「起 / 睡」两半，昼夜各半正好是这个 tab 的意思
-      { pagePath: '/pages/sleep/sleep', text: '作息', icon: '◐' },
-      { pagePath: '/pages/review/review', text: '回看', icon: '◎' },
-      { pagePath: '/pages/set/set', text: '设置', icon: '⚙' }
-    ],
+    list: tabList(store.curTheme()),   // 图标按当前主题先算一份，免得首帧是空的（attached 再对齐一次）
     // 快捷记（「＋」球）：点球就在原地弹条，不跳页；长按球才进清单页
     qa: false,           // 面板是否展开
     qaCats: [],          // 平铺的快捷类别（来自 getQuickCats，带名字 / 颜色 / 占位符 / key）
@@ -72,9 +85,9 @@ Component({
     qaBottom: 'calc(var(--qa-bottom) + env(safe-area-inset-bottom, 0px))'
   },
 
-  // theme 一变就重算注入变量（各页与切换器只需 setData({ theme })）
+  // theme 一变就重算注入变量与图标（各页与切换器只需 setData({ theme })）
   observers: {
-    theme(k) { this.setData({ themeStyle: store.themeStyle(k) }); }
+    theme(k) { this.setData({ themeStyle: store.themeStyle(k), list: tabList(k) }); }
   },
 
   lifetimes: {
@@ -85,7 +98,7 @@ Component({
       const t = store.curTheme();
       const cats = buildQaCats();
       const a = cats[0] || {};
-      this.setData({ theme: t, themeStyle: store.themeStyle(t), qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
+      this.setData({ theme: t, themeStyle: store.themeStyle(t), list: tabList(t), qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
       // 吸底面板要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
       // 所以直接把键盘高度当 bottom，面板始终落在键盘上方（与记页吸底操作行同一套做法）
       this._bindKb();

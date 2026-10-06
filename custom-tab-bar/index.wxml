@@ -32,7 +32,9 @@
     <view class="tb" bindtap="onQaUndo">撤销</view>
   </view>
 
-  <!-- 底部 tab 栏：ballOnly（挂在清单页这类「非 tab 页」上）时整条不渲染，只留「＋」球与面板 -->
+  <!-- 底部 tab 栏：ballOnly（挂在清单页这类「非 tab 页」上）时整条不渲染，只留「＋」球与面板。
+       图标是现画的 SVG（utils/tabicons.js，颜色按当前主题算好写在 data URI 里，
+       见 index.js 的 tabList）——不再用 ✎ ☰ ◐ ◎ ⚙ 这类系统字符（各机型大小不一） -->
   <view wx:if="{{!ballOnly}}" class="tabbar">
     <view
       wx:for="{{list}}"
@@ -42,7 +44,7 @@
       bindtap="switchTab"
       aria-role="button" aria-label="{{item.text}}"
     >
-      <text class="ic">{{item.icon}}</text>
+      <image class="ic" src="{{selected === index ? item.iconOn : item.iconOff}}" aria-hidden="true" />
       <text>{{item.text}}</text>
     </view>
   </view>
