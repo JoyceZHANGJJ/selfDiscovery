@@ -839,7 +839,7 @@ Page(pageBase({
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
     // 待办也出操作条（放弃 / 恢复 本地处理，改 / 删 走下面统一分支）
-    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
+    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done, dueTs: r.dueTs || 0, calTs: r.calTs || 0 } : null });
   },
   /* 待办行（todo-list 组件里）的「行尾左滑」＝改这一条：与清单 / 记页同一口径——
      打开快捷记面板回显（文本 + 类别 + 优先级一起改，保存＝更新原记录）。
@@ -863,6 +863,7 @@ Page(pageBase({
   onRecAction(e) {
     const type = e.detail.type;
     const id = this.data.sel; if (id == null) return;
+    if (type === 'cal') { this.pushCal(id); return; }   // 推到手机日历（三页共用 pageBase 的实现）
     const r = this.findRec(id);
     if (!r) return;
     // 待办（备忘 / 购物）：放弃 / 恢复只动状态与时间，不跳页（完成仍由条目上的勾选框负责）；

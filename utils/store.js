@@ -912,6 +912,7 @@ function decorate(r) {
   o.abandonedAt = r.abandonedAt || 0;
   o.endTs = r.endTs || 0;
   o.dueTs = r.dueTs || 0;   // 计划完成（待办专用）：0＝没计划，是常态
+  o.calTs = r.calTs || 0;   // 最后一次推到手机日历的时间（0＝没推过）；只作回显，见 pushToCal 的说明
   // 待办：类别（todoKind）+「原因」自由字段。
   // 「原因」合并了原先 备忘的「原因」与 购物的「干什么用」（旧的 two 个来源也一并兼容，供迁移前数据回显）
   o.cat = '';
@@ -1379,6 +1380,7 @@ function addRecord(rec) {
   if (rec.endTs) data.endTs = rec.endTs;
   if (rec.abandonedAt) data.abandonedAt = rec.abandonedAt;
   if (rec.dueTs) data.dueTs = rec.dueTs;
+  if (rec.calTs) data.calTs = rec.calTs;
   return recCol().add({ data }).then(res => res._id)
     .catch(e => { log.err('record.add', e, { m: rec.m, txt: rec.txt }); log.fail('没记上，请重试'); throw e; });
 }
@@ -1392,6 +1394,9 @@ function updateRecord(rec) {
   if (rec.endTs !== undefined) data.endTs = rec.endTs;
   if (rec.abandonedAt !== undefined) data.abandonedAt = rec.abandonedAt;
   if (rec.dueTs !== undefined) data.dueTs = rec.dueTs;
+  // calTs：这条最后一次「推到手机日历」的时间戳（0＝没推过）。只用于回显，
+  // 小程序读不回系统日历（见 pushToCal），所以它只能说明「我推过」，不说明「日历里现在是这样」
+  if (rec.calTs !== undefined) data.calTs = rec.calTs;
   return recCol().doc(rec._rid).update({ data })
     .catch(e => { log.err('record.update', e, { m: rec.m, txt: rec.txt }); log.fail('没保存上，请重试'); throw e; });
 }
@@ -1929,7 +1934,7 @@ function migrateNopeLikeIntoObs() {
         G.records[i] = decorate({
           id: r.id, _rid: r._rid, m: 'obs', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
           done: r.done, doneAt: r.doneAt, status: r.status, ref: r.ref, refTxt: r.refTxt,
-          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt, dueTs: r.dueTs
+          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt, dueTs: r.dueTs, calTs: r.calTs
         });
       });
       wx.setStorageSync(MIG_NOPELIKE_KEY, 1);
@@ -2020,7 +2025,7 @@ function migrateTasksToTodo() {
         G.records[i] = decorate({
           id: r.id, _rid: r._rid, m: 'todo', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
           done: r.done, doneAt: r.doneAt, status: r.status, ref: r.ref, refTxt: r.refTxt,
-          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt, dueTs: r.dueTs
+          startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt, dueTs: r.dueTs, calTs: r.calTs
         });
       });
       wx.setStorageSync(MIG_TODO_KEY, 1);

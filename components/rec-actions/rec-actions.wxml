@@ -10,6 +10,11 @@
   <view wx:if="{{showEndSep}}" class="sep"></view>
   <view wx:if="{{showWantSep}}" class="sep"></view>
 
+  <!-- 推到手机日历：只有「待办 + 定了计划完成时间 + 还没完成/放弃」才有（calLabel 空＝不渲染） -->
+  <view wx:if="{{calLabel}}" class="grp calgrp">
+    <view class="cal" data-type="cal" bindtap="onTap">{{calLabel}}</view>
+  </view>
+
   <view wx:if="{{showEditDel}}" class="grp mgrp">
     <view class="edit" data-type="edit" bindtap="onTap">改</view>
     <view class="del" data-type="del" bindtap="onTap">删除</view>

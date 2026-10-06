@@ -9,6 +9,7 @@
 const store = require('./store.js');
 const ui = require('./ui.js');
 const date = require('./date.js');
+const calendar = require('./calendar.js');
 // 本模块只被页面 require（页面在 App 注册之后才加载），getApp() 此时一定可用
 const app = (typeof getApp === 'function' && getApp()) || {};
 
@@ -149,10 +150,35 @@ function pageBase(extra) {
       this._refreshAfterDue();
       wx.showToast({ title: next ? '计划 · ' + store.dueLabel(next) : '已取消计划', icon: 'none' });
     },
-    _refreshAfterDue() {
+_refreshAfterDue() {
       if (typeof this.rebuild === 'function') this.rebuild();          // 清单页 / 看页
       else if (typeof this.recompute === 'function') this.recompute(); // 记页
       else if (typeof this.buildRecs === 'function') this.buildRecs();
+    },
+
+/* 操作条上的「推到日历」：把这一条的「计划完成」写进手机系统日历。
+       记 / 看 / 清单 三页逐字相同，收在这里；真正干活的是 utils/calendar.js。
+       三个页面各自在 onRecAction 里加一句 `if (type === 'cal') return this.pushCal(id);`
+       —— 各页的 id 取法与选中态字段名不一样（sel / recSel），留在那边更清楚。
+
+    · wx.addPhoneCalendar **必须由用户直接点一下触发**，且只能在真机上工作——
+         所以它只能挂在具体某一条的按钮上，没法做「批量推」（系统会一张张弹卡片）。
+       · 推完读不回系统日历，所以只给记录打一个 calTs 标记（「我推过」），按钮文案跟着变
+         「已推日历」，再点会先问一句（手机日历里会多一条，不该悄悄推）。
+       · 没定计划时间的待办不会有这个按钮（组件那边就不渲染），这里仍兜一层，
+         万一别处误触发也只是提示一句，不会去推一条没有截止的待办。 */
+    async pushCal(id) {
+      const r = await calendar.pushById(id);
+      // 推成了：打卡上的「已推日历」标记要立刻反映出来（按钮在操作条里，条子还开着）
+      if (r.done && this.data.selRec && this.data.selRec.id === id) {
+        this.setData({ selRec: Object.assign({}, this.data.selRec, { calTs: Date.now() }) });
+      }
+      if (r.done && this.data.recSelRec && this.data.recSelRec.dueTs !== undefined) {
+        this.setData({ recSelRec: Object.assign({}, this.data.recSelRec, { calTs: Date.now() }) });
+      }
+      // 三页关条子的写法一致（选中态是操作条的唯一开关），推完一并收起来
+      this.setData({ sel: null, selRec: null, recSel: null, recSelRec: null });
+      return r;
     },
 
     /* 按「某一天」把记录分段（看页 / 清单页逐字相同）：段头用时间线同款日标签，段内保持传入顺序。

@@ -355,7 +355,7 @@ Page(pageBase({
     const id = this._id(e);
     if (this.data.sel === id) { this.setData({ sel: null, selRec: null }); return; }
     const r = this.findRec(id);
-    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
+    this.setData({ sel: id, selRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done, dueTs: r.dueTs || 0, calTs: r.calTs || 0 } : null });
   },
 
   /* 操作条统一入口（与记 / 看页共用 rec-actions 组件）：待办用 放弃 / 恢复 / 改 / 删；
@@ -364,6 +364,7 @@ Page(pageBase({
     if (this.guardEdit()) return;   // 就地编辑中：不允许对其它条做流转 / 改 / 删
     const type = e.detail.type;
     const id = this.data.sel; if (id == null) return;
+    if (type === 'cal') { this.pushCal(id); return; }   // 推到手机日历（三页共用 pageBase 的实现）
     const r = this.findRec(id);
     if (!r) return;
     if (r.m === 'jot') {

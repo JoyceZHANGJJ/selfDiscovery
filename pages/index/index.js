@@ -1331,7 +1331,7 @@ Page(pageBase({
     const id = e.currentTarget.dataset.id;
     if (this.data.recSel === id) { this.setData({ recSel: null, recSelRec: null }); return; }
     const r = (app.globalData.records || []).find(x => x.id === id);
-    this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done } : null });
+    this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done, dueTs: r.dueTs || 0, calTs: r.calTs || 0 } : null });
   },
 
   /* 记录操作条统一入口（记页「最近」与看页共用 rec-actions 组件；行为各自实现，按钮集合只维护一处）
@@ -1340,6 +1340,7 @@ Page(pageBase({
     if (this.guardEdit()) return;   // 编辑态：不允许对其它记录做流转/改/删
     const type = e.detail.type;
     const id = this.data.recSel; if (id == null) return;
+    if (type === 'cal') { this.pushCal(id); return; }   // 推到手机日历（三页共用 pageBase 的实现）
     const r = (app.globalData.records || []).find(x => x.id === id);
     if (!r) return;
     // 待办（备忘 / 购物）：恢复只动状态与时间；**放弃要填原因**，所以与「改」一样进记卡回显这一条

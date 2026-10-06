@@ -17,7 +17,8 @@ Component({
     flow: [],        // [{ type, label, cls }] 流转按钮（开始/完成/放弃/恢复/结束）
     showEditDel: false,
     showEndSep: false,   // 觉察/无感 分组后分隔线
-    showWantSep: false   // 可做 流转后分隔线
+    showWantSep: false,  // 可做 流转后分隔线
+    calLabel: ''         // 「推到日历」按钮的文字；空串＝不渲染（见 compute）
   },
   lifetimes: {
     attached() { this.compute(); }
@@ -50,8 +51,14 @@ Component({
       // 放弃只是小概率事件，放这儿不会影响「点一下勾掉」这条主路径
       if (isTask && !rec.done && status !== 'abandon') flow.push({ type: 'abandon', label: '放弃', cls: 'abandon' });
       if (isTask && status === 'abandon') flow.push({ type: 'restore', label: '恢复', cls: 'restore' });
+      /* 「推到日历」：只有**待办且定了计划完成时间**才有这个入口。
+         没计划就不出现——不给一条本来不需要截止的待办偷偷补日期（与 dueTs「0 是常态」一致）。
+         已推过的写成「再推一次?」之外的中性说法：推过了就说「已推日历」，
+         点一下会先问一句（手机日历里会多一条，不该悄悄推）。 */
+      const canCal = isTask && !!rec.dueTs && !rec.done && status !== 'abandon';
       this.setData({
         flow,
+        calLabel: canCal ? (rec.calTs ? '已推日历' : '推到日历') : '',
         showEditDel: !!rawm,
         showEndSep: isObsNope && !rec.ended,
         showWantSep: (isWant && status !== 'done') || (isTask && flow.length > 0),
