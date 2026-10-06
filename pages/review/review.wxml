@@ -40,6 +40,7 @@
         <view class="ai-e-l">
           <view class="ai-e-t">个人画像</view>
           <view wx:if="{{profileLatest.empty}}" class="ai-e-s">还没有生成过 · 点这里让 AI 根据你的全部记录做一份深度分析</view>
+          <view wx:elif="{{profileBroken}}" class="ai-e-s">上次生成的内容损坏了 · 点这里重新生成一份</view>
           <view wx:else class="ai-e-s">{{profileLatest.summary}}</view>
         </view>
         <view class="ai-e-go">›</view>

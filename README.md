@@ -180,4 +180,21 @@ AI 回看页（`pages/analysis`）顶部按 日 / 周 / 月 / 年 切换，卡�
 
 只读已存的用 `{"action":"profileGet","openid":"你的openid"}`。同样要先把 `analysis` 云函数「上传并部署（云端安装依赖）」，并等 1~2 分钟避开实例重建的瞬时 `ret=-3`。
 
+**想看「到底把什么喂给了 AI」？**用只读的 `promptPreview`（不调模型、不写库、不花额度）：
+
+```json
+{ "action": "promptPreview", "type": "profile", "openid": "你的openid" }
+```
+
+返回 `records`（喂进去的记录条数）、`reviewsUsed`（联动用了几份回看）、`userChars` / `systemChars`（两边字数）、`userHead`（拼给模型的资料原文，最多 4000 字）。画像里每条记录被拼成 `[维度中文名] 正文 （扩展字段名：值） 时间`；`type` 换成 `day` / `week` / `month` / `year` 可以预览某个周期回看的输入。
+
+**排错：页面出现 [object Object]**
+
+大模型偶尔不听话，把本该是字符串的字段返回成对象（尤其 `fit.risks`、`future.*`）。现在的处理：
+
+- 落库前统一用 `flatText()` 递归摊平（对象 → `键：值；键：值`，数组 → 用 `；` 连接），云函数侧保证不会写出 `[object Object]`。
+- 前端 `mapProfile` / `analysis.load` 再兜一层，同样摊平，并过滤掉库里已有的字面量 `[object Object]`。
+- 提示词也补了硬要求：除 `future.*` / `decision.rhythm` 外，所有字段必须是字符串或字符串数组，不要返回嵌套对象、键值对、markdown 标题或代码块。
+- 早期版本生成的画像文档里可能存着字面量 `[object Object]`（内容不可还原），页面会识别成「这份画像的内容损坏了，请重新生成」；那类文档**必须重新生成**才能恢复正常内容。
+
 

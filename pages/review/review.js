@@ -145,8 +145,12 @@ Page(pageBase({
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'profileGet' } })
       .then(res => {
         const p = res.result && res.result.profile;
+        // 旧版画像可能把 summary 落成了 "[object Object]"（内容已不可还原）→ 走「待生成」卡片
+        const sum = (p && typeof p.summary === 'string') ? p.summary.trim() : '';
+        const broken = !!(p && (!sum || sum === '[object Object]' || sum === '[object object]'));
         this.setData({
-          profileLatest: p ? { summary: p.summary || '' } : { empty: true }
+          profileLatest: p ? { summary: sum } : { empty: true },
+          profileBroken: broken
         });
         this._pfLoading = false;
       })

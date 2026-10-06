@@ -19,6 +19,9 @@
 //      下周一 00:00 按中国时区自动解锁；返回 cooling + retryAfter 省大模型额度），
 //      event.force:true 可绕过（仅控制台排查用）。
 //   7) action:'profileGet'：读取已存的画像（进页面先调，不花大模型额度）。
+//   8) action:'promptPreview'：只读预览「大模型实际看到的资料」（system/user 消息全文 +
+//      字数），用来核对喂给模型的原文长什么样；不调模型、不写库。
+//      event.type: profile（默认）/ day / week / month / year。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
 //   指出模式与连接、说可能的内在动机与张力、给具体可做且有方向性的建议；
@@ -333,6 +336,8 @@ function chatCompletion(messages, temperature) {
 // （字段名即章节，嵌套对象承载子项）
 function profileFieldsSpec() {
   return [
+    '【格式硬要求】除 future/decision.rhythm 这类明确写了「字符串」的字段外，其余每一个字段都必须是**字符串或字符串数组**，',
+    '  绝对不要返回嵌套对象、键值对、markdown 标题或代码块；需要分段时用「；」分隔写成一条字符串。',
     'summary（30~60 字：一句话核心课题 + 当下最高优先级的那 1~2 件事——用于回看页入口卡展示）',
     'basic（对象 · 第一章「基础人物画像」）：',
     '  info（数组 1~4 条：纯从资料提取的客观基础信息——身份 / 阶段 / 角色，不含推断）',
@@ -422,16 +427,43 @@ function buildProfileMessages(rows, reviews) {
   return [{ role: 'system', content: sys }, { role: 'user', content: user }];
 }
 
-function arrOf(v) { return Array.isArray(v) ? v.map(x => (typeof x === 'string' ? x.trim() : String(x))).filter(Boolean).slice(0, 8) : []; }
+// 把模型返回的任意值「压成一行可读文字」。
+// 为什么要它：模型偶尔不听话，会把数组元素返回成对象（如 risks:[{触发,后果,预警}]），
+// 或者把本该是字符串的字段返回成对象。直接 String(obj) 会变成 "[object Object]"
+// 显示在页面上。这里递归摊平：对象 → "键：值；键：值"，数组 → 用"；"连接。
+function flatText(v, depth) {
+  const d = depth === undefined ? 0 : depth;
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (d > 3) return '';
+  if (Array.isArray(v)) {
+    return v.map(x => flatText(x, d + 1)).filter(Boolean).join('；');
+  }
+  if (typeof v === 'object') {
+    const parts = [];
+    Object.keys(v).forEach(k => {
+      const val = v[k];
+      const t = flatText(val, d + 1);
+      if (t) parts.push((val && typeof val === 'object') ? (k + '：' + t) : (k + ' ' + t));
+    });
+    return parts.join('；');
+  }
+  return '';
+}
+
+function arrOf(v, cap) {
+  const n = typeof cap === 'number' ? cap : 8;
+  if (Array.isArray(v)) {
+    return v.map(x => flatText(x)).filter(Boolean).slice(0, n);
+  }
+  const one = flatText(v);
+  return one ? [one.slice(0, 400)].slice(0, n) : [];
+}
 // 把一个对象里指定的字段规整成数组（或字符串），方便把模型返回的嵌套结构安全落库
 function objOf(v, keys) {
   const o = {};
-  keys.forEach(k => {
-    const val = v && v[k];
-    if (Array.isArray(val)) o[k] = val.map(x => (typeof x === 'string' ? x.trim() : String(x))).filter(Boolean).slice(0, 8);
-    else if (typeof val === 'string') o[k] = val.slice(0, 800);
-    else o[k] = (val == null ? [] : val);
-  });
+  keys.forEach(k => { o[k] = arrOf(v && v[k]); });
   return o;
 }
 
@@ -494,12 +526,12 @@ async function generateProfile(openid, force) {
 
   const parsed = await chatCompletion(buildProfileMessages(rows, reviews), 0.7);
   genBudget--;
-  const clean = v => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
+  const clean = v => flatText(v).slice(0, 800);   // 对象/数组也压成文字，绝不落[object Object]
   const f = parsed.future || {};
   const dec = parsed.decision || {};
   const doc = {
     openid,
-    summary: clean(parsed.summary).slice(0, 200),
+    summary: flatText(parsed.summary).slice(0, 200),
     basic: objOf(parsed.basic, ['info', 'energy', 'decision', 'body', 'finance', 'env']),
     core: objOf(parsed.core, ['strengths', 'downsides', 'conflicts']),
     fit: objOf(parsed.fit, ['workFirst', 'workCareful', 'workAvoid', 'life', 'risks']),
@@ -646,6 +678,50 @@ async function generateAllFor(openid, out) {
   }
 }
 
+// 预览「到底把什么喂给了大模型」：只读、不调模型。
+// 返回拼好的 system / user 消息全文 + 字数，方便核对模型看到的资料长什么样。
+async function previewProfileMessages(openid) {
+  const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
+  const rows = (recs.data || []).map(d => ({
+    m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
+  }));
+  let reviews = [];
+  try {
+    const rv = await analysisCol().where({ openid }).orderBy('start', 'desc').limit(24).get();
+    reviews = rv.data || [];
+  } catch (e) { reviews = []; }
+  const msgs = buildProfileMessages(rows, reviews);
+  return {
+    records: rows.length,
+    reviewsUsed: reviews.length,
+    // 记录条数可能上千，全量回传太长；只给前 40 条 + 总字数
+    userHead: msgs[1].content.slice(0, 4000),
+    userChars: msgs[1].content.length,
+    systemChars: msgs[0].content.length
+  };
+}
+
+// 预览某一周期回看喂给模型的内容（event.type，默认 day）
+async function previewReviewMessages(openid, type) {
+  const t = ['day', 'week', 'month', 'year'].indexOf(type) >= 0 ? type : 'day';
+  const p = t === 'day' ? period('day', 1) : (pastPeriodList(t, 1)[0] || null);
+  if (!p) return { error: '没有可预览的周期' };
+  const recs = await recCol().where({
+    _openid: openid, ts: _.and([_.gte(p.start), _.lt(p.end)])
+  }).orderBy('ts', 'asc').limit(t === 'day' ? 100 : 500).get();
+  const rows = (recs.data || []).map(d => ({
+    m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts,
+    ds: cnStr(d.ts || 0), t: hm(d.ts)
+  }));
+  const msgs = buildMessages(rows, t, p);
+  return {
+    type: t, range: p.startStr + '~' + p.endStr, records: rows.length,
+    userHead: msgs[1].content.slice(0, 4000),
+    userChars: msgs[1].content.length,
+    systemChars: msgs[0].content.length
+  };
+}
+
 exports.main = async (event) => {
   const ctx = cloud.getWXContext();
   const openid = ctx.OPENID || (event && event.openid);
@@ -703,6 +779,15 @@ exports.main = async (event) => {
       });
     }
     return { total: rows.length, first: keys[0], last: keys[keys.length - 1], perDay, backfillShouldGenerate: cover };
+  }
+
+  // 诊断：action:'promptPreview' —— 只读地预览「大模型实际看到的资料」。
+  // event.type 可选 profile（默认）/ day / week / month / year。
+  if (event && event.action === 'promptPreview') {
+    if (!openid) return { error: 'no openid' };
+    const t = event.type || 'profile';
+    if (t === 'profile') return previewProfileMessages(openid);
+    return previewReviewMessages(openid, t);
   }
 
   // 个人画像：读取已存的（前端进页先调这个，快、不花大模型额度）

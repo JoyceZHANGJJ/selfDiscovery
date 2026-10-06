@@ -35,19 +35,54 @@ function cnWeekStart(ts) {
   return mid - backToMon * DAY;
 }
 
+// 把任意值压成一行可读文字。与云函数 flatText 同思路：
+// 老文档里可能残留对象元素或字面量 "[object Object]"（旧版 String(obj) 兜底的产物），
+// 这里在前端再兜一层，保证页面上永远不会出现 [object Object]。
+function flatText(v, depth) {
+  const d = depth || 0;
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (d > 3) return '';
+  if (Array.isArray(v)) return v.map(x => flatText(x, d + 1)).filter(Boolean).join('；');
+  if (typeof v === 'object') {
+    const parts = [];
+    Object.keys(v).forEach(k => {
+      const val = v[k];
+      const t = flatText(val, d + 1);
+      if (t) parts.push((val && typeof val === 'object') ? (k + '：' + t) : (k + ' ' + t));
+    });
+    return parts.join('；');
+  }
+  return '';
+}
+// 规整成字符串数组：摊平对象、剔除空项和 "[object Object]" 这类垃圾值
+function listOf(v, cap) {
+  const arr = Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]);
+  return arr.map(x => flatText(x)).filter(s => s && s !== '[object Object]')
+    .slice(0, cap || 8);
+}
+
 // 云函数返回的嵌套对象 → 页面用的扁平结构（补齐空数组/空串，wxml 可直接 .length）
 function mapProfile(p) {
   const o = (v, keys) => {
     const src = (v && typeof v === 'object') ? v : {};
     const out = {};
-    keys.forEach(k => { out[k] = Array.isArray(src[k]) ? src[k] : []; });
+    keys.forEach(k => { out[k] = listOf(src[k]); });
     return out;
   };
-  const s = (v) => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
+  // 字符串字段：把库里的字面量 "[object Object]" 当成空（那是旧版 String(obj) 兜底的残渣，
+  // 内容不可还原，只能靠重新生成），避免页面上继续显示乱码
+  const s = (v) => {
+    const t = flatText(v);
+    return (t === '[object Object]' || t === '[object object]') ? '' : t;
+  };
   const f = (p.future && typeof p.future === 'object') ? p.future : {};
   const d = (p.decision && typeof p.decision === 'object') ? p.decision : {};
+  const broken = !s(p.summary)&& !s(p.conclusion);   // 整份画像都是残渣 → 提示重新生成
   return {
     _id: p._id,
+    broken: broken,
     summary: s(p.summary).slice(0, 300),
     basic: o(p.basic, ['info', 'energy', 'decision', 'body', 'finance', 'env']),
     core: o(p.core, ['strengths', 'downsides', 'conflicts']),
@@ -56,8 +91,8 @@ function mapProfile(p) {
     action: o(p.action, ['quick', 'rules', 'metrics']),
     decision: {
       rhythm: s(d.rhythm),
-      framework: Array.isArray(d.framework) ? d.framework : [],
-      trial: Array.isArray(d.trial) ? d.trial : []
+      framework: listOf(d.framework),
+      trial: listOf(d.trial)
     },
     conclusion: s(p.conclusion).slice(0, 500),
     n: p.n || 0,

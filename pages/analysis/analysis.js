@@ -25,6 +25,28 @@ function dateLabel(a) {
 }
 const TYPES = ['day', 'week', 'month', 'year'];
 
+// 把任意值压成一行可读文字（与云函数 flatText 同思路）。
+// 模型偶尔不听话，把数组元素返回成对象，直接 String 渲染就是 [object Object]，
+// 这里递归摊平（对象 → "键：值；键：值"，数组 → "；"连接），前端兜一层。
+function flatText(v, depth) {
+  const d = depth || 0;
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (d > 3) return '';
+  if (Array.isArray(v)) return v.map(x => flatText(x, d + 1)).filter(Boolean).join('；');
+  if (typeof v === 'object') {
+    const parts = [];
+    Object.keys(v).forEach(k => {
+      const val = v[k];
+      const t = flatText(val, d + 1);
+      if (t) parts.push((val && typeof val === 'object') ? (k + '：' + t) : (k + ' ' + t));
+    });
+    return parts.join('；');
+  }
+  return '';
+}
+
 Page(pageBase({
   data: {
     list: [],          // 当前 tab 下的回看
@@ -74,31 +96,38 @@ Page(pageBase({
         const raw = (res.result && res.result.list) || [];
         const all = raw.map(a => {
           // 新版六板结构；旧文档（只有 themes/insight/detail）也照样能显示
-          const p = a.patterns || {};
-          const arr = v => (Array.isArray(v) ? v : []);
+          const p = (a.patterns && typeof a.patterns === 'object') ? a.patterns : {};
+          // 摊平：模型偶尔把数组元素返回成对象，直接渲染会出现 [object Object]
+          const arr = v => {
+            const list = Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]);
+            return list.map(x => flatText(x))
+              .filter(t => t && t !== '[object Object]')
+              .slice(0, 8);
+          };
+          const txt = v => flatText(v);
           return {
             _id: a._id,
             type: a.type || 'day',       // 旧文档没有 type，视为日回看
             start: a.start || a.date || '',
             end: a.end || '',
-            summary: a.summary || '',
+            summary: txt(a.summary),
             // 新字段
             facts: arr(a.facts),
             drain: arr(p.drain),
             charge: arr(p.charge),
-            moodRule: p.moodRule || '',
+            moodRule: txt(p.moodRule),
             stuck: arr(p.stuck),
             values: arr(p.values),
-            compare: a.compare || '',
+            compare: txt(a.compare),
             risks: arr(a.risks),
             // 旧字段（历史文档）
-            mood: a.mood || '',
+            mood: txt(a.mood),
             themes: arr(a.themes),
-            suggestion: a.suggestion || '',
-            highlight: a.highlight || '',
-            insight: a.insight || '',
+            suggestion: txt(a.suggestion),
+            highlight: txt(a.highlight),
+            insight: txt(a.insight),
             actions: arr(a.actions),
-            detail: a.detail || ''
+            detail: txt(a.detail)
           };
         });
         this.setData({ all, ready: true, loading: false });

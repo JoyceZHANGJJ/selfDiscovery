@@ -39,6 +39,14 @@
         </view>
 
         <block wx:else>
+          <!-- 内容损坏（旧版落库残留 [object Object]）：明确提示重新生成，别显示一堆乱码 -->
+          <view wx:if="{{p.broken}}" class="empty">
+            <view class="empty-t">这份画像的内容损坏了</view>
+            <view class="empty-s">上一版生成时部分内容没有正确保存（显示为乱码），无法修复，请重新生成一份。</view>
+            <view wx:if="{{!cooling && !pending}}" class="empty-btn" bindtap="onGenerate">{{cooling?'本周已生成过，下周一可再来':'重新生成个人画像'}}</view>
+          </view>
+
+          <block wx:else>
           <!-- 入口卡摘要 -->
           <view class="pcard sum">
             <view class="pc-sum">{{p.summary}}</view>
@@ -172,6 +180,7 @@
             <view class="chap-h sm">七 · 总结</view>
             <view class="concl-t">{{p.conclusion}}</view>
           </view>
+          </block>
         </block>
       </block>
     </view>
