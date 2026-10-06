@@ -316,6 +316,13 @@ function chatCompletion(messages, temperature) {
         'Content-Length': Buffer.byteLength(body)
       }
     }, res => {
+      // 收响应：必须**先按 Buffer 攒齐、最后一次 utf8 解码**，绝不能逐片解码。
+      // 逐片（res.on('data', c => buf += c) 而不 setEncoding）时 c 是 Buffer，
+      // buf += c 会让每个网络分片各自做一次 utf8 解码；而一个汉字是 3 字节，
+      // 一旦被分片切开，每个残片都解码成替换字符 U+FFFD（页面显示成「�」）。
+      // 出过一次：画像总结里「调整」→「调��」。setEncoding('utf8') 会用 StringDecoder
+      // 跨片保留不完整的字节序列，等价于攒完再解码，是 Node 官方推荐的写法。
+      res.setEncoding('utf8');
       let buf = '';
       res.on('data', c => { buf += c; });
       res.on('end', () => {
