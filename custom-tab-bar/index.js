@@ -123,6 +123,7 @@ Component({
     qaTxt: '',
     qaFocus: false,      // 输入框是否聚焦：打开面板不自动聚焦（不弹键盘），点输入框才弹；失焦即收起面板
     qaUndo: null,        // 刚记下的那条（给一次撤销）
+    qaSaving: false,     // 写云在途：期间再点「记下」忽略（同一条不该被连点落两遍），按钮同时置灰
     // 面板底边距：默认落在球的正上方；键盘弹出时改成键盘高度（见 attached）
     qaBottom: 'calc(var(--qa-bottom) + env(safe-area-inset-bottom, 0px))'
   },
@@ -151,6 +152,7 @@ Component({
       this._kbHandler = null;
       if (this._qaUndoTimer) clearTimeout(this._qaUndoTimer);
       if (this._qaChipFocusTimer) clearTimeout(this._qaChipFocusTimer);
+      if (this._qaSaveUnlockTimer) clearTimeout(this._qaSaveUnlockTimer);
     }
   },
   // 每次切回本页都重新绑一次：有些基础库只保留最后注册的那一个监听，
@@ -280,7 +282,7 @@ Component({
       const a = cats[0] || {};
       const p = qaPrioDefIdx();
       // qaEditId 一并归零：新建态（＝不是回显改某一条）——保险，正常路径下 closeQa 已经清过
-      this.setData(Object.assign({ qa: true, qaFocus: false, qaUndo: null, qaEditId: '', qaDueOpen: false }, qaNewFields(cats, a, p)));
+      this.setData(Object.assign({ qa: true, qaFocus: false, qaUndo: null, qaEditId: '', qaDueOpen: false, qaSaving: false }, qaNewFields(cats, a, p)));
       this._qaDueHadFocus = false;   // 面板整个换新：上一轮记下的焦点归属作废
       // 位置按**当前**键盘状态给：不能沿用上一次记下的键盘高度——键盘已经收了、面板还按旧高度
       // 悬在页面中间（这就是「再打开位置变了」）。键盘真在的话，点输入框那一下会再来一次高度事件
@@ -448,6 +450,10 @@ _restoreQaFocus() {
     /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条。
        编辑模式（qaEditId 非空）走 _qaUpdate——更新原来那条，不是新建 */
     onQaSave() {
+      // 防重入：写云是异步的，回调回来之前面板还开着、文本也还在，
+      // 连点两下「记下」会把同一条落两遍（撤销条只能撤掉最后一条，第一条留在这）。
+      // 上锁后第二次直接忽略——刻意不给提示：这一下本来就是同一次意图的重复。
+      if (this._qaSaving) return;
       if (this.data.qaEditId) { this._qaUpdate(); return; }
       const txt = (this.data.qaTxt || '').trim();
       if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
@@ -464,7 +470,13 @@ _restoreQaFocus() {
       }
       // 计划完成：只有待办写（随记没有这一格）；没点过就是 0＝不写这个字段
       const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext, extSrc: src, done: false, doneAt: 0, status: '', dueTs: a.m === 'todo' ? (this.data.qaDueTs || 0) : 0 };
+      this._qaSaving = true;
+      this.setData({ qaSaving: true });
+      // 兜底解锁：云端卡住不回调时不能让「记下」永远变成死按钮（见 pages/index 的同名兜底）
+      if (this._qaSaveUnlockTimer) clearTimeout(this._qaSaveUnlockTimer);
+      this._qaSaveUnlockTimer = setTimeout(() => { this._qaSaveUnlockTimer = null; this._qaUnlockSave(); }, 12000);
       store.addRecord(rec).then(rid => {
+        this._qaUnlockSave();
         rec._rid = rid; rec.id = rid;
         const G = getApp().globalData;
         if (!G.records) G.records = [];
@@ -472,7 +484,12 @@ _restoreQaFocus() {
         this.setData({ qa: false, qaFocus: false, qaTxt: '', qaUndo: { id: rid, txt, name: store.recMname(rec) } });
         this.notifyPage();
         this._qaStartUndoTimer();
-      }).catch(() => wx.showToast({ title: '没记上，再试一次', icon: 'none' }));
+      }).catch(() => { this._qaUnlockSave(); wx.showToast({ title: '没记上，再试一次', icon: 'none' }); });
+    },
+    _qaUnlockSave() {
+      if (this._qaSaveUnlockTimer) { clearTimeout(this._qaSaveUnlockTimer); this._qaSaveUnlockTimer = null; }
+      this._qaSaving = false;
+      this.setData({ qaSaving: false });
     },
     /* 编辑模式的保存：把面板上的内容写回原记录（文本 + 类别 + 优先级），
        记录时间不动——改的是内容，不是「什么时候记的」。没改动就不落云 */

@@ -46,7 +46,7 @@
            不再让微信去「顶页面」——回看整页是 scroll-view（页面本身不滚），它顶不动，
            结果就是面板留在原地被键盘盖住；两边的调整叠在一起也会把面板抬过头 -->
       <input class="qa-in" placeholder="{{qaPh}}" value="{{qaTxt}}" bindinput="onQaInput" bindconfirm="onQaSave" bindblur="onQaBlur" bindkeyboardheightchange="onQaKb" confirm-type="done" adjust-position="{{false}}" cursor-spacing="24" always-embed="{{true}}" focus="{{qaFocus}}" id="qaIn" />
-      <view class="qa-go {{qaTxt ? 'on' : ''}}" bindtap="onQaSave">{{qaEditId ? '保存' : '记下'}}</view>
+      <view class="qa-go {{qaTxt ? 'on' : ''}} {{qaSaving ? 'off' : ''}}" bindtap="onQaSave">{{qaSaving ? '记下中' : (qaEditId ? '保存' : '记下')}}</view>
     </view>
   </view>
 

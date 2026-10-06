@@ -192,7 +192,7 @@
              这里再挂一个占满宽度的「修改」既重复又抢眼 -->
         <view wx:if="{{!(tag==='today' && todayLocked && !editing)}}" class="savebar sticky {{(kbOn||barFollow)?'kb':''}}" id="savebar" style="bottom:{{barBottom}}">
           <view class="sbbtns">
-            <view class="btn" bindtap="doSave">{{editing?'保存修改':'记下'}}</view>
+            <view class="btn {{saving?'off':''}}" bindtap="doSave">{{saving ? '记下中' : (editing?'保存修改':'记下')}}</view>
             <view wx:if="{{editing}}" class="btn gh" bindtap="onEditCancel">取消</view>
           </view>
           <!-- 记下后的确认条：写清记进了哪个模块（觉察会带上喜恶）。

@@ -110,6 +110,8 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .savebar.sticky::before { content: ''; position: absolute; left: 0; right: 0; top: -14px; height: 14px; background: linear-gradient(to bottom, rgba(255,255,255,0), var(--bg)); pointer-events: none; }
 .btn { flex: 1; padding: 11px 0; border-radius: var(--r-btn); background: var(--accent, #2F8F7B); color: #fff; font-size: 14.5px; font-weight: 700; border: 0; text-align: center; }
 .btn:active { opacity: .88; }
+/* 写云在途：置灰 + 去掉点按手感（见 pages/index 的 doSave 防重入锁） */
+.btn.off { opacity: .55; }
 .btn.gh { background: var(--soft); color: var(--ink2); border: 1px solid var(--line2); }
 .btn.dan { background: var(--danger); }
 .toastline { margin-top: 13px; background: var(--accent-soft); border-radius: 12px; padding: 10px 13px; font-size: 13px; color: var(--ink2); display: flex; align-items: center; gap: 8px; }

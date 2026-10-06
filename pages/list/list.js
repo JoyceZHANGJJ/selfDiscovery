@@ -602,7 +602,10 @@ Page(pageBase({
   onUndoDel() {
     if (this.guardEdit()) return;
     const u = this.data.delUndo; if (!u) return;
+    // 防重入：撤销条要等 addRecord 的回调才清，这中间再点一下会把同一条加两遍。
+    // 先同步清掉 delUndo（这一下即视为撤销条已用掉），失败再放回去
     this._stopDelTimer();
+    this.setData({ delUndo: null });
     const d = u.dump;
     const rec = {
       m: d.m, t: d.t, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [],
@@ -613,8 +616,7 @@ Page(pageBase({
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       app.globalData.records.unshift(store.decorate(rec));
-      this.setData({ delUndo: null });
       this.rebuild();
-    });
+    }).catch(() => { this.setData({ delUndo: u }); this._startDelTimer(); });
   }
 }));

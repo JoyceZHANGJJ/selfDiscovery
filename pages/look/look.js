@@ -968,6 +968,10 @@ Page(pageBase({
 
   onUndoDel() {
     const u = this.data.delUndo; if (!u) return;
+    // 防重入：撤销条要等 addRecord 的回调才清，这中间再点一下会把同一条加两遍。
+    // 先同步清掉 delUndo（这一下即视为撤销条已用掉），失败再放回去
+    this._stopDelTimer();
+    this.setData({ delUndo: null });
     const dump = u.dump;
     // 删除后撤销：忠实还原原记录，保留状态（未做/在做/做了/不做）、开始时间与放弃时间，
     // 以及「为什么不做了」——「不做」记录撤销后仍是「不做」，而不是退回未做
@@ -987,7 +991,7 @@ Page(pageBase({
       recs.unshift(decorated);
       recs.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       this.syncGlobalAdd(decorated);
-      this.setData({ recs, delUndo: null }, () => this.rebuild());
-    });
+      this.setData({ recs }, () => this.rebuild());
+    }).catch(() => { this.setData({ delUndo: u }); this._startDelTimer(); });
   }
 }));

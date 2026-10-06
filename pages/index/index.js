@@ -44,6 +44,9 @@ Page(pageBase({
     recentTab: 'recent',   // 「最近」这一段的切换：'recent'（最近）/ 'done'（已完成的最新十条）
     editing: false,
     focusIdx: -1,
+    // 写云在途（点「记下」到云端返回）：期间再点直接忽略，避免同一条被连点落两遍。
+    // 同时给按钮一个置灰反馈，见 app.wxss 的 .btn.off
+    saving: false,
     // 待办的「计划完成」日历浮层（components/due-sheet，与快捷记面板共用同一个）：
     // dueOpen＝开没开；dueTs＝打开时喂给它的当前值（只在点「自定义」那一刻写一次）
     dueOpen: false,
@@ -121,6 +124,7 @@ Page(pageBase({
     if (this._kbTimer) { clearTimeout(this._kbTimer); this._kbTimer = null; }
     if (this._barTimer) { clearTimeout(this._barTimer); this._barTimer = null; }
     if (this._tabHideTimer) { clearTimeout(this._tabHideTimer); this._tabHideTimer = null; }
+    if (this._saveUnlockTimer) { clearTimeout(this._saveUnlockTimer); this._saveUnlockTimer = null; }
     this._kbHandler = null;
   },
 
@@ -1067,6 +1071,11 @@ Page(pageBase({
 
   /* -------- 保存 -------- */
   doSave() {
+    // 防重入：写云是异步的，从点下到云端返回这几百毫秒里按钮还点得到，
+    // 而表单要到回调里才清空——手抖连点两下，第二下读到的还是同一份内容，
+    // 于是同一条被落了两遍（列表里出现两条一样的）。
+    // 这里在**发起写入前**上锁，回调（成功或失败）里解锁；校验失败的分支本来就没写云，不用管。
+    if (this._saving) return;
     const f = store.fieldsOf(this.st.tag);
     if (!f) { wx.showToast({ title: '这个维度已不存在', icon: 'none' }); return; }
     // 编辑时：按记录类型拼装时间
@@ -1207,21 +1216,40 @@ Page(pageBase({
     });
     rec.ext = ext; rec.extSrc = extSrc;
 
+    // 上锁：从这里起直到回调解锁，中间再点「记下」直接忽略。
+    // 同时把按钮置灰——被忽略的那一下要看得见「正在写」，否则像点了没反应
+    this._saving = true;
+    this.setData({ saving: true });
+    // 兜底解锁：云端要是卡住不回调（弱网 / 环境抽风），锁不能永远留着把按钮变成死按钮。
+    // 12s 还没回来就放开门槛——真写成功了的话记录本来也已经进列表
+    if (this._saveUnlockTimer) clearTimeout(this._saveUnlockTimer);
+    this._saveUnlockTimer = setTimeout(() => {
+      this._saveUnlockTimer = null;
+      this._unlockSave();
+    }, 12000);
     if (this.st.edit) {
       rec._rid = this.st.edit._rid; rec.id = this.st.edit.id;
       store.updateRecord(rec).then(() => {
+        this._unlockSave();
         const G = app.globalData;
         const i = G.records.findIndex(r => r._rid === rec._rid);
         if (i >= 0) G.records[i] = store.decorate(rec);
         this.afterSave(rec);
-      });
+      }).catch(() => { this._unlockSave(); });
     } else {
       store.addRecord(rec).then(rid => {
+        this._unlockSave();
         rec._rid = rid; rec.id = rid;
         app.globalData.records.unshift(store.decorate(rec));
         this.afterSave(rec);
-      });
+      }).catch(() => { this._unlockSave(); });
     }
+  },
+  // 解锁并把按钮恢复原样（成功走 afterSave，失败单独调一次）
+  _unlockSave() {
+    if (this._saveUnlockTimer) { clearTimeout(this._saveUnlockTimer); this._saveUnlockTimer = null; }
+    this._saving = false;
+    this.setData({ saving: false });
   },
   // 「可做」的分类、「待办」的类别、「随记」的类别都是必选项：清空表单后要把默认值补回来，
   // 否则选中态丢失，下一条还会因「请选择…」而记不进去；
@@ -1630,7 +1658,10 @@ Page(pageBase({
   onUndoDel() {
     if (this.guardEdit()) return;
     const u = this.data.delUndo; if (!u) return;
+    // 防重入：撤销条要等 addRecord 的回调才清掉，这中间再点一下「撤销」会把同一条加两遍。
+    // 先同步把 delUndo 清掉再发请求——这一下本来就是「撤销条已经用掉了」
     this._stopDelTimer();
+    this.setData({ delUndo: null });
     const dump = u.dump;
     // 删除后撤销：忠实还原原记录，保留状态（未做/在做/做了/不做）、开始时间与放弃时间
     // （计划完成 / 已推日历也在 dumps 里，一起还原，否则撤销后那道胶囊就没了）
@@ -1638,9 +1669,8 @@ Page(pageBase({
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       app.globalData.records.unshift(store.decorate(rec));
-      this.setData({ delUndo: null });
       this.recompute();
-    });
+    }).catch(() => { this.setData({ delUndo: u }); this._startDelTimer(); });
   },
 
   /* 悬浮球「＋」快捷记下一条待办后：只刷新「最近」，不碰正在输入的内容；
