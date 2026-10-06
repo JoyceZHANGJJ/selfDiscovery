@@ -1,9 +1,17 @@
 // pages/profile/profile.js —— 个人画像
-// 基于全部历史记录，由云函数 analysis 的 action:'profile' 生成一份稳定的「你是谁」画像：
-// 擅长、感兴趣、不太感兴趣、适合的方向、可以尝试、更深的模式。每 openid 一份最新，
-// 进页面先 profileGet（快、不花额度），点刷新 / 下拉重新生成。
+// 基于全部历史记录，由云函数 analysis 的 action:'profile' 生成一份「人物深度分析报告」。
+// 每 openid 一份最新：进页面先 profileGet（只读、秒回、不花大模型额度）。
+//
+// 两个交互约定：
+// 1) 刷新只认「点按钮」，下拉不触发重新生成（重新生成要调大模型、耗时长，不该被误触）。
+// 2) 生成是「后台任务」：点一下就提交，不让用户对着转圈等。页面进入 pending 态并提示
+//    「稍后回来查看」，同时在后台轮询 profileGet；出结果了自动渲染 + toast 提醒。
+//    （云函数控制台对长耗时调用偶尔会丢响应报 ret=-3，轮询兜底，避免用户以为失败。）
 const store = require('../../utils/store.js');
 const pageBase = require('../../utils/pageBase.js');
+
+const POLL_MS = 5000;      // 轮询间隔
+const POLL_MAX = 24;       // 最多轮询 24 次（约 2 分钟）
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function fmtTs(ts) {
@@ -13,13 +21,40 @@ function fmtTs(ts) {
     + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
+// 云函数返回的嵌套对象 → 页面用的扁平结构（补齐空数组/空串，wxml 可直接 .length）
+function mapProfile(p) {
+  const o = (v, keys) => {
+    const src = (v && typeof v === 'object') ? v : {};
+    const out = {};
+    keys.forEach(k => { out[k] = Array.isArray(src[k]) ? src[k] : []; });
+    return out;
+  };
+  const s = (v) => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
+  const f = (p.future && typeof p.future === 'object') ? p.future : {};
+  return {
+    _id: p._id,
+    summary: s(p.summary).slice(0, 300),
+    basic: o(p.basic, ['info', 'traits', 'body', 'finance', 'life']),
+    core: o(p.core, ['strengths', 'downsides', 'conflicts']),
+    fit: o(p.fit, ['work', 'life', 'avoid']),
+    future: { neutral: s(f.neutral), optimistic: s(f.optimistic), cautious: s(f.cautious) },
+    action: o(p.action, ['quick', 'rules', 'metrics']),
+    conclusion: s(p.conclusion).slice(0, 500),
+    n: p.n || 0,
+    updatedAt: p.updatedAt || 0,
+    updatedAtLabel: fmtTs(p.updatedAt)
+  };
+}
+
 Page(pageBase({
   data: {
     ready: false,          // 首屏是否已拉到（含「没有画像」的明确结论）
-    loading: false,        // 生成 / 重新生成中
-    genFail: false,        // 生成（网络 / 服务端）失败
+    loading: false,        // 读取中（profileGet，秒级）
+    genning: false,        // 生成请求在途中（拦重复点击）
+    pending: false,        // 已提交生成、结果还没出来（后台跑着，可随时离开）
+    genFail: false,        // 生成失败（明确报错，非轮询超时）
     p: null,               // 画像对象
-    empty: false           // 还没生成过（图谱为空）
+    empty: false           // 还没生成过
   },
 
   onShow() {
@@ -29,75 +64,120 @@ Page(pageBase({
       this.getTabBar().setData({ selected: 3, theme: store.curTheme() });
     }
     this.loadProfile();
+    // 上次提交过生成、还没看到结果：回到页面继续等
+    if (this.data.pending) this.startPolling();
   },
 
-  // 进页面先读已存的画像（不花大模型额度）；没有就留空态让用户点生成
+  onHide() { this.stopPolling(); },
+  onUnload() { this.stopPolling(); this._gone = true; },
+
+  // 只读已存的画像（不花大模型额度）；没有就留空态让用户点生成
   loadProfile() {
-    if (this._loading) return;
-    this.setData({ ready: false, genFail: false });
+    if (this._reading) return;
+    this._reading = true;
+    this.setData({ loading: true });
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'profileGet' } })
       .then(res => {
+        this._reading = false;
         const p = res.result && res.result.profile;
         this.setData({
-          ready: true,
-          p: p ? Object.assign({}, p, { updatedAtLabel: fmtTs(p.updatedAt) }) : null,
+          loading: false, ready: true, genFail: false,
+          p: p ? mapProfile(p) : null,
           empty: !p
         });
       })
       .catch(() => {
         // 读失败（集合还没建 / 网络问题）：先给空态，不阻断页面
-        this.setData({ ready: true, empty: true, genFail: false });
+        this._reading = false;
+        this.setData({ loading: false, ready: true, empty: true, genFail: false });
       });
   },
 
-  // 下拉刷新＝重新生成；也复用同一条生成逻辑
-  onPullDownRefresh() {
-    this.layoutBrand();
-    this.playBrand();
-    this.generate();
-  },
-
-  // 生成 / 重新生成画像（调大模型，几秒 ~ 十几秒）
+  /* 提交生成（或重新生成）。立即返回，不阻塞：
+     置 pending → 发请求 → 后台轮询 profileGet 直到 updatedAt 变化。 */
   generate() {
-    if (this._loading) { wx.stopPullDownRefresh && wx.stopPullDownRefresh(); return; }
-    this._loading = true;
-    this.setData({ loading: true, genFail: false });
+    if (this._gone) return;
+    // 已在生成 / 已在等待：再点只是催一下结果，不重复提交
+    if (this.data.gening || this.data.pending) { this.loadProfile(); return; }
+
+    const base = (this.data.p && this.data.p.updatedAt) || 0;
+    this.setData({ genning: true, pending: true, genFail: false });
+    this.startPolling(base);
+
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'profile' } })
       .then(res => {
-        this._loading = false;
+        this._genning = false;
+        this.setData({ genning: false });
         const r = res.result || {};
-        if (r.empty) {
-          this.setData({ loading: false, empty: true, p: null, ready: true });
-          wx.stopPullDownRefresh && wx.stopPullDownRefresh();
+        if (r.empty) {                       // 还没有任何记录
+          this.stopPolling();
+          this.setData({ pending: false, ready: true, empty: true, p: null });
+          wx.showToast({ title: '先去记几条再来生成', icon: 'none' });
           return;
         }
-        if (r.error) {
-          this.setData({ loading: false, genFail: true });
-          wx.stopPullDownRefresh && wx.stopPullDownRefresh();
+        if (r.error) {                       // 明确报错（如额度用完）
+          this.stopPolling();
+          this.setData({ pending: false, genFail: true });
           return;
         }
+        this.stopPolling();
         this.setData({
-          loading: false, ready: true, empty: false,
-          p: {
-            _id: r._id,
-            summary: r.summary || '',
-            basic: r.basic || {}, core: r.core || {}, fit: r.fit || {},
-            future: r.future || {}, action: r.action || {},
-            conclusion: r.conclusion || '',
-            n: r.n || 0,
-            updatedAtLabel: fmtTs(r.updatedAt)
-          }
+          pending: false, ready: true, empty: false, p: mapProfile(r)
         });
-        wx.stopPullDownRefresh && wx.stopPullDownRefresh();
+        wx.showToast({ title: '画像已生成', icon: 'success' });
       })
       .catch(() => {
-        this._loading = false;
-        this.setData({ loading: false, genFail: true });
-        wx.stopPullDownRefresh && wx.stopPullDownRefresh();
+        // 请求异常（含控制台偶发的 ret=-3）：不清 pending，让轮询继续兜底
+        this.setData({ genning: false });
       });
   },
 
+  // 后台轮询：结果出来就渲染 + 提醒；超时不报错，只提示稍后再来
+  startPolling(base) {
+    this.stopPolling();
+    const from = (base === undefined) ? ((this.data.p && this.data.p.updatedAt) || 0) : base;
+    let n = 0;
+    const tick = () => {
+      if (this._gone) return;
+      n++;
+      if (n > POLL_MAX) {
+        this.stopPolling();
+        this.setData({ genning: false });
+        wx.showToast({ title: '还在生成，稍后再来看看', icon: 'none' });
+        return;
+      }
+      this._pollTimer = setTimeout(tick, POLL_MS);
+      wx.cloud.callFunction({ name: 'analysis', data: { action: 'profileGet' } })
+        .then(res => {
+          if (this._gone) return;
+          const p = res.result && res.result.profile;
+          if (p && (!from || (p.updatedAt || 0) > from)) {
+            this.stopPolling();
+            this.setData({
+              genning: false, pending: false, ready: true, empty: false, genFail: false,
+              p: mapProfile(p)
+            });
+            wx.showToast({ title: '画像已生成', icon: 'success' });
+          }
+        })
+        .catch(() => { /* 单次查询失败忽略，下一轮再试 */ });
+    };
+    this._pollTimer = setTimeout(tick, POLL_MS);
+  },
+
+  stopPolling() {
+    if (this._pollTimer) { clearTimeout(this._pollTimer); this._pollTimer = null; }
+  },
+
+  // 标题栏/空态的「生成 / 重新生成」按钮
   onGenerate() { this.generate(); },
+
+  // 刷新按钮：只重新读取已有画像（快），不重新调大模型
+  onRefresh() {
+    if (this.data.gening || this.data.pending) { this.loadProfile(); return; }
+    this.loadProfile();
+    wx.showToast({ title: '已刷新', icon: 'none' });
+  },
 
   // 子页：从回看页 navigateTo 进来，点返回回退
   onClose() { wx.navigateBack(); }

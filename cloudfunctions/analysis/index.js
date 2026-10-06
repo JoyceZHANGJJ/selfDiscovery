@@ -332,8 +332,18 @@ function objOf(v, keys) {
   return o;
 }
 
+// profile 集合可能还不存在（新环境首次使用，-502005）：首次用到时自动创建。
+// createCollection 幂等失败（已存在 -502004 / 并发冲突）一律吞掉，让后续查询报真实错误。
+let profileColEnsured = false;
+async function ensureProfileCol() {
+  if (profileColEnsured) return;
+  try { await db.createCollection('profile'); } catch (e) { /* 已存在或并发冲突，忽略 */ }
+  profileColEnsured = true;
+}
+
 // 生成（或重新生成）当前用户的个人画像：取全部记录 → 调大模型 → upsert 到 profile 集合
 async function generateProfile(openid) {
+  await ensureProfileCol();
   if (genBudget <= 0) return { error: '本次调用额度已用完，请稍后或加大 maxGen 再试' };
   const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
   const rows = (recs.data || []).map(d => ({
@@ -374,6 +384,7 @@ async function generateProfile(openid) {
 
 // 读取当前用户已存的画像（没有则返回 null）
 async function getProfile(openid) {
+  await ensureProfileCol();
   const ex = await profileCol().where({ openid }).orderBy('updatedAt', 'desc').limit(1).get();
   return (ex.data && ex.data.length) ? ex.data[0] : null;
 }
