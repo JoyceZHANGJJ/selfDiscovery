@@ -120,6 +120,7 @@ Page(pageBase({
     if (wx.offKeyboardHeightChange && this._kbHandler) wx.offKeyboardHeightChange(this._kbHandler);
     if (this._kbTimer) { clearTimeout(this._kbTimer); this._kbTimer = null; }
     if (this._barTimer) { clearTimeout(this._barTimer); this._barTimer = null; }
+    if (this._tabHideTimer) { clearTimeout(this._tabHideTimer); this._tabHideTimer = null; }
     this._kbHandler = null;
   },
 
@@ -130,6 +131,9 @@ Page(pageBase({
     this._clearBarFollow();   // 键盘状态从零开始（上一次离开时的跟随位置不能留）
     this._refreshTodayMax();  // 跨天回来时，「今日」的日期上限要跟着今天走
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 0, theme: store.curTheme() });
+    // 「自定义」月历浮层开着时 tab 栏要保持收起（从后台切回来 / 切 tab 回来的那一瞬
+    // tabBar 有自己的复位时序，只设一次会被盖回来——所以过一拍再收一次，见 pageBase.setTabHidden）
+    if (this.data.dueOpen) this.setTabHidden(true, 300);
     store.ensureAll().then(ok => {
       // 没拉到：撤掉骨架屏、显示可点的重试（以前这里什么都不做，页面会永远停在骨架屏）
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
@@ -176,6 +180,9 @@ Page(pageBase({
     // 离开页面（切 tab / 去清单 / 进后台）不保留操作条与撤销条，回来是一页干净的
     this.clearFloats();
     this._clearBarFollow();   // 跟着输入框的操作行也收回来（进后台后键盘就没了）
+    // 月历浮层同样不留：它是整屏的，留着会盖住别的页；tab 栏顺手放回来
+    //（它是本页的实例，hidden 不带走的话下次进本页 tab 栏就没了）
+    this.closeDueSheet();
   },
 
   /* 量吸底操作行（#savebar）的实际高度，加上余量作为输入框的 cursor-spacing（见 data.kbGap）：
@@ -792,6 +799,9 @@ Page(pageBase({
   onSwipeStart(e) {
     if (this._noSwipe) { this._noSwipe = false; this._swX = null; return; }   // 起点在标签行：只滚标签，不切维度
     if (this._inList) return;   // 起点在「最近」列表区：那次滑动由列表自己处理（切 最近/待办/已完成）
+    // 「自定义」月历浮层开着时，整屏的手势都归它：浮层在页面里，touch 会冒泡到根节点，
+    // 不拦住的话在日历格子上左右一划就切了维度（浮层还开着，内容已经换页了）
+    if (this.data.dueOpen) return;
     swipe.start(this, e);
   },
   onSwipeEnd(e) { const d = swipe.end(this, e); if (d) this.stepDim(d); },
@@ -842,17 +852,31 @@ Page(pageBase({
   onDueChip(e) {
     if (this.data.todayLocked && !this.data.editing) return;
     const k = e.currentTarget.dataset.k;
-    if (k === store.DUE_CUSTOM) { this.setData({ dueOpen: true, dueTs: this.st.due || 0 }); return; }
+    if (k === store.DUE_CUSTOM) { this.openDueSheet(); return; }
     this.st.due = k === '无' ? 0 : store.duePresetTs(k);
     this._refreshDue();
+  },
+  /* 开「自定义」的月历浮层。**同时把底部 tab 栏与「＋」球收起来**——
+     浮层是整屏的，而 tab 栏在 custom-tab-bar 组件里、跨组件的层叠在小程序里不可靠，
+     不收的话浮层开着照样点得到 tab（人一下就跳到别的页去了，浮层还留着），
+     「＋」球也会露在浮层上——那是另一条记事的入口，露着等于让人以为能直接记。
+     收放那一步在 pageBase.setTabHidden（三页同一份） */
+  openDueSheet() {
+    this.setData({ dueOpen: true, dueTs: this.st.due || 0 });
+    this.setTabHidden(true);
+  },
+  closeDueSheet() {
+    if (!this.data.dueOpen) return;
+    this.setData({ dueOpen: false });
+    this.setTabHidden(false);
   },
   // 浮层点「好」：时间戳（认不出来是 0＝没计划）
   onDuePicked(e) {
     this.st.due = (e.detail && e.detail.ts) || 0;
-    this.setData({ dueOpen: false });
+    this.closeDueSheet();
     this._refreshDue();
   },
-  onDueClose() { this.setData({ dueOpen: false }); },
+  onDueClose() { this.closeDueSheet(); },
   /* 只把那一行刷新掉（不整页 recompute）：点一格 chip 只影响这一行的选中态与
      「自定义」的文字，没必要顺带把最近列表也重铺一遍 */
   _refreshDue() {

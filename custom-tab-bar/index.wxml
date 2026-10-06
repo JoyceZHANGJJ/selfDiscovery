@@ -2,8 +2,10 @@
   <!-- 快捷记（待办 / 随记）：点「＋」球在原地弹条（不跳页）；
        面板 / 撤销条以外的任何地方（页面空白、记录、操作条、球）都收起——但键盘不收起 -->
   <!-- 遮罩上的任何操作（点按 / 上下滚动）都收起面板：不只是点击，滚动页面也算 -->
-  <view wx:if="{{qa || qaUndo}}" class="qa-mask" bindtap="onMaskTap" bindtouchstart="onMaskTouch" bindtouchmove="onMaskTouch"></view>
-  <view wx:if="{{qa}}" class="qa" style="bottom:{{qaBottom}}" bindtap="onQaBgTap">
+  <view wx:if="{{(qa || qaUndo) && !qaDueOpen}}" class="qa-mask" bindtap="onMaskTap" bindtouchstart="onMaskTouch" bindtouchmove="onMaskTouch"></view>
+  <!-- 月历浮层开着时面板整块不渲染：那是整屏的一层，盖着的这层留着没有意义，
+       而且浮层里点「取消」之外的空白会落到它上面（面板在 62、遮罩 61，浮层 70 之上但空白处透下来） -->
+  <view wx:if="{{qa && !qaDueOpen}}" class="qa" style="bottom:{{qaBottom}}" bindtap="onQaBgTap">
     <!-- 标题只留「快捷记」：原先右上角的「清单 ›」入口已去掉。
          进清单页：看页待办块里的「去清单页管理 ›」，或长按这个「＋」球 -->
     <view class="qa-hd">
@@ -52,16 +54,20 @@
        （见 components/due-sheet）——两处同一套交互、同一份档位，不各写一份慢慢走偏 -->
   <due-sheet open="{{qaDueOpen}}" value="{{qaDueTs}}" bind:change="onQaDueChange" bind:close="onQaDueClose" />
 
-  <!-- 记下后给一次撤销（与其它页同一套样式：屏幕正中的小卡片，见 app.wxss 的 .undo-bar） -->
-  <view wx:if="{{qaUndo}}" class="toastline undo-bar qa-undo">
+  <!-- 记下后给一次撤销（与其它页同一套样式：屏幕正中的小卡片，见 app.wxss 的 .undo-bar）。
+       月历浮层开着时同样不渲染：它在浮层之下，露不出来也点不到 -->
+  <view wx:if="{{qaUndo && !qaDueOpen}}" class="toastline undo-bar qa-undo">
     <view class="tx">已记入{{qaUndo.name}}「{{qaUndo.txt}}」</view>
     <view class="tb" bindtap="onQaUndo">撤销</view>
   </view>
 
   <!-- 底部 tab 栏：ballOnly（挂在清单页这类「非 tab 页」上）时整条不渲染，只留「＋」球与面板。
        图标是现画的 SVG（utils/tabicons.js，颜色按当前主题算好写在 data URI 里，
-       见 index.js 的 tabList）——不再用 ✎ ☰ ◐ ◎ ⚙ 这类系统字符（各机型大小不一） -->
-  <view wx:if="{{!ballOnly}}" class="tabbar">
+       见 index.js 的 tabList）——不再用 ✎ ☰ ◐ ◎ ⚙ 这类系统字符（各机型大小不一）。
+       **「自定义」月历浮层开着时整条不渲染**：浮层是整屏的，这里露着就等于还能点着切 tab
+       （浮层在组件内部，z-index 压得住但语义上不对——浮层期间不该有第二个去处）。
+       记卡那边是页面内的浮层，靠 pageBase.setTabHidden 收整个 tabroot；这里是自己的组件，只能自己收 -->
+  <view wx:if="{{!ballOnly && !qaDueOpen}}" class="tabbar">
     <view
       wx:for="{{list}}"
       wx:key="index"
@@ -74,6 +80,7 @@
       <text>{{item.text}}</text>
     </view>
   </view>
-  <!-- 球 = 快捷记待办（展开时变 ×）；长按 = 进清单页 -->
-  <view class="fab {{qa ? 'on' : ''}}" bindtap="onFab" bindlongpress="onFabLong" aria-label="快捷记待办">{{qa ? '×' : '＋'}}</view>
+  <!-- 球 = 快捷记待办（展开时变 ×）；长按 = 进清单页。
+       月历浮层开着时也不渲染：它是另一条记事的入口，露在整屏浮层上等于让人以为可以直接记 -->
+  <view wx:if="{{!qaDueOpen}}" class="fab {{qa ? 'on' : ''}}" bindtap="onFab" bindlongpress="onFabLong" aria-label="快捷记待办">{{qa ? '×' : '＋'}}</view>
 </view>

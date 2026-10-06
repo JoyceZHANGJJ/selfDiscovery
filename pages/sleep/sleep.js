@@ -59,7 +59,7 @@ Page(pageBase({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 2, theme: store.curTheme() });
     }
-    this._setTabBar(!!this.data.ed);   // 编辑面板开着时（从后台回来）tab 栏要保持收起
+    this.setTabHidden(!!this.data.ed);   // 编辑面板开着时（从后台回来）tab 栏要保持收起
     this._startClock();
     store.ensureAll().then(ok => {
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
@@ -68,7 +68,7 @@ Page(pageBase({
     });
   },
   // 切走时把编辑面板收掉、并把 tab 栏放回来（它是本页自己的实例，别把 hidden 带回来）
-  onHide() { this._stopClock(); if (this.data.ed) this.setData({ ed: null }); this._setTabBar(false); },
+  onHide() { this._stopClock(); if (this.data.ed) this.setData({ ed: null }); this.setTabHidden(false); },
   onUnload() { this._stopClock(); },
 
   /* 取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
@@ -233,9 +233,9 @@ Page(pageBase({
         hint: '可以改到过去的任何一天；那一天 / 那一夜已经有记录时不会被覆盖。'
       }
     });
-    this._setTabBar(true);
+    this.setTabHidden(true);
   },
-  closeEd() { this.setData({ ed: null }); this._setTabBar(false); },
+  closeEd() { this.setData({ ed: null }); this.setTabHidden(false); },
   onEdDate(e) { this.setData({ 'ed.date': e.detail.value }); },
   onEdTime(e) { this.setData({ 'ed.time': e.detail.value }); },
   /* 保存：只有两条规则——不能改到将来；目标时段不能已经有同类记录（校验在 store.slotTaken，
@@ -259,9 +259,6 @@ Page(pageBase({
     this.closeEd();
     this.refresh();
     wx.showToast({ title: '已改成 ' + rec.txt, icon: 'none' });
-  },
-  _setTabBar(h) {
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ hidden: !!h });
   },
 
   onRange(e) {

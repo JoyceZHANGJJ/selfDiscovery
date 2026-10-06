@@ -12,8 +12,8 @@ utils/
   store.js          常量表 + 纯计算 + 云 CRUD + 选项池/配置持久化 + 7 套一次性迁移 + 全局状态
   themes.js         主题配色的单一来源（15 套，10 套参与切换循环）
   vm.js             记录展示 VM 的公共字段（记 / 看 / 清单 共用，各页再补自己的）
-  date.js / ui.js / swipe.js / log.js / changelog.js
-                    日期 · 胶囊与对齐（含**输入层已知坑**）· 横滑判定 · 错误留痕 · 更新日志
+  date.js / ui.js / swipe.js / log.js / changelog.js / pageBase.js
+                    日期 · 胶囊与对齐（含**输入层已知坑**）· 横滑判定 · 错误留痕 · 更新日志 · 三页共用的记录操作与浮层惯例（含 setTabHidden）
 pages/index         记：记卡 + 最近列表 + 就地编辑
 pages/look          看：筛选 + 分页时间线 + 统计 + 待办概览
 pages/list          清单：待办 / 随记的管理（筛选 + 折叠 + 操作条）

@@ -281,6 +281,7 @@ Component({
       const p = qaPrioDefIdx();
       // qaEditId 一并归零：新建态（＝不是回显改某一条）——保险，正常路径下 closeQa 已经清过
       this.setData(Object.assign({ qa: true, qaFocus: false, qaUndo: null, qaEditId: '', qaDueOpen: false }, qaNewFields(cats, a, p)));
+      this._qaDueHadFocus = false;   // 面板整个换新：上一轮记下的焦点归属作废
       // 位置按**当前**键盘状态给：不能沿用上一次记下的键盘高度——键盘已经收了、面板还按旧高度
       // 悬在页面中间（这就是「再打开位置变了」）。键盘真在的话，点输入框那一下会再来一次高度事件
       this._applyKb(0);
@@ -294,6 +295,7 @@ Component({
       this.setData(keepDraft
         ? { qa: false, qaFocus: false, qaEditId: '', qaDueOpen: false }
         : { qa: false, qaFocus: false, qaTxt: '', qaEditId: '', qaDueOpen: false });
+      this._qaDueHadFocus = false;
       this._applyKb(0);   // 收起后面板不再需要跟着键盘，位置状态归位
     },
 
@@ -330,6 +332,7 @@ Component({
         qaPrios: prios, qaPrioIdx: pi, qaIsTodo: m !== 'jot'
       // 计划完成也回显：随记没有这一格，一律 0
       }, dueState(m === 'todo' ? (rec.dueTs || 0) : 0)));
+      this._qaDueHadFocus = false;   // 换了一条记录：上一轮记下的焦点归属作废
       this._applyKb(0);
       // 意图明确（就是来改这条的），隔一拍自动聚焦——与以前的行内编辑器一致，省一次点击
       if (this._qaEditFocusTimer) clearTimeout(this._qaEditFocusTimer);
@@ -416,15 +419,31 @@ Component({
       this.setData(dueState(k === '无' ? 0 : store.duePresetTs(k)));
       if (keepFocus) this._qaKeepFocus();
     },
-    /* 「自定义」：面板里唯一会展开一层的地方（要具体到某一天才用得上）。
+/* 「自定义」：面板里唯一会展开一层的地方（要具体到某一天才用得上）。
        月历 + 时刻快捷档都在 due-sheet 组件里（记卡的待办那一行用的是同一个），
-       这里只负责开与收；选完由组件的 change 事件把时间戳带回来 */
-    openQaDue() { this.setData({ qaDueOpen: true }); },
-    onQaDueClose() { this.setData({ qaDueOpen: false }); },
-    onQaDueChange(e) {
-      const ts = (e.detail && e.detail.ts) || 0;
-      this.setData(Object.assign({ qaDueOpen: false }, dueState(ts)));
-    },
+       这里只负责开与收；选完由组件的 change 事件把时间戳带回来。
+       开这层时面板整块不渲染（见 index.wxml），输入框随之卸载、键盘收掉——
+       所以要把「刚才有没有焦点」记下来，收起这层后再还给输入框：
+       不还的话 qaFocus 仍是 true，输入框一挂载键盘立刻弹起来，正好挡住月历。 */
+openQaDue() {
+  this._qaDueHadFocus = !!this.data.qaFocus;
+  this.setData({ qaDueOpen: true, qaFocus: false });
+},
+onQaDueClose() { this._closeQaDue(); },
+onQaDueChange(e) {
+  const ts = (e.detail && e.detail.ts) || 0;
+  this.setData(Object.assign({ qaDueOpen: false }, dueState(ts)));
+  this._restoreQaFocus();
+},
+_closeQaDue() {
+  this.setData({ qaDueOpen: false });
+  this._restoreQaFocus();
+},
+_restoreQaFocus() {
+  if (!this._qaDueHadFocus) return;
+  this._qaDueHadFocus = false;
+  this._qaKeepFocus();   // 与点 chip 同一套：失焦是刚才那下点击的副作用，收回来
+},
 
     /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条。
        编辑模式（qaEditId 非空）走 _qaUpdate——更新原来那条，不是新建 */

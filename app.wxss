@@ -470,13 +470,13 @@ textarea.mini-in { height: auto; min-height: 44px; line-height: 21px; padding: 1
 .loadfail .lfr { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--accent); border: 1px solid var(--accent); border-radius: 99px; padding: 6px 18px; }
 
 /* ================= 选项管理浮层 ================= */
-/* .sheet 是整屏浮层：底部那排按钮必须**留在 tab 栏上方**。
-   不能靠「z-index 比 tab 栏(40) 大」来压住——tab 栏在 custom-tab-bar 组件里，
-   跨组件的层叠顺序在小程序里并不可靠，实测就是浮层的「好」按钮被 tab 栏盖住点不到。
-   所以直接把底部留白撑出一个 tab 栏的高度（--tabbar-h 在 app.wxss 与 custom-tab-bar 里各有一份，
-   见文件开头的说明）：盖不住也不影响，按钮本来就在上面。
-   组件（due-sheet）里也能取到这个变量，不行时回退到 58px 同值。 */
-.sheet { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column; padding: calc(var(--status-h, 20px) + 70px) 0 calc(10px + var(--tabbar-h, 58px) + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+/* .sheet 是整屏浮层。底部**不再**给 tab 栏留位置：留着就按不上了——
+   现在每一个挂 .sheet 的地方都会把 tab 栏收起来（设置页 / 作息页 / 记卡的「自定义」浮层，
+   收放那一步是 pageBase.setTabHidden；快捷记面板里那个浮层在 custom-tab-bar 内部，
+   由它自己按 qaDueOpen 收起 tab 栏与「＋」球）。
+   之前靠 z-index 压住 tab 栏是不可靠的——它在 custom-tab-bar 组件里，跨组件层叠在小程序里
+   认不准，实测就是浮层底部的「好」按钮被盖住点不到；「收起来」才是确定生效的做法。 */
+.sheet { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column; padding: calc(var(--status-h, 20px) + 70px) 0 calc(10px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
 .sh-h { display: flex; align-items: center; justify-content: space-between; padding: 15px 22px 2px; flex-shrink: 0; }
 .sh-h .st { font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
 /* 命中区补齐：浮层关闭 30px → 撑到约 44px（四周都没有别的可点元素，放心扩） */

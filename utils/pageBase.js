@@ -137,6 +137,30 @@ function pageBase(extra) {
       return true;
     },
 
+    /* 底部 tab 栏（连带「＋」快捷记球）的显隐。**整屏浮层打开时必须收起来**，
+       两条理由都不是「好不好看」：
+       ・浮层底部那排按钮会被 tab 栏盖住点不到——tab 栏在 custom-tab-bar 组件里，
+         跨组件的层叠顺序在小程序里不可靠，z-index 压不住（见 app.wxss 的 .sheet）。
+         所以是「收起来」，不是「盖上去」。
+       ・浮层开着还能点 tab 跳走、球还露在浮层上，等于浮层没盖住页面；
+         「＋」球更是另一条记事的入口，浮层里露着它会让人以为可以直接记。
+       rehide（可选，毫秒）：从后台切回 / 切 tab 回来的那一瞬 tabBar 有自己的复位时序，
+         只在 onShow 设一次会被它盖回来，过一拍再收一次（设置页踩过这个坑）。 */
+    setTabHidden(h, rehide) {
+      const tb = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
+      if (!tb) return;
+      tb.setData({ hidden: !!h });
+      if (this._tabHideTimer) { clearTimeout(this._tabHideTimer); this._tabHideTimer = null; }
+      if (!h) return;
+      const ms = rehide || 0;
+      if (ms <= 0) return;
+      this._tabHideTimer = setTimeout(() => {
+        this._tabHideTimer = null;
+        const t = (typeof this.getTabBar === 'function') ? this.getTabBar() : null;
+        if (t) t.setData({ hidden: true });
+      }, ms);
+    },
+
 /* 待办行尾的「计划完成」胶囊：点一下＝**取消计划**（dueTs 归 0，胶囊随即消失）。
        三页逐字相同，收在这里。要设／改具体日子走行尾左滑的快捷记面板或记卡那一行 chips。
        ・这里只提供「清掉」，不提供「换下一档」：随手一点就换成另一个还没想清楚的日期，

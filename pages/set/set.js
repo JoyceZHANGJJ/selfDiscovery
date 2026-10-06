@@ -237,34 +237,27 @@ Page(pageBase({
       wx.setClipboardData({ data: this.exportText(app.globalData.records || []), success: () => wx.showToast({ title: '已复制到剪贴板', icon: 'none' }) });
     });
   },
-  onImportTap() { this.setData({ importOverlay: true, importText: '' }); this.setTabBarHidden(true); },
+  onImportTap() { this.setData({ importOverlay: true, importText: '' }); this.setTabHidden(true); },
   onImportInput(e) { this.setData({ importText: e.detail.value }); },
-  closeImport() { this.setData({ importOverlay: false }); this.setTabBarHidden(false); },
+  closeImport() { this.setData({ importOverlay: false }); this.setTabHidden(false); },
   /* 有没有浮层开着：开着时底部 tab 栏要收起来（否则压住浮层底部的按钮） */
   _anyOverlay() {
     return !!(this.data.importOverlay || this.data.dimOverlay || this.data.logOverlay);
   },
   /* 浮层开着时，过一拍再把 tabBar 收一次：从后台切回来（或切 tab 回来）的那一瞬间，
      tabBar 有自己的重建 / 复位时序，只在 onShow 里设一次可能被它盖回来——
-     表现就是主题面板底部的「完成」被 tab 栏压住 */
+     表现就是主题面板底部的「完成」被 tab 栏压住。
+     真正收放的那一步收在 pageBase.setTabHidden（三页一份），这里只管「什么时候该收着」 */
   _rehideTabBar() {
-    if (!this._anyOverlay()) return;
-    if (this._rehideTimer) clearTimeout(this._rehideTimer);
-    this._rehideTimer = setTimeout(() => {
-      this._rehideTimer = null;
-      if (this._anyOverlay()) this.setTabBarHidden(true);
-    }, 300);
+    if (this._anyOverlay()) this.setTabHidden(true, 300);
   },
   // 注：原来这里有个 onBackPress（「Android 返回键先关浮层」）——微信小程序没有这个回调，
   // 它从未生效过（那是 uni-app 的 API）。tab 页按系统返回 = 退出小程序，无法拦截；
   // 需要返回键友好的交互不能放在 tab 页的浮层里——主题选择最后做成了设置页内的内联列表
 
   /* 更新日志 */
-  openLog() { this.setData({ logOverlay: true }); this.setTabBarHidden(true); },
-  closeLog() { this.setData({ logOverlay: false }); this.setTabBarHidden(false); },
-  setTabBarHidden(h) {
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ hidden: !!h });
-  },
+  openLog() { this.setData({ logOverlay: true }); this.setTabHidden(true); },
+  closeLog() { this.setData({ logOverlay: false }); this.setTabHidden(false); },
   doImport() {
     const txt = this.data.importText || '';
     if (!txt.trim()) { wx.showToast({ title: '先粘贴内容', icon: 'none' }); return; }
@@ -365,7 +358,7 @@ Page(pageBase({
   },
 
   /* 自定义标签 */
-  onAddDimTap() { this.setData({ dimOverlay: true, dimName: '', dimColor: store.DCOLORS[0] }); this.setTabBarHidden(true); },
+  onAddDimTap() { this.setData({ dimOverlay: true, dimName: '', dimColor: store.DCOLORS[0] }); this.setTabHidden(true); },
   onDimName(e) { this.setData({ dimName: e.detail.value }); },
   onDimColor(e) { this.setData({ dimColor: e.currentTarget.dataset.c }); },
   confirmDim() {
@@ -377,7 +370,7 @@ Page(pageBase({
     app.globalData.dims.push(d);
     store.saveDims(app.globalData.dims);
     this.setData({ dimOverlay: false, dims: (app.globalData.dims || []).map(x => ({ k: x.k, n: x.n, c: x.c, opt: (x.opt || []).length })) });
-    this.setTabBarHidden(false);
+    this.setTabHidden(false);
   },
   delDim(e) {
     const k = e.currentTarget.dataset.k;
