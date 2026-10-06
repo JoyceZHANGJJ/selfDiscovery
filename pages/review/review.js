@@ -118,7 +118,8 @@ Page(pageBase({
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'list' } })
       .then(res => {
         const l = (res.result && res.result.list) || [];
-        const a = l[0];
+        // 入口只展示「日」回看（旧文档没有 type 字段，视为 day）；周/月/年在 AI 回看页里看
+        const a = l.find(x => (x.type || 'day') === 'day');
         this.setData({
           aiLatest: a ? {
             date: a.date,

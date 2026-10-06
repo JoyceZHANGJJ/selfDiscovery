@@ -11,7 +11,12 @@
 .a-hd .bk { flex-shrink: 0; font-size: 15px; color: var(--ink2); padding: 4px 2px; }
 .a-hd .a-tt { font-size: 17px; font-weight: 800; color: var(--ink); }
 
-.hint { font-size: 12px; color: var(--ink3); margin: -2px 0 12px; }
+.hint { font-size: 12px; color: var(--ink3); margin: -2px 0 10px; }
+
+/* 日 / 周 / 月 / 年 切换（与记页维度栏同一套胶囊语言） */
+.atabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.atab { flex: 1; text-align: center; font-size: 13px; color: var(--ink2); background: #fff; border: 1px solid var(--line); border-radius: 99px; padding: 6px 0; }
+.atab.on { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 700; }
 
 /* 单条每日回看卡片：白底 + 细边，与回看页档案卡同一套语言 */
 .acard { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 13px 14px; margin-bottom: 10px; }
@@ -31,6 +36,8 @@
 .ac-sec { margin-bottom: 11px; }
 .ac-sec-l { font-size: 11.5px; color: var(--ink3); margin-bottom: 4px; }
 .ac-sec-v { font-size: 13.5px; color: var(--ink2); line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+.ac-acts { margin-bottom: 11px; }
+.ac-act { font-size: 13.5px; color: var(--ink2); line-height: 1.7; margin-bottom: 3px; }
 .ac-sug { background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; font-size: 13px; color: var(--ink); line-height: 1.6; }
 
 /* 空态 */

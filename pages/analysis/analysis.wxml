@@ -6,7 +6,15 @@
         <view class="bk" bindtap="onClose">‹ 返回</view>
         <view class="a-tt">AI 回看</view>
       </view>
-      <view class="hint">每天凌晨自动生成，温柔陪你回顾这一天的觉察。</view>
+      <view class="hint">每天凌晨自动生成；周 / 月 / 年的回看在周期结束后第一个凌晨出现。</view>
+
+      <!-- 日 / 周 / 月 / 年 切换 -->
+      <view class="atabs">
+        <view wx:for="{{['day','week','month','year']}}" wx:key="*this"
+              class="atab {{tab===item?'on':''}}" data-t="{{item}}" bindtap="onTab">
+          {{item==='day'?'日':item==='week'?'周':item==='month'?'月':'年'}}
+        </view>
+      </view>
 
       <!-- 取数失败：给一句说明 + 一个能点的重试 -->
       <view wx:if="{{loadFail}}" class="loadfail">
@@ -22,10 +30,10 @@
       </view>
 
       <block wx:else>
-        <!-- 还没有任何回看（多半是还没到第一次定时生成，或还没记过） -->
+        <!-- 这个粒度还没有回看 -->
         <view wx:if="{{list.length===0}}" class="empty">
-          <view class="empty-t">还没有 AI 回看</view>
-          <view class="empty-s">每天凌晨会自动生成一份。先去「记」里留下今天的觉察吧。</view>
+          <view class="empty-t">还没有{{tab==='day'?'日':tab==='week'?'周':tab==='month'?'月':'年'}}回看</view>
+          <view class="empty-s">{{tab==='day'?'每天凌晨会自动生成一份。先去「记」里留下今天的觉察吧。':'周期结束后（周日 / 月末 / 年末）的凌晨会自动生成。'}}</view>
         </view>
 
         <view wx:for="{{list}}" wx:key="_id" wx:for-item="a" wx:for-index="i"
@@ -39,7 +47,7 @@
             <view class="ac-chev">▸</view>
           </view>
 
-          <view wx:if="{{a.mood}}" class="ac-mood">今天基调 · {{a.mood}}</view>
+          <view wx:if="{{a.mood}}" class="ac-mood">{{tab==='day'?'今天':'这段'}}基调 · {{a.mood}}</view>
 
           <view wx:if="{{a.themes.length}}" class="ac-tags">
             <text wx:for="{{a.themes}}" wx:for-item="t" wx:key="*this" class="ac-tag">{{t}}</text>
@@ -50,11 +58,19 @@
               <view class="ac-sec-l">值得记住</view>
               <view class="ac-sec-v">{{a.highlight}}</view>
             </view>
+            <view wx:if="{{a.insight}}" class="ac-sec">
+              <view class="ac-sec-l">更深的看见</view>
+              <view class="ac-sec-v">{{a.insight}}</view>
+            </view>
             <view class="ac-sec">
-              <view class="ac-sec-l">随想</view>
+              <view class="ac-sec-l">复盘随想</view>
               <view class="ac-sec-v">{{a.detail}}</view>
             </view>
-            <view wx:if="{{a.suggestion}}" class="ac-sug">明天 · {{a.suggestion}}</view>
+            <view wx:if="{{a.actions.length}}" class="ac-acts">
+              <view class="ac-sec-l">可以试试</view>
+              <view wx:for="{{a.actions}}" wx:for-item="act" wx:key="*this" class="ac-act">· {{act}}</view>
+            </view>
+            <view wx:if="{{a.suggestion}}" class="ac-sug">{{tab==='day'?'明天':'接下来'}} · {{a.suggestion}}</view>
           </view>
         </view>
       </block>

@@ -1,4 +1,4 @@
-// pages/analysis/analysis.js —— AI 回看（每天一份的温柔回顾，按日期倒序列出）
+// pages/analysis/analysis.js —— AI 回看（日 / 周 / 月 / 年，按起始日期倒序列出）
 const store = require('../../utils/store.js');
 const pageBase = require('../../utils/pageBase.js');
 
@@ -9,10 +9,27 @@ function weekday(ds) {
   const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
   return '周' + WEEK[d.getDay()];
 }
+// 卡片标题按类型显示：日「10月05日」周「09月28日–10月04日」月「2026年09月」年「2025年」
+function dateLabel(a) {
+  const s = a.start || a.date || '';
+  const type = a.type || 'day';
+  if (type === 'year') return s.slice(0, 4) + '年';
+  if (type === 'month') return s.slice(0, 4) + '年' + Number(s.slice(5, 7)) + '月';
+  const md = Number(s.slice(5, 7)) + '月' + Number(s.slice(8, 10)) + '日';
+  if (type === 'week') {
+    const e = a.end || '';
+    const emd = e ? Number(e.slice(5, 7)) + '月' + Number(e.slice(8, 10)) + '日' : '';
+    return emd ? md + ' – ' + emd : md;
+  }
+  return md;
+}
+const TYPES = ['day', 'week', 'month', 'year'];
 
 Page(pageBase({
   data: {
-    list: [],
+    list: [],          // 当前 tab 下的回看
+    all: [],           // 云端全量（四个类型混在一起，前端按 tab 过滤）
+    tab: 'day',
     ready: false,
     loading: false,
     loadFail: false,
@@ -32,6 +49,22 @@ Page(pageBase({
     this.load(() => { if (wx.stopPullDownRefresh) wx.stopPullDownRefresh(); });
   },
 
+  onTab(e) {
+    const t = e.currentTarget.dataset.t;
+    if (t === this.data.tab) return;
+    this.setData({ tab: t, openIdx: -1 });
+    this.applyTab();
+  },
+
+  applyTab() {
+    const t = this.data.tab;
+    const list = this.data.all.filter(a => (a.type || 'day') === t).map(a => Object.assign({}, a, {
+      dateLabel: dateLabel(a),
+      weekday: (a.type || 'day') === 'day' ? weekday(a.start || a.date) : ''
+    }));
+    this.setData({ list });
+  },
+
   load(done) {
     if (this._loading) { done && done(); return; }
     this._loading = true;
@@ -39,20 +72,23 @@ Page(pageBase({
     wx.cloud.callFunction({ name: 'analysis', data: { action: 'list' } })
       .then(res => {
         const raw = (res.result && res.result.list) || [];
-        const list = raw.map(a => ({
+        const all = raw.map(a => ({
           _id: a._id,
-          date: a.date,
-          dateLabel: (a.date || '').slice(5).replace('-', '月') + '日',
-          weekday: weekday(a.date),
+          type: a.type || 'day',       // 旧文档没有 type，视为日回看
+          start: a.start || a.date || '',
+          end: a.end || '',
           summary: a.summary || '',
           mood: a.mood || '',
           themes: a.themes || [],
           suggestion: a.suggestion || '',
           highlight: a.highlight || '',
+          insight: a.insight || '',
+          actions: a.actions || [],
           detail: a.detail || ''
         }));
-        this.setData({ list, ready: true, loading: false });
+        this.setData({ all, ready: true, loading: false });
         this._loading = false;
+        this.applyTab();
         done && done();
       })
       .catch(err => {
