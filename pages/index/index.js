@@ -45,7 +45,7 @@ Page(pageBase({
     editing: false,
     focusIdx: -1,
     // 待办的「计划完成」日历浮层（components/due-sheet，与快捷记面板共用同一个）：
-    // dueOpen＝开没开；dueTs＝打开时喂给它的当前值（只在点「自定…」那一刻写一次）
+    // dueOpen＝开没开；dueTs＝打开时喂给它的当前值（只在点「自定义」那一刻写一次）
     dueOpen: false,
     dueTs: 0,
     // 维度标签行的「可滚动」渐变提示：只有标签真的超出、右侧还有内容时才显示
@@ -617,17 +617,30 @@ Page(pageBase({
   /* 「最近 / 待办 / 已完成」三块列表共用这一段（标题旁的几个词就是开关），都只取 10 条：
      ・最近：日常记录。待办一律不在这里出现——它有自己的「待办 / 已完成」两块，
        而且随手记的备忘会挤掉真正想回看的觉察 / 此刻 / 可做 / 随记
-     ・待办：还没做完的待办（已放弃的不算——那类去清单页看）。
-       排序与清单页 / 看页**逐字相同**（优先级 → 计划完成时间 → 记录时间，见 store.sortUndone）：
-       同一件事在三个地方看到的不该是三种顺序，否则「哪件最要紧」得自己重新排一遍
+     ・待办：还没做完的待办（已放弃的不算——那类去清单页看），**按创建时间倒序**（下面单说）
      ・已完成：最近 10 条「完成」的（待办勾掉的 + 可做「做了」的 + 历史 m='done'），按完成时间倒序 */
   recentVM() {
     const all = app.globalData.records || [];
     const tab = this.data.recentTab;
     if (tab === 'todo') {
-      return store.sortUndone(
-        all.filter(r => store.isTask(r.m) && !r.done && r.status !== 'abandon')
-      ).slice(0, 10).map(r => this.recVM(r));
+      /* 记页这一段的排序**故意与清单页 / 看页不同**：那边按优先级 → 计划时间 → 记录时间
+         （store.sortUndone），这边只按创建时间倒序。
+
+         为什么不一样：记页是「随手看一眼」的落地页，这一段摆的是**最近写下的东西**，
+         顺序本身就是信息——先看到自己刚记的那几条，符合「我刚说了什么」的预期。
+         清单页与看页是「manage 一堆事」的地方，那里顺序要替你做判断：哪件最要紧先出。
+         两边目的不同，硬凑成一种反而两边都不顺手。
+
+         注意**只有排序不同**：行的显示字段与交互仍与那两页一致（同一份 recVM / vm.baseVM，
+         优先级小旗、行尾「计划完成」胶囊、勾完成、左滑改，点胶囊不换档）。
+         记页与那两页的差别是「按什么顺序看」，不是「看起来像不像」。
+
+         filter 出来的是新数组，sort 不会动到 app.globalData.records 的顺序 */
+      return all
+        .filter(r => store.isTask(r.m) && !r.done && r.status !== 'abandon')
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+        .slice(0, 10)
+        .map(r => this.recVM(r));
     }
     if (tab === 'done') {
       // filter 出来的是新数组，sort 不会动到 app.globalData.records 的顺序
@@ -789,12 +802,14 @@ Page(pageBase({
   },
 
   /* 待办那一行「计划完成」：点一格就设好（今天 / 明天 / 本周末 / 下周一 / 无），
-     只有「自定…」会开日历浮层——和快捷记面板同一条口径，这里只是换了个位置。
+     只有「自定义」会开日历浮层——和快捷记面板同一条口径，这里只是换了个位置。
+     判「是不是自定义」用 store.DUE_CUSTOM，不写字面量：档位键与文案是同一个词（见 store 的说明），
+     写成 '自定' 的话改了文案这里就静默失配——点自定义会走到预设分支，duePresetTs 拿个不认识的键。
      dueTs 不进 ext（那两条数组是按位置对齐的，见 store 里的说明），所以不走 onChip 那套 */
   onDueChip(e) {
     if (this.data.todayLocked && !this.data.editing) return;
     const k = e.currentTarget.dataset.k;
-    if (k === '自定') { this.setData({ dueOpen: true, dueTs: this.st.due || 0 }); return; }
+    if (k === store.DUE_CUSTOM) { this.setData({ dueOpen: true, dueTs: this.st.due || 0 }); return; }
     this.st.due = k === '无' ? 0 : store.duePresetTs(k);
     this._refreshDue();
   },
@@ -806,7 +821,7 @@ Page(pageBase({
   },
   onDueClose() { this.setData({ dueOpen: false }); },
   /* 只把那一行刷新掉（不整页 recompute）：点一格 chip 只影响这一行的选中态与
-     「自定…」的文字，没必要顺带把最近列表也重铺一遍 */
+     「自定义」的文字，没必要顺带把最近列表也重铺一遍 */
   _refreshDue() {
     const d = store.dueChips(this.st.due);
     this.setData({ 'composer.due.ts': d.ts, 'composer.due.pick': d.pick, 'composer.due.opts': d.chips });

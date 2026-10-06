@@ -64,7 +64,7 @@ function buildQaPrios() {
   return (store.getOPT('todoPrio') || []).map(n => ({ n, c: store.prioColor(n) }));
 }
 
-/* 「计划完成」那一行的档位不是这里算的——档位表（今天 / 明天 / 本周末 / 下周一 / 无 / 自定…）
+/* 「计划完成」那一行的档位不是这里算的——档位表（今天 / 明天 / 本周末 / 下周一 / 无 / 自定义）
    与文字都是 store.dueChips 一份，记卡待办那一行用的是同一个（两处各写一份必然走偏）。
    这里只把键名换成本组件 data 上的名字 */
 function dueState(ts) {
@@ -112,9 +112,9 @@ Component({
     // 计划完成（待办才有，与优先级同一格）：默认 0＝没计划——**这才是常态**，
     // 一条待办本来就不一定有计划时间，所以面板里也不预选任何一档，只能自己点
     qaDueTs: 0,          // 面板里当前选的计划时间戳（0＝没计划）
-    qaDues: [],          // 那一行档位 chips（今天 / 明天 / 本周末 / 下周一 / 无 / 自定…）
+    qaDues: [],          // 那一行档位 chips（今天 / 明天 / 本周末 / 下周一 / 无 / 自定义）
     qaDuePick: '无',     // 高亮哪一格
-    // 「自定…」浮层开没开。月历 / 时刻那些 state 都在 due-sheet 组件里（那边自己管）
+    // 「自定义」浮层开没开。月历 / 时刻那些 state 都在 due-sheet 组件里（那边自己管）
     qaDueOpen: false,
     qaIsTodo: true,      // 当前类别是不是待办（决定优先级那一行出不出）
     qaName: '',          // 当前类别名字（撤销条展示用）
@@ -409,13 +409,14 @@ Component({
        与类别 / 优先级 chip 同一套：不动输入框里已写的内容，键盘也不闪断 */
     onQaDue(e) {
       const k = e.currentTarget.dataset.k;
-      if (k === '自定') { this.openQaDue(); return; }
+      // 判「是不是自定义」用 store.DUE_CUSTOM，不写字面量（理由见 pages/index 的 onDueChip）
+      if (k === store.DUE_CUSTOM) { this.openQaDue(); return; }
       const keepFocus = !!this.data.qaFocus;
       this._qaChipAt = Date.now();
       this.setData(dueState(k === '无' ? 0 : store.duePresetTs(k)));
       if (keepFocus) this._qaKeepFocus();
     },
-    /* 「自定…」：面板里唯一会展开一层的地方（要具体到某一天才用得上）。
+    /* 「自定义」：面板里唯一会展开一层的地方（要具体到某一天才用得上）。
        月历 + 时刻快捷档都在 due-sheet 组件里（记卡的待办那一行用的是同一个），
        这里只负责开与收；选完由组件的 change 事件把时间戳带回来 */
     openQaDue() { this.setData({ qaDueOpen: true }); },

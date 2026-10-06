@@ -375,7 +375,8 @@ Page(pageBase({
   },
 
   /* 待办清单：待完成在上（口径与清单页逐字相同：优先级 → 计划完成时间 → 记录时间，
-     收在 store.sortUndone，看页 / 清单页 / 记页共用一份）；
+     收在 store.sortUndone；记页那一段**故意不同**——只按创建时间倒序，见 index 的 recentVM，
+     那边的差别只在顺序、行的字段与交互仍与这两页一致）；
      已完成、已放弃各成一段（按各自时间倒序 + 按天分段）；三段都可收起 */
   buildTasks(ts) {
     if (!store.isTask(this.data.filter)) {

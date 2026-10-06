@@ -30,7 +30,7 @@
     </view>
     <!-- 计划完成：只有待办类别才有这一格（与优先级同理）。
          这一行就是为了**不弹选择器**——点一格就设好（今天 / 明天 / 本周末 / 下周一 / 无）；
-         只有「自定…」会开下面那个浮层。默认停在「无」：没计划是常态，不预选任何一档 -->
+         只有「自定义」会开下面那个浮层。默认停在「无」：没计划是常态，不预选任何一档 -->
     <view wx:if="{{qaIsTodo}}" class="qa-due">
       <view class="qa-lab">计划完成</view>
       <view class="qa-chips qa-dues">
@@ -48,7 +48,7 @@
     </view>
   </view>
 
-  <!-- 「自定…」的浮层（月历 + 时刻快捷档）：组件化的，记卡那边递给待办用的是同一个
+  <!-- 「自定义」的浮层（月历 + 时刻快捷档）：组件化的，记卡那边递给待办用的是同一个
        （见 components/due-sheet）——两处同一套交互、同一份档位，不各写一份慢慢走偏 -->
   <due-sheet open="{{qaDueOpen}}" value="{{qaDueTs}}" bind:change="onQaDueChange" bind:close="onQaDueClose" />
 

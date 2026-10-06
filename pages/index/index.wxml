@@ -101,7 +101,7 @@
           <!-- 待办的「计划完成」：与上面类别 / 优先级同一个位置——先定是什么、多紧要、打算哪天做完，
                再写内容。dueTs 是记录的**顶层字段**（不在 ext 那两条对齐数组里），
                所以它不走上面 catItems 那个循环，单独一行。
-               档位与文字都与快捷记面板同源（store.dueChips）；点「自定…」开的是同一个
+               档位与文字都与快捷记面板同源（store.dueChips）；点「自定义」开的是同一个
                due-sheet 组件（月历 + 时刻档），不在页面里再养一份 -->
           <view wx:if="{{composer.due}}" class="extra cattop">
             <view class="qrow"><view class="ql">计划完成</view></view>
@@ -249,7 +249,7 @@
           <view wx:else class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.desc}}" class="tdesc">{{item.desc}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
           <view wx:if="{{item.task}}" class="twr"><text class="twx">{{item.reason || item.usefor}}</text><text wx:if="{{item.reason || item.usefor}}" class="twd">·</text><text class="twt">{{item.tt}}</text></view>
           <!-- 待办的「计划完成」：与清单页 / 看页的 todo-list 逐字一致——
-               **只作显示，不点它**。改时间走行尾左滑的快捷记面板（档位 + 月历自定）
+               **只作显示，不点它**。改时间走行尾左滑的快捷记面板（档位 + 月历）
                或进记卡那一行 chips。这里以前也是「点一下换下一档」，一并下掉了 -->
           <view wx:if="{{item.dueHas}}" class="due {{item.dueOv?'ov':''}}" aria-label="计划完成 {{item.due}}">{{item.due}}</view>
           <text wx:if="{{!item.task}}" class="tw">{{item.d}}{{item.t}}</text>
@@ -284,7 +284,7 @@
        最近里行上「左滑」即弹出（见 index.js 的 onRowTouchend → swipeEdit）；长按是复制 -->
   <inline-editor visible="{{qeOn}}" focus="{{qeFocus}}" rect="{{qe}}" value="{{qeTxt}}" bind:save="onQSave" bind:del="onQDel" />
 
-  <!-- 「计划完成」的日历浮层（待办那一行的「自定…」开它）：与快捷记面板共用同一个组件。
+  <!-- 「计划完成」的日历浮层（待办那一行的「自定义」开它）：与快捷记面板共用同一个组件。
        放在 .screen **外面**——.screen 上挂着 onBodyTap（点空白＝收浮层、编辑态还会拦一下），
        放里面每点一格日历都会顺带触发一次 -->
   <due-sheet open="{{dueOpen}}" value="{{dueTs}}" bind:change="onDuePicked" bind:close="onDueClose" />

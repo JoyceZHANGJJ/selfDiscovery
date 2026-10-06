@@ -1030,32 +1030,35 @@ function duePresetTs(k, base) {
   if (k === '下周一') return dueNextMon(base);
   return 0;
 }
-// 当前是哪个档：返回档位名（'无' / '自定' / 四个档位之一）。面板高亮用它
+// 「自定」那一格的键名。既是 chips 里的 k，也是 duePresetOf 的返回值（面板拿它比对高亮），
+// 所以只能有一份写法——「自定…」改成「自定义」那天起，这里和下面的文案是同一个词，别再分叉
+const DUE_CUSTOM = '自定义';
+// 当前是哪个档：返回档位名（'无' / '自定义' / 四个档位之一）。面板高亮用它
 function duePresetOf(ts, base) {
   if (!ts) return '无';
   base = base || Date.now();
   for (let i = 0; i < DUE_STEPS.length; i++) {
     if (Math.abs(duePresetTs(DUE_STEPS[i], base) - ts) < 60000) return DUE_STEPS[i];
   }
-  return '自定';
+  return DUE_CUSTOM;
 }
-/* 「计划完成」那一行 chips 的**单一来源**：四个快捷键 + 「无」+「自定…」。
+/* 「计划完成」那一行 chips 的**单一来源**：四个快捷键 + 「无」+ 「自定义」。
    快捷记面板（custom-tab-bar）与记卡的待办维度共用这一份——两处要是各写一份，
    加档位 / 改文案时必然慢慢走偏（面板改了记卡没改，同一件事两个说法）。
-   这一行的存在就是为了**不弹选择器**：点一格就设好；「自定…」是唯一的例外。
+   这一行的存在就是为了**不弹选择器**：点一格就设好；「自定义」是唯一的例外。
    档位值一律现算（今天 23:59 / 明天 23:59 / 本周末 / 下周一），所以面板放一晚再点
    也还是「从现在算的今天」。
-   「自定…」那一格的文字会换成已选的具体日期，这样点完自定一眼能看出选的是哪天 */
+   「自定义」那一格的文字会换成已选的具体日期，这样选完一眼能看出选的是哪天 */
 function dueChips(ts) {
   ts = ts || 0;
   const pick = duePresetOf(ts);
   const chips = DUE_STEPS.map(k => ({ k, t: k }));
   chips.push({ k: '无', t: '无' });
-  chips.push({ k: '自定', t: pick === '自定' ? dueLabel(ts) : '自定…' });
+  chips.push({ k: DUE_CUSTOM, t: pick === DUE_CUSTOM ? dueLabel(ts) : DUE_CUSTOM });
   return { ts, pick, chips };
 }
 // 行尾胶囊的文案：今天 / 明天 / 后天 / 昨天 / 10月12日（跨年才带年份），
-// 自定过具体时刻的再把时刻带出来（「明天 18:00」）。
+// 自定义过具体时刻的再把时刻带出来（「明天 18:00」）。
 // **按当前时间现算**——库里存的只是那一刻的时间戳，「今天」是显示时才有的说法，
 // 不能存下来（今天存的「明天」，后天看就永远是「明天」了）
 function dueLabel(ts) {
@@ -1071,12 +1074,12 @@ function dueLabel(ts) {
     const md = (d.getMonth() + 1) + '月' + d.getDate() + '日';
     day = d.getFullYear() === n.getFullYear() ? md : (d.getFullYear() + '年' + md);
   }
-  // 自定的具体时刻（不是档位的 23:59）才把时分带上——档位只说「哪天」，说了反而吵
+  // 自定义的具体时刻（不是档位的 23:59）才把时分带上——档位只说「哪天」，说了反而吵
   if (d.getHours() !== DUE_END_H || d.getMinutes() !== DUE_END_M) day += ' ' + date.hhmm(ts);
   return day;
 }
 
-/* 「自定…」浮层里的时刻快捷档：一天里最常被当成「截止」的几个点。
+/* 「自定义」浮层里的时刻快捷档：一天里最常被当成「截止」的几个点。
    不用滚轮也能一次点到；想要真的任意时刻，下面还留着一个 time picker。
    第一档是「不设时刻」＝当天 23:59，与四个日期档位同一个口径（「那天结束前」）。 */
 const DUE_TIMES = [
@@ -1133,7 +1136,10 @@ function setDue(r, ts) {
   return true;
 }
 
-/* 待办「待完成」一段的排序：清单页 / 看页 / 记页三处必须完全一致，所以只写一份。
+/* 待办「待完成」一段的排序：**清单页 / 看页**两份必须完全一致，所以只写一份。
+   （记页那一段**故意不用它**——那边只按创建时间倒序，见 pages/index 的 recentVM；
+     记页的差别只在顺序，显示字段与交互仍与这两页一致。）
+
    口径（由重到轻依次比较）：
      ① 优先级（紧急重要 → 不紧急不重要，见 prioRank）
      ② 有计划的排在前面；都有计划时早的在前（「今天要交」压着「下周一交」）
@@ -2224,7 +2230,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

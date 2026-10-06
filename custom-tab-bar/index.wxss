@@ -94,7 +94,7 @@
 .qa-dues { margin-bottom: 0; }
 .qa-dues .qa-chip { font-size: 12px; color: var(--ink2, #55524A); }
 
-/* 「自定…」浮层的 .du-* 样式已收敛到 components/due-sheet（记卡的待办那一行也用同一个组件）。
+/* 「自定义」浮层的 .du-* 样式已收敛到 components/due-sheet（记卡的待办那一行也用同一个组件）。
    这里只留「谁压谁」的那一条：组件里的浮层是 70，盖得住本组件自己的面板 */
 .qa-row { display: flex; align-items: center; }
 .qa-in {

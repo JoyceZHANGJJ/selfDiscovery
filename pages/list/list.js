@@ -121,9 +121,9 @@ Page(pageBase({
     // 待完成不按时间排，先按**优先级**轻重（紧急重要 → 不紧急不重要，见 store.prioRank），
     // 同一档内再按**计划完成时间**：有计划的排在前面、早的在前（「今天要交」压着「下周一交」），
     // 没计划的沉到这一档的最后、内部仍按时间倒序——「没计划」是常态，
-    // 让它们去打扰计划好的那些没有道理。口径收在 store.sortUndone（看页 / 记页同一份，
-    // 三处各写一遍迟早会走偏）；「显示更多」也是在排好的序列上往后切，
-    // 所以翻出来的仍是这一档里的下几条
+    // 让它们去打扰计划好的那些没有道理。口径收在 store.sortUndone（与看页同一份，
+    // 两处各写一遍迟早会走偏；记页那一段故意不按这个排，只按创建时间倒序，见 index 的 recentVM）；
+    // 「显示更多」也是在排好的序列上往后切，所以翻出来的仍是这一档里的下几条
     const undoneRaw = store.sortUndone(list.filter(r => !r.done && r.status !== 'abandon'));
     const doneRecs = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = list.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
