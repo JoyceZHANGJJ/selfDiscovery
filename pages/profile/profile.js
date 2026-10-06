@@ -79,10 +79,13 @@ Page(pageBase({
         this.setData({
           loading: false, ready: true, empty: false,
           p: {
-            _id: r._id, summary: r.summary, strengths: r.strengths || [],
-            interests: r.interests || [], disinterests: r.disinterests || [],
-            directions: r.directions || [], tryThis: r.tryThis || [],
-            patterns: r.patterns || '', updatedAtLabel: fmtTs(r.updatedAt)
+            _id: r._id,
+            summary: r.summary || '',
+            basic: r.basic || {}, core: r.core || {}, fit: r.fit || {},
+            future: r.future || {}, action: r.action || {},
+            conclusion: r.conclusion || '',
+            n: r.n || 0,
+            updatedAtLabel: fmtTs(r.updatedAt)
           }
         });
         wx.stopPullDownRefresh && wx.stopPullDownRefresh();

@@ -12,9 +12,9 @@
 //   4) action:'backfill'：手动给当前用户补齐历史周 / 月 / 年（控制台测试 / 排查用，
 //      可带 maxGen 放宽单次生成上限）。
 //   5) action:'stats'：诊断——返回当前用户记录的时间分布与「该补齐哪些周期」。
-//   6) action:'profile'：根据当前用户【全部历史记录】生成「个人画像」（擅长 / 感兴趣 /
-//      不太感兴趣 / 适合的方向 / 可以尝试 / 更深的模式），upsert 到 profile 集合。
-//   7) action:'profileGet'：读取已存的个人画像（进页面先调，不花大模型额度）。
+//   6) action:'profile'：根据当前用户【全部历史记录】生成「人物深度分析报告」——固定六章
+//      （基础画像 / 核心盘点 / 适配方向 / 未来推演 / 行动方案 / 总结），upsert 到 profile 集合。
+//   7) action:'profileGet'：读取已存的画像（进页面先调，不花大模型额度）。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
 //   指出模式与连接、说可能的内在动机与张力、给具体可做且有方向性的建议；
@@ -149,6 +149,21 @@ const COMMON_RULES = [
   '输出严格 JSON（不要解释文字、不要代码块包裹）。'
 ].join('\n');
 
+// 个人画像（人物深度分析报告）专属规则：在 COMMON_RULES 的「温暖专业 / 不引用原话 /
+// 覆盖全维度」之上，叠加用户给的硬性要求——不脑补、区分事实与推论、不鸡汤、结构固定。
+const PROFILE_RULES = [
+  '你是「识己手札」的 AI 画像分析师：既温暖，又专业——像一位懂心理学、真的读过用户全部记录的咨询师。',
+  '全程中文，用「你」称呼用户。语气平和、真诚、有温度，但不甜腻客套、不一味夸奖。',
+  '【硬性】全部分析仅基于下面给出的记录资料；资料里没有的信息，绝不自行脑补、虚构。',
+  '【硬性】区分【客观事实】（记录里直接看得出来的）与【分析推论】（你的推断）——凡属推论，必须在该条文字里标注【推论】。',
+  '【硬性】禁止空洞鸡汤、玄学预言；结论要现实可落地，聚焦行为、选择、风险。',
+  '不要逐字引用用户的任何原话，全部用自己的话概括转述；也不罗列记录内容当流水账。',
+  '要覆盖全部维度的记录（今日能量、觉察、此刻、可做、待办、随记，以及其它出现的维度），从不同维度的组合里找信息。',
+  '有建设性：指出反复出现的模式、不同记录之间的连接、可能的内在需求与张力；也明确肯定做得好的地方。',
+  '建议要具体、可执行、有方向感，不是「早点休息」这类空话。',
+  '输出严格 JSON，且字段严格按下面「六章固定结构」，不要随意合并或删减板块。'
+].join('\n');
+
 // 各粒度的输出字段说明（结构一致，指导语按粒度变）
 function fieldsSpec(type) {
   const span = { day: '这一天', week: '这一周', month: '这个月', year: '这一年' }[type];
@@ -202,15 +217,16 @@ function parseContent(content) {
 }
 
 // 调大模型（用内置 https，不引第三方依赖）
-function chatCompletion(messages) {
+function chatCompletion(messages, temperature) {
   return new Promise((resolve, reject) => {
     const key = process.env.LLM_API_KEY;
     if (!key) return reject(new Error('LLM_API_KEY 未配置（在云函数环境变量里设置）'));
+    const temp = (typeof temperature === 'number') ? temperature : 0.8;
     const body = JSON.stringify({
       model: LLM_MODEL,
       messages,
       response_format: { type: 'json_object' },
-      temperature: 0.8
+      temperature: temp
     });
     let u;
     try { u = new URL(LLM_BASE_URL); } catch (e) { return reject(new Error('LLM_BASE_URL 非法：' + LLM_BASE_URL)); }
@@ -252,16 +268,34 @@ function chatCompletion(messages) {
 // ============ 个人画像 ============
 // 基于用户【全部历史记录】勾勒稳定的「你是谁」——擅长、在意什么、回避什么、
 // 适合往哪走、可以试什么。是长期画像，不是某段时间的复盘。
+// 个人画像 = 人物深度分析报告，固定六章结构（字段名即章节，嵌套对象承载子项）
 function profileFieldsSpec() {
   return [
-    'summary（50~90 字：一句话整体画像——把「擅长 + 感兴趣 + 状态」说透，不堆砌、不客套）',
-    'strengths（数组 2~5 条：他真正擅长 / 做得稳 / 有积累的地方，每条 24 字内）',
-    'interests（数组 2~5 条：明显投入、在意、反复出现的主题 / 领域，每条 24 字内）',
-    'disinterests（数组 1~4 条：明显回避 / 敷衍 / 提不起劲的方向，每条 24 字内；没信号就给空数组 []）',
-    'directions（数组 2~5 条：基于 strengths + interests，具体可去的方向 / 领域 / 赛道，每条 24 字内）',
-    'tryThis（数组 2~4 条：接下来可以小步尝试的事，每条 30 字内——可执行、有方向感、暗含「为什么值得试」）',
-    'patterns（150~280 字：跨记录的重复模式、张力、被忽略的信号、能量 / 状态的稳定特征——这是画像最有分量的部分）'
-  ].map(s => '  ' + s).join('\n');
+    'summary（30~60 字：一句话概括这个人的核心课题，以及最值得优先做的决策——用于回看页入口卡展示）',
+    'basic（对象 · 第一章「基础人物画像」）：',
+    '  info（数组 1~4 条：从资料提取的客观基础信息——身份 / 阶段 / 角色等【客观事实】）',
+    '  traits（数组 2~5 条：性格特质、认知模式、内在心理偏好——敏感点、能量消耗 / 充电方式、内在矛盾；属推断请标注【推论】）',
+    '  body（数组 0~4 条：身体状态、健康限制、精力特点——有信号才写，没信号给空数组 []）',
+    '  finance（数组 0~4 条：财务现状、资产约束、核心目标与底层顾虑——有信号才写，没信号给空数组 []）',
+    '  life（数组 1~4 条：生活偏好、环境偏好——喜欢 / 排斥的场景、社交模式）',
+    'core（对象 · 第二章「核心盘点：优势 & 短板 & 内在冲突」）：',
+    '  strengths（数组 2~5 条：核心优势——能力、性格、资源上适合什么）',
+    '  downsides（数组 2~5 条：短板与天然限制——容易踩的本能陷阱、下意识坏习惯）',
+    '  conflicts（数组 1~4 条：内在矛盾——内心互相拉扯、容易反复内耗的根源）',
+    'fit（对象 · 第三章「适配方向推荐（优先级排序）」）：',
+    '  work（数组 2~5 条：适合的工作模式、任务类型、工作环境；也可点出不适合的工作方式 / 场景）',
+    '  life（数组 2~4 条：适合尝试的生活方案、日常行为习惯、自我调节方式）',
+    '  avoid（数组 2~5 条：需要主动规避的选择、场景、行为——风险清单）',
+    'future（对象 · 第四章「未来图景推演（三种情景，推演趋势非预言）」，每种 2~4 句）：',
+    '  neutral（中性情景：维持现有选择、不变动习惯，后续大概率走向）',
+    '  optimistic（乐观情景：采纳推荐方向、持续执行调整后的行为，可能达成的状态）',
+    '  cautious（保守风险情景：持续保留原有坏习惯、踩进短板陷阱，会遇到什么问题）',
+    'action（对象 · 第五章「实操行动方案」）：',
+    '  quick（数组 2~4 条：优先尝试的小行动——低成本、容易起步、优先解决最大内耗点，每条 30 字内）',
+    '  rules（数组 1~4 条：长期要建立的规则 / 边界）',
+    '  metrics（数组 1~4 条：监测指标——用来判断方案是否有效、可自我复盘）',
+    'conclusion（50 字内 · 第六章「总结」：一句话概括核心课题，以及最值得优先做的决策）'
+  ].join('\n');
 }
 
 function buildProfileMessages(rows) {
@@ -274,18 +308,29 @@ function buildProfileMessages(rows) {
     return '[' + mod + '] ' + parts.join(' ') + (r.t ? ' ' + r.t : '');
   }).join('\n');
 
-  const sys = COMMON_RULES
-    + '\n\n你这次的任务是根据用户【全部历史记录】勾勒一份稳定的「个人画像」——是长期地「他大概是哪种人」，不是某一段的复盘。'
-    + '\n注意区分：strengths 是「做得好 / 有积累」的事，interests 是「在意、反复出现」的主题，两者可能重叠但不等同；'
-    + 'disinterests 要从「回避 / 敷衍 / 提不起劲」的信号推断，不要硬凑；directions 要具体（领域 / 赛道 / 方向词），'
-    + '而不能只是「多尝试」这种空话；tryThis 是立刻能落地的小行动，要指向探索而非又一份待办。'
-    + '\n输出 JSON 字段：\n' + profileFieldsSpec();
-  const user = '以下是用户从开始使用到现在（共 ' + (rows ? rows.length : 0) + ' 条）的全部自我觉察记录（按时间先后）：\n\n'
-    + (list || '（没有记录）') + '\n\n请基于这些给出个人画像。';
+  const sys = PROFILE_RULES
+    + '\n\n你的任务：根据用户【全部历史记录】做一份「人物深度分析报告」——是长期稳定的'
+    + '「他大概是哪种人、适合往哪走、容易卡在哪」，不是某一段的复盘。'
+    + '\n输出严格按下面六章固定结构（不要随意合并删减板块），且严格为 JSON：\n'
+    + profileFieldsSpec();
+  const user = '下面是人物资料——用户从开始使用到现在（共 ' + (rows ? rows.length : 0)
+    + ' 条）的全部自我觉察记录（按时间先后）：\n\n'
+    + (list || '（没有记录）') + '\n\n请基于这些资料给出人物深度分析报告。';
   return [{ role: 'system', content: sys }, { role: 'user', content: user }];
 }
 
 function arrOf(v) { return Array.isArray(v) ? v.map(x => (typeof x === 'string' ? x.trim() : String(x))).filter(Boolean).slice(0, 8) : []; }
+// 把一个对象里指定的字段规整成数组（或字符串），方便把模型返回的嵌套结构安全落库
+function objOf(v, keys) {
+  const o = {};
+  keys.forEach(k => {
+    const val = v && v[k];
+    if (Array.isArray(val)) o[k] = val.map(x => (typeof x === 'string' ? x.trim() : String(x))).filter(Boolean).slice(0, 8);
+    else if (typeof val === 'string') o[k] = val.slice(0, 800);
+    else o[k] = (val == null ? [] : val);
+  });
+  return o;
+}
 
 // 生成（或重新生成）当前用户的个人画像：取全部记录 → 调大模型 → upsert 到 profile 集合
 async function generateProfile(openid) {
@@ -296,18 +341,23 @@ async function generateProfile(openid) {
   }));
   if (!rows.length) return { empty: true, summary: '还没有记录，先去「记」里留下一点觉察，再回来生成画像。' };
 
-  const parsed = await chatCompletion(buildProfileMessages(rows));
+  const parsed = await chatCompletion(buildProfileMessages(rows), 0.7);
   genBudget--;
   const clean = v => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
+  const f = parsed.future || {};
   const doc = {
     openid,
-    summary: clean(parsed.summary).slice(0, 300),
-    strengths: arrOf(parsed.strengths),
-    interests: arrOf(parsed.interests),
-    disinterests: arrOf(parsed.disinterests),
-    directions: arrOf(parsed.directions),
-    tryThis: arrOf(parsed.tryThis),
-    patterns: clean(parsed.patterns).slice(0, 1200),
+    summary: clean(parsed.summary).slice(0, 200),
+    basic: objOf(parsed.basic, ['info', 'traits', 'body', 'finance', 'life']),
+    core: objOf(parsed.core, ['strengths', 'downsides', 'conflicts']),
+    fit: objOf(parsed.fit, ['work', 'life', 'avoid']),
+    future: {
+      neutral: clean(f.neutral).slice(0, 600),
+      optimistic: clean(f.optimistic).slice(0, 600),
+      cautious: clean(f.cautious).slice(0, 600)
+    },
+    action: objOf(parsed.action, ['quick', 'rules', 'metrics']),
+    conclusion: clean(parsed.conclusion).slice(0, 300),
     model: LLM_MODEL,
     n: rows.length,
     updatedAt: Date.now()

@@ -21,26 +21,26 @@
 .pcard.sum .pc-sum { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.7; }
 .pc-upd { margin-top: 7px; font-size: 11px; color: rgba(255,255,255,.82); }
 
-/* 两列：擅长 / 感兴趣 并排 */
-.pgrid { display: flex; gap: 10px; }
-.pgrid .pcard { flex: 1; }
+/* 章节卡：与 .pcard 同底座，加章节标题（六章深度报告） */
+.chap { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 14px 14px 4px; margin-bottom: 10px; }
+.chap-h { font-size: 15px; font-weight: 800; color: var(--ink); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.chap-h.sm { font-size: 14px; margin-bottom: 8px; }
+.chap-no { flex-shrink: 0; width: 20px; height: 20px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 
-.pc-l { font-size: 12px; color: var(--ink3); margin-bottom: 8px; font-weight: 600; }
-.pc-sum { font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.7; }
+/* 子区块 */
+.sub { margin: 11px 0 13px; }
+.sub-l { font-size: 12px; color: var(--ink3); margin-bottom: 6px; font-weight: 600; }
+.sub-l.good { color: var(--accent); }
+.sub-l.warn { color: #B0853A; }
+.sub-l.bad { color: #B0556E; }
+.sub-list { display: flex; flex-direction: column; gap: 6px; }
+.sub-li { font-size: 13.5px; color: var(--ink2); line-height: 1.7; word-break: break-word; }
+.sub-li.act { color: var(--ink); font-weight: 600; }
+.sub-p { font-size: 13.5px; color: var(--ink2); line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
 
-/* 标签：三类不同色，便于一眼区分 */
-.pc-tags { display: flex; flex-wrap: wrap; gap: 7px; }
-.pc-tag { font-size: 12.5px; border-radius: 99px; padding: 3px 10px; line-height: 1.5; }
-.pc-tag.s { color: var(--accent); background: var(--accent-soft); }
-.pc-tag.i { color: #B0853A; background: #F7EEDD; }
-.pc-tag.d { color: #9A6E8E; background: #F3E9F0; }
-
-/* 列表（方向 / 试试）：左点强调 */
-.pc-list { display: flex; flex-direction: column; gap: 6px; }
-.pc-li { font-size: 13.5px; color: var(--ink2); line-height: 1.7; word-break: break-word; }
-.pc-li.act { color: var(--ink); }
-
-.pc-pat { font-size: 13.5px; color: var(--ink2); line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+/* 第六章 总结卡 */
+.pcard.concl { background: var(--accent-soft); border-color: var(--accent); }
+.concl-t { font-size: 14.5px; font-weight: 700; color: var(--ink); line-height: 1.8; }
 
 /* 空态按钮 */
 .empty-btn { margin-top: 16px; display: inline-block; font-size: 13.5px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 99px; padding: 9px 22px; }
