@@ -554,6 +554,14 @@ async function ensureProfileCol() {
   profileColEnsured = true;
 }
 
+// promptlog 同理：不用手动建。第一次试跑时自动创建，省掉「建了但存不进去」的折腾。
+let ptestColEnsured = false;
+async function ensurePtestCol() {
+  if (ptestColEnsured) return;
+  try { await db.createCollection('promptlog'); } catch (e) { /* 已存在，忽略 */ }
+  ptestColEnsured = true;
+}
+
 // 重新生成的冷却期：**每个自然周只能生成一次**（周一 00:00 按中国时区重置）。
 // 首次生成不受限制；force:true 可绕过（仅供控制台排查用）。
 // 判定用「上次生成时间是否还落在当前这一周」，而不是滚动 7×24h——
@@ -886,11 +894,29 @@ async function runPromptTest(openid, event) {
 
   let savedId = '';
   try {
-    const add = await ptestCol().add(doc);
+    await ensurePtestCol();
+    // ⚠️ 云函数端的 add 必须包一层 { data: {...} }（**服务端 SDK 与小程序端不同**）。
+    // 直接 add(doc) 不会报错，而是**静默插入一条只有 _id 的空文档**——试跑页因此
+    // 表现为「跑完了但历史里什么也没有」，极难察觉。本文件另外三处写入都包了 data。
+    const add = await ptestCol().add({ data: doc });
     savedId = (add && add._id) || '';
+    // 回读校验：确认字段真的落库了（而不是又一条空壳）。只在有 _id 时做，尽力而为。
+    if (savedId) {
+      try {
+        const back = await ptestCol().doc(savedId).get();
+        const d = (back && back.data) || {};
+        if (!d.openid || d.createdAt == null) {
+          savedId = '';
+        }
+      } catch (e2) { /* 回读失败不判定失败，add 已成功 */ }
+    }
   } catch (e) {
-    // 集合不存在等：功能仍可用，只是这次没存下来，明确告诉调用方
-    return Object.assign({ saved: false, note: '结果没存下来（promptlog 集合可能还不存在），下面就是本次输出' }, doc);
+    // 集合不存在 / 权限不足等：功能仍可用（下面就是本次输出），但要说清真实原因，
+    // 统一说「集合可能还不存在」会让人一直去建集合，而真正的原因可能完全不是这个。
+    return Object.assign({
+      saved: false,
+      saveError: (e && (e.errMsg || e.message)) ? String(e.errMsg || e.message) : String(e)
+    }, doc);
   }
 
   return Object.assign({ saved: true, _id: savedId }, meta, {

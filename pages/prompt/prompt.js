@@ -119,10 +119,11 @@ Page(pageBase({
           lastResult: {
             nodes: flatNodes(r.result, '', 0, []),
             meta: this._metaOf(r)
-          }
+          },
+          errText: r.saved ? '' : ('这条没存进历史（原因：' + (r.saveError || '未知') + '）——下面的结果照样能看，只是关掉就没了')
         });
         this.loadList();
-        wx.showToast({ title: r.saved ? '跑完了，已存进历史' : '跑完了（没存下来）', icon: 'none' });
+        wx.showToast({ title: r.saved ? '跑完了，已存进历史' : '跑完了（没存进历史）', icon: 'none' });
       })
       .catch(() => {
         wx.hideLoading();
