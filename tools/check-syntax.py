@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# tools/check-syntax.py —— 改完自查：括号 / 引号 / 标签配对
+# tools/check-syntax.py —— 改完自查：括号 / 引号 / 标签配对 / 云函数文档同步
 #
 # 用法（项目根目录）：
 #   python3 tools/check-syntax.py              # 查全项目
@@ -13,6 +13,8 @@
 #   3) wxml：内层 wx:for 没写 wx:for-item，把外层的 item 顶掉（同时还在用 item.*）
 #      —— 这类不会报错，只是表达式悄悄算成 undefined：出过一次「5 格电量条一格都不亮」，
 #      模板里 `{{index<item.bat.lv?'on':''}}` 取到的是内层循环的数字 0..4，不是那条记录
+#   4) 云函数文档同步：cloudfunctions/*/index.js 里新增或改名了 action，
+#      但没在同目录 README.md 里写出对应的测试模板 / 说明（约定见该文档「更新约定」一节）
 # 它不是完整的解析器（不做语法树、不查语义），真正的语法错误仍然以微信开发者工具为准；
 # 能做的只是「提交 / 编译前先花一秒扫一遍」，把这类低级错误挡在前面。
 #
@@ -212,6 +214,32 @@ def check_wxml(path):
     return out
 
 
+# ------------------------------------------- 云函数：action 必须有对应的文档模板
+# cloudfunctions/<fn>/index.js 里以 action === 'xxx' 分发的每个 action，
+# 都必须在同目录 README.md 的「action 总表」里出现过（出现两次以上才算真有条目：
+# 一次是总表行、一次至少还有模板或说明，避免只在一句话里被顺带提过）。
+ACTION_RE = re.compile(r"action\s*===\s*['\"]([A-Za-z0-9_]+)['\"]")
+
+
+def check_cloudfn_docs(path):
+    """返回问题列表：云函数里的 action 有没有写进同目录的说明文档。"""
+    src = read(path)
+    actions = sorted(set(ACTION_RE.findall(src)))
+    if not actions:
+        return []
+    doc = os.path.join(os.path.dirname(os.path.abspath(path)), 'README.md')
+    if not os.path.exists(doc):
+        return ['%s  有 %d 个 action（%s），但同目录没有 README.md 说明文档'
+                % (path, len(actions), '、'.join(actions))]
+    text = read(doc)
+    out = []
+    for a in actions:
+        if text.count('`%s`' % a) < 2 and ('"%s"' % a) not in text and ("'%s'" % a) not in text:
+            out.append('%s  action `%s` 在 %s 里只出现%s次——补一条测试模板 / 总表行'
+                       % (path, a, os.path.relpath(doc), text.count('`%s`' % a)))
+    return out
+
+
 # ------------------------------------------------------------------- 主流程
 def walk(root):
     """默认目标：项目里的全部 js / wxml（跳过依赖目录）。"""
@@ -234,14 +262,29 @@ def walk(root):
     return js, wxml
 
 
+def walk_cloudfn(root):
+    """云函数目录：跳过 node_modules，只收index.js。"""
+    out = []
+    base = os.path.join(root, 'cloudfunctions')
+    if not os.path.isdir(base):
+        return out
+    for cur, dirs, files in os.walk(base):
+        dirs[:] = [x for x in dirs if x not in SKIP_DIRS]
+        if 'index.js' in files:
+            out.append(os.path.join(cur, 'index.js'))
+    return out
+
+
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     args = sys.argv[1:]
     if args:
         js = [a for a in args if a.endswith(JS_EXT)]
         wxml = [a for a in args if a.endswith(WXML_EXT)]
+        cloudfn = []
     else:
         js, wxml = walk(root)
+        cloudfn = walk_cloudfn(root)
 
     problems = []
     for p in js + wxml:
@@ -249,10 +292,14 @@ def main():
             problems.append('%s  文件不存在' % p)
             continue
         problems += check_js(p) if p.endswith(JS_EXT) else check_wxml(p)
+    for p in cloudfn:
+        problems += check_js(p)
+        problems += check_cloudfn_docs(p)
 
     for line in problems:
         sys.stdout.write(line + '\n')
-    sys.stdout.write('检查 js %d 个 / wxml %d 个，问题 %d 个\n' % (len(js), len(wxml), len(problems)))
+    sys.stdout.write('检查 js %d 个 / wxml %d 个 / 云函数 %d 个，问题 %d 个\n'
+                     % (len(js), len(wxml), len(cloudfn), len(problems)))
     sys.exit(1 if problems else 0)
 
 

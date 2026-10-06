@@ -24,7 +24,10 @@ pages/options       选项池「✎ 管理」
 components/         todo-list（待办三段）· rec-actions（操作条）· inline-editor · theme-switcher · due-sheet（「计划完成」的月历浮层，快捷记面板与记卡共用）
 custom-tab-bar/     底部 tab + 快捷记「＋」球（清单页以 quick-ball 复用同一个组件）
 cloudfunctions/analysis  每天定时为每位用户生成「昨天」的 AI 回看（见下方「AI 回看」一节）
-tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对
+cloudfunctions/analysis/README.md
+                    **云函数使用与测试说明**：每个 action 的控制台测试模板、参数、返回、额度与幂等、
+                      排错速查表；改云函数前先看它，改完按它的「更新约定」同步文档
+tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对 / 云函数 action 是否已写进说明文档
 ```
 
 ## 数据模型
@@ -65,13 +68,17 @@ tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对
 编译前先跑一遍，一秒钟的事：
 
 ```bash
-python3 tools/check-syntax.py                  # 查全项目（js + wxml）
+python3 tools/check-syntax.py                  # 查全项目（js + wxml + 云函数）
 python3 tools/check-syntax.py utils/store.js pages/list/list.wxml   # 只查指定文件
+node --check cloudfunctions/analysis/index.js  # 只查云函数（上面那条已经包含它）
 ```
 
 - 只依赖 `python3`（macOS 自带），不装任何东西；**有问题时退出码为 1**，无问题为 0。
-- 查两类最常见的低级事故：① js 的括号 / 引号没配对（会跳过注释、字符串、模板串、正则字面量）；② wxml 的标签没配对。
+- 查四类最常见的低级事故：① js 的括号 / 引号没配对（会跳过注释、字符串、模板串、正则字面量）；② wxml 的标签没配对；③ wxml 内层 `wx:for` 忘了写 `wx:for-item`；④ **云函数里新增/改名了action，却没有对应测试模板写进说明文档**。
 - 它不是完整解析器（不做语法树、不查语义），**真正的语法错误仍以微信开发者工具为准**；它只是把这类低级错误挡在编译之前。
+
+**云函数的测试模板、参数、返回与排错不在本文档里**，统一看
+[`cloudfunctions/analysis/README.md`](cloudfunctions/analysis/README.md)：每个 action 的控制台测试模板、额度与幂等规则、排错速查表都在那儿。改云函数前先看它，改完按它的「更新约定」同步文档。
 
 ## 云开发数据库索引（部署前建一次）
 
@@ -104,6 +111,9 @@ python3 tools/check-syntax.py utils/store.js pages/list/list.wxml   # 只查指�
 - `{"action":"gen","type":"week"}` —— 周 / 月 / 年取最近一个已完整结束的周期（不必等到周日 / 月末 / 12-31）。
 - `{"action":"backfill"}` —— 给当前用户补齐历史周 / 月 / 年（最多真生成 30 条，可用 `"maxGen": 50` 放宽）。
 - 直接用测试模板（不带 action）跑只会返回 `{"ok":false}` 并附提示，不会误触发批量生成。
+
+> 控制台测试**没有用户身份**，以上模板都要自己补一个 `"openid"`（从 `records` 任一文档复制 `_openid`）。
+> 全部 action 的模板、参数、返回与排错见[`cloudfunctions/analysis/README.md`](cloudfunctions/analysis/README.md)。
 
 AI 回看页（`pages/analysis`）顶部按 日 / 周 / 月 / 年 切换，卡片展开后按**固定六板**呈现（对应参考提示词的输出模板）：
 
@@ -178,7 +188,7 @@ AI 回看页（`pages/analysis`）顶部按 日 / 周 / 月 / 年 切换，卡�
 { "action": "profile", "openid": "你的openid" }
 ```
 
-只读已存的用 `{"action":"profileGet","openid":"你的openid"}`。同样要先把 `analysis` 云函数「上传并部署（云端安装依赖）」，并等 1~2 分钟避开实例重建的瞬时 `ret=-3`。
+只读已存的用 `{"action":"profileGet","openid":"你的openid"}`。同样要先把 `analysis` 云函数「上传并部署（云端安装依赖）」，并等 1~2 分钟避开实例重建的瞬时 `ret=-3`。完整模板与返回说明见 [`cloudfunctions/analysis/README.md`](cloudfunctions/analysis/README.md)。
 
 **想看「到底把什么喂给了 AI」？**用只读的 `promptPreview`（不调模型、不写库、不花额度）：
 

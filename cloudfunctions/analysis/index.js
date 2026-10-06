@@ -1,4 +1,11 @@
 // 云函数 analysis —— AI 回看
+//
+// 【改这个文件之前请先看cloudfunctions/analysis/README.md】
+//那里有每个 action 的控制台测试模板、参数与返回说明、额度与幂等规则、排错速查表。
+// 改完请按那份文档的「更新约定」同步更新它，并跑一遍：
+//   node --check cloudfunctions/analysis/index.js
+//   python3 tools/check-syntax.py      ← 会检查「新增/改名的 action 有没有写进文档」
+//
 // 入口：
 //   1) 定时触发（每天中国 01:00）：遍历所有有记录的用户——
 //      · 先给每人生成「昨天」的日回看；
