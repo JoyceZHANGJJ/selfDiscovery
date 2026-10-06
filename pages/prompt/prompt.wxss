@@ -1,6 +1,11 @@
-/* pages/prompt/prompt.wxss —— 提示词试跑
+/* pages/prompt/prompt.wxss —— 提示词管理 + 试跑
    基础布局（.app / .screen / .body / .sect-t / .btn / .mini-in）来自 app.wxss，
-   这里只补本页特有的：输入卡片、结果节点树、历史行 */
+   这里只补本页特有的：tab 栏、槽位行、版本行、输入卡片、结果节点树、历史行 */
+
+/* 两个 tab（管理 / 试跑）。与管理内容无关，所以固定在最上面。 */
+.mtabs { display: flex; gap: 8px; margin: 8px 0 12px; }
+.mtab { flex: 1; text-align: center; font-size: 14px; color: var(--ink2); background: #fff; border: 1px solid var(--line); border-radius: 99px; padding: 8px 0; }
+.mtab.on { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 700; }
 
 .app { position: static; min-height: 100vh; display: block; }
 .screen { height: auto; }
@@ -82,3 +87,35 @@
 .hr-time { font-size: 12px; color: var(--ink2); min-width: 0; word-break: break-word; }
 .hr-d { font-size: 11px; color: var(--ink3); margin-top: 2px; }
 .hr-del { flex-shrink: 0; width: 26px; height: 26px; text-align: center; line-height: 26px; font-size: 13px; color: var(--ink3); border-radius: 99px; background: var(--soft); }
+
+/* ===== 提示词管理 =====
+   槽位行做成「可点的卡片」而不是设置项那种一列开关：每一条本身内容较长
+   （名字 + 说明 + 字数），横向排布会挤成两行，所以左信息右数字。 */
+.prow { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 11px 13px; margin-bottom: 7px; }
+.pr-l { flex: 1; min-width: 0; }
+.pr-t { font-size: 13.5px; font-weight: 700; color: var(--ink); display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.pr-v { font-size: 11.5px; font-weight: 400; color: var(--ink3); }
+/* 「已改过」是中性提示、「未接入」是弱化——两者都不该抢注意力 */
+.pr-ed { font-size: 10.5px; font-weight: 400; color: var(--accent); background: rgba(47,143,123,.10); border-radius: 99px; padding: 1px 6px; }
+.pr-re { font-size: 10.5px; font-weight: 400; color: var(--ink3); background: var(--soft, #F7F5F1); border-radius: 99px; padding: 1px 6px; }
+.pr-d { font-size: 11.5px; color: var(--ink3); line-height: 1.6; margin-top: 3px; }
+.pr-n { flex-shrink: 0; font-size: 11.5px; color: var(--ink3); }
+
+/* 历史版本行 */
+.vrow { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 10px 12px; margin-bottom: 7px; }
+.vrow.open { border-color: var(--accent); }
+.vr-h { display: flex; align-items: center; gap: 10px; }
+.vr-l { flex: 1; min-width: 0; }
+.vr-t { font-size: 13px; font-weight: 700; color: var(--ink); }
+.vr-note { font-size: 11.5px; font-weight: 400; color: var(--ink2); margin-left: 5px; word-break: break-word; }
+.vr-d { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+/* 「切回」做成描边小按钮而不是纯文字：它会改掉正在生效的内容，得像个体操 */
+.vr-x { flex-shrink: 0; font-size: 12px; color: var(--ink2); border: 1px solid var(--line); border-radius: 99px; padding: 4px 11px; }
+
+/* 契约层正文：等宽 + 弱化，让它一眼看出「这是只读的规格说明，不是要改的东西」 */
+.rules-b.contract { font-family: var(--font-mono, monospace); font-size: 11.5px; color: var(--ink3); }
+
+/* 「设为线上生效」用描边而不是实心——它动的是线上，但不像「删除」那么重，
+   也不该和「保存并生效」（本页最重的操作）抢视觉重心。 */
+.btn.adopt { margin-top: 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.qhint.live { margin-top: 6px; }

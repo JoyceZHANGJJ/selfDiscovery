@@ -4,9 +4,94 @@
     <view class="body">
       <view class="a-hd">
         <view class="bk" bindtap="onClose">‹ 返回</view>
-        <view class="a-tt">提示词试跑</view>
+        <view class="a-tt">提示词</view>
       </view>
-      <view class="hint">用你的真实记录跑一次，<text style="font-weight:700">不会动</text>正式的回看与画像——放心改。</view>
+
+      <!-- 两个 tab：管理 / 试跑 -->
+      <view class="mtabs">
+        <view class="mtab {{tab==='manage'?'on':''}}" data-v="manage" bindtap="onTabTap">提示词</view>
+        <view class="mtab {{tab==='test'?'on':''}}" data-v="test" bindtap="onTabTap">试跑</view>
+      </view>
+
+      <!-- ============ 提示词管理 ============ -->
+      <block wx:if="{{tab==='manage'}}">
+        <view class="hint">改完<text style="font-weight:700">保存即生效</text>，不用再上传部署云函数。旧版自动留成历史，随时能切回来。</view>
+
+        <view wx:if="{{plErr}}" class="err">提示词读不到：{{plErr}}</view>
+
+        <block wx:for="{{groups}}" wx:key="group" wx:for-item="g">
+          <view class="sect-t">{{g.name}}</view>
+          <view wx:for="{{g.slots}}" wx:key="slot" wx:for-item="s"
+                class="prow" data-slot="{{s.slot}}" bindtap="openSlot">
+            <view class="pr-l">
+              <view class="pr-t">{{s.name}} <text class="pr-v">v{{s.rev}}</text><text wx:if="{{s.edited}}" class="pr-ed">已改过</text><text wx:if="{{s.state==='reserved'}}" class="pr-re">未接入</text></view>
+              <view class="pr-d">{{s.desc}}</view>
+            </view>
+            <view class="pr-n">{{s.chars}} 字 ›</view>
+          </view>
+        </block>
+        <view wx:if="{{!plErr && !groups.length}}" class="qhint">还没有提示词槽位。</view>
+
+        <!-- 打开一个槽位后的编辑区 -->
+        <block wx:if="{{cur}}">
+          <view class="ver on" style="margin-top:18px">
+            <view class="ver-t">{{cur.name}} <text style="font-weight:400">· v{{cur.rev}}</text></view>
+            <view class="ver-n">{{cur.edited?'这一版被你改过（改于v' + cur.rev + '）':'还是出厂默认的内容'}}</view>
+          </view>
+          <view class="qhint">{{cur.desc}}</view>
+
+          <view class="card">
+            <view class="c-h">
+              <view class="c-t">提示词正文</view>
+              <view class="c-clear" bindtap="resetDefault">恢复默认</view>
+            </view>
+            <textarea class="ta" auto-height adjust-position="{{false}}" cursor-spacing="20"
+                      maxlength="-1" value="{{cur.body}}" bindinput="onBodyInput"
+                      placeholder="写你要用的提示词。例：&#10;【硬性】不要用「可能」「也许」这类词下判断。"></textarea>
+            <input class="mini-in lb" placeholder="这次为什么改（选填，会留在历史版本里）"
+                   value="{{saveNote}}" bindinput="onNoteInput" adjust-position="{{false}}" cursor-spacing="20" />
+            <view class="btn run {{saving?'dis':''}}" bindtap="save">{{saving?'保存中…':'保存并生效'}}</view>
+            <view class="qhint">保存后立即生效，不会影响已经生成好的回看与画像（那些已经写进库里了）。</view>
+          </view>
+
+          <!-- 输出字段契约：只读，不给改 -->
+          <view class="card" wx:if="{{cur.contract}}">
+            <view class="c-h" bindtap="onContractTap">
+              <view class="c-t">模型要返回的字段（只读）</view>
+              <view class="c-clear">{{showContract?'收起':'展开'}}</view>
+            </view>
+            <view class="qhint" style="margin-top:0">这是和代码配套的字段结构，<text style="font-weight:700">不能改</text>——改了模型返回的名字程序接不住，页面会显示不出来。要改结构得改代码。</view>
+            <view wx:if="{{showContract}}" class="rules-box" style="margin-top:8px">
+              <view class="rules-b contract">{{cur.contract}}</view>
+            </view>
+          </view>
+
+          <!-- 历史版本 -->
+          <view class="sect-t" style="margin-top:18px">历史版本</view>
+          <view wx:if="{{verErr}}" class="err">{{verErr}}</view>
+          <view wx:elif="{{!vers.length}}" class="qhint">还没有历史版本——出厂默认不算「旧版」，你改第一次之后就有了。</view>
+          <view wx:for="{{vers}}" wx:key="rev" wx:for-item="v" wx:for-index="i"
+                class="vrow {{verIdx===i?'open':''}}">
+            <view class="vr-h" data-i="{{i}}" bindtap="openVer">
+              <view class="vr-l">
+                <view class="vr-t">v{{v.rev}} <text wx:if="{{v.note}}" class="vr-note">{{v.note}}</text></view>
+                <view class="vr-d">{{v.time}} · {{v.chars}} 字</view>
+              </view>
+              <view class="vr-x" data-i="{{i}}" catchtap="revertVer">切回</view>
+            </view>
+            <view wx:if="{{verIdx===i}}" class="rules-box" style="margin-top:8px">
+              <view class="rules-b contract">{{verBody}}</view>
+            </view>
+          </view>
+
+          <view class="btn gh" bindtap="closeSlot">关闭</view>
+        </block>
+        <view wx:if="{{curErr}}" class="err">{{curErr}}</view>
+      </block>
+
+      <!-- ============ 试跑 ============ -->
+      <block wx:else>
+      <view class="hint">用你的真实记录跑一次，<text style="font-weight:700">不会动</text>正式的回看与画像——放心改。满意了可以一键设为线上生效。</view>
 
       <!-- 类型 -->
       <view class="atabs">
@@ -16,6 +101,7 @@
         </view>
       </view>
       <view class="qhint">画像 = 全部历史记录；日 / 周 / 月 / 年 = 最近一个已结束的周期。</view>
+      <view wx:if="{{curLive.has}}" class="qhint live">当前线上生效的是 <text style="font-weight:700">{{curLive.name}} v{{curLive.rev}}</text>。不填提示词直接跑 = 拿这一版做基线，用来和改完的版本对比。</view>
 
       <!-- 提示词输入 -->
       <view class="card">
@@ -66,6 +152,9 @@
           </view>
         </view>
         <view wx:if="{{!lastResult.nodes.length}}" class="qhint">模型返回了空内容。</view>
+        <view wx:if="{{lastResult.canAdopt}}" class="btn adopt" bindtap="adoptTest"
+              data-id="{{lastResult._id}}" data-type="{{lastResult.type}}">设为线上生效</view>
+        <view wx:elif="{{lastResult}}" class="qhint">这是拿线上那版跑的基线，没改提示词，所以没什么可采纳的。</view>
       </block>
 
       <!-- 历史 -->
@@ -107,7 +196,11 @@
           </view>
         </view>
         <view wx:if="{{!detail.nodes.length}}" class="qhint">这一条的结果是空的。</view>
+        <view wx:if="{{detail.canAdopt}}" class="btn adopt" bindtap="adoptTest"
+              data-id="{{detail._id}}" data-type="{{detail.type}}">设为线上生效</view>
+        <view wx:else class="qhint">这次没改提示词（是基线试跑），可以忽略这个按钮。</view>
         <view class="btn gh copy" bindtap="copyResult">复制这份结果</view>
+      </block>
       </block>
     </view>
   </view>
