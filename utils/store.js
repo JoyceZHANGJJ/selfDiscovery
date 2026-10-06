@@ -949,6 +949,15 @@ function prioColor(v) {
   if (!v) return mcolor('todo');
   return PRIO_COLORS[v] || (getOPT('todoPrio').indexOf(v) >= 0 ? mcolor('todo') : '#8A8F94');
 }
+// 排序用的轻重序号：取档位在选项池里的下标（池子顺序＝由重到轻，见 OPT.todoPrio）。
+// 没值（老记录）与默认档同等看待——语义上都是「没什么要紧的」，所以退回默认档的序号；
+// 池子里没有的词（改过名）排最后，但不该因此跑到默认档前面，所以给「末位 + 1」
+function prioRank(v) {
+  const k = getOPT('todoPrio');
+  const val = v || PRIO_DEFAULT;
+  const i = k.indexOf(val);
+  return i >= 0 ? i : k.length;
+}
 // 默认优先级：优先锁定值「不紧急不重要」（不随选项顺序变化），池子里没有就退末位
 function todoPrioDefault() {
   const k = getOPT('todoPrio');
@@ -2044,7 +2053,7 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, PRIO_DEFAULT, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

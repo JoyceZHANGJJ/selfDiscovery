@@ -78,6 +78,10 @@
 .qa-chip { display: inline-flex; align-items: center; font-size: 13.5px; color: var(--ink, #22252A); padding: 3px 0; box-sizing: border-box; position: relative; }
 .qa-chip::after { content: ''; position: absolute; left: -4px; right: -4px; top: -4px; bottom: -4px; }
 .qa-chip.on { color: var(--accent, #7C9A86); font-weight: 700; }
+/* 优先级那一行：比类别低半档（字小一档、色浅一档）——类别是「记到哪儿」，
+   优先级只是「多要紧」，两行同重会让人以为要先选优先级 */
+.qa-prios { margin-bottom: 8px; }
+.qa-prios .qa-chip { font-size: 12px; color: var(--ink2, #55524A); }
 .qa-row { display: flex; align-items: center; }
 .qa-in {
   flex: 1; min-width: 0; height: 38px; line-height: 38px; border: 1px solid var(--line2, #E2DCD1);

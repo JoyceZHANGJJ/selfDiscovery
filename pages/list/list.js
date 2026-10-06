@@ -116,7 +116,13 @@ Page(pageBase({
     // 否则 sort 比较的全是 undefined，等于没排（已完成要按完成时间倒序，就是这个坑）。
     // 另外：先排序 → 按「显示更多」的窗口切片 → 最后才 map 成 VM；
     // 记录多的时候（几百上千条）不要把没渲染的那些也白算一遍（不然「显示更多」会卡）
-    const undoneRaw = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    // 待完成不按时间排，先按**优先级**轻重（紧急重要 → 不紧急不重要，见 store.prioRank），
+    // 同一档内再按时间倒序——要紧的顶在上面，时间只在同档内决定先后。
+    // 「显示更多」也是在排好的序列上往后切，所以翻出来的仍是这一档里的下几条
+    const undoneRaw = list.filter(r => !r.done && r.status !== 'abandon').sort((a, b) => {
+      const pa = store.prioRank(store.taskPrio(a)), pb = store.prioRank(store.taskPrio(b));
+      return pa !== pb ? pa - pb : (b.ts || 0) - (a.ts || 0);
+    });
     const doneRecs = list.filter(r => r.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     const abandRecs = list.filter(r => !r.done && r.status === 'abandon').sort((a, b) => (b.abandonedAt || 0) - (a.abandonedAt || 0));
     // 已完成 / 已放弃各按「那天」分段（与看页同一套）：段头给日期，行内只写「完成 / 放弃 · HH:MM」

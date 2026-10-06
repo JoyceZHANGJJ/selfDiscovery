@@ -58,6 +58,19 @@ function buildQaCats() {
   return cats;
 }
 
+// 快捷记的「优先级」chips（只有待办才有这一格，随记没有）：取选项池 todoPrio，
+// 改名 / 增删后自动跟上；颜色与列表里那面小旗同源（store.prioColor）
+function buildQaPrios() {
+  return (store.getOPT('todoPrio') || []).map(n => ({ n, c: store.prioColor(n) }));
+}
+// 默认选中的那档＝默认档「不紧急不重要」（与记卡一致：不点也有值，但列表不插旗）
+function qaPrioDefIdx() {
+  const prios = buildQaPrios();
+  const def = (store.todoPrioDefault() || [])[0] || '';
+  const i = prios.findIndex(p => p.n === def);
+  return { prios, idx: i >= 0 ? i : Math.max(0, prios.length - 1) };
+}
+
 Component({
   options: { addGlobalClass: true },
   // ballOnly：只挂「＋」球与快捷记面板、不渲染底部 tab 栏——给清单页这类「非 tab 页」用
@@ -75,6 +88,9 @@ Component({
     qa: false,           // 面板是否展开
     qaCats: [],          // 平铺的快捷类别（来自 getQuickCats，带名字 / 颜色 / 占位符 / key）
     qaIdx: 0,            // 当前选中的类别下标
+    qaPrios: [],         // 优先级 chips（待办才有；随记类别下这一行不渲染）
+    qaPrioIdx: 0,        // 当前选中的优先级下标（默认落在默认档）
+    qaIsTodo: true,      // 当前类别是不是待办（决定优先级那一行出不出）
     qaName: '',          // 当前类别名字（撤销条展示用）
     qaPh: '',            // 当前类别占位符
     qaC: '',             // 当前类别色点
@@ -98,7 +114,8 @@ Component({
       const t = store.curTheme();
       const cats = buildQaCats();
       const a = cats[0] || {};
-      this.setData({ theme: t, themeStyle: store.themeStyle(t), list: tabList(t), qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
+      const p = qaPrioDefIdx();
+      this.setData({ theme: t, themeStyle: store.themeStyle(t), list: tabList(t), qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c, qaPrios: p.prios, qaPrioIdx: p.idx, qaIsTodo: a.m !== 'jot' });
       // 吸底面板要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
       // 所以直接把键盘高度当 bottom，面板始终落在键盘上方（与记页吸底操作行同一套做法）
       this._bindKb();
@@ -235,7 +252,8 @@ Component({
       // 类别每次重新取选项池：改名 / 增删后自动跟上，并过滤掉已删的类别
       const cats = buildQaCats();
       const a = cats[0] || {};
-      this.setData({ qa: true, qaFocus: false, qaUndo: null, qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c });
+      const p = qaPrioDefIdx();
+      this.setData({ qa: true, qaFocus: false, qaUndo: null, qaCats: cats, qaIdx: 0, qaName: a.n, qaPh: a.ph, qaC: a.c, qaPrios: p.prios, qaPrioIdx: p.idx, qaIsTodo: a.m !== 'jot' });
       // 位置按**当前**键盘状态给：不能沿用上一次记下的键盘高度——键盘已经收了、面板还按旧高度
       // 悬在页面中间（这就是「再打开位置变了」）。键盘真在的话，点输入框那一下会再来一次高度事件
       this._applyKb(0);
@@ -286,13 +304,30 @@ Component({
       const a = this.data.qaCats[i] || {};
       const keepFocus = !!this.data.qaFocus;
       this._qaChipAt = Date.now();
-      this.setData({ qaIdx: i, qaName: a.n, qaPh: a.ph, qaC: a.c });
+      // 切到随记类别时优先级那一行要收掉（随记没有这一格），切回待办再出来
+      this.setData({ qaIdx: i, qaName: a.n, qaPh: a.ph, qaC: a.c, qaIsTodo: a.m !== 'jot' });
       if (!keepFocus) return;
+      this._qaKeepFocus();
+    },
+    /* 点 chips 后把焦点收回来：点 chip 会让输入框失焦，而键盘其实还在——
+       不收回来键盘就闪断一下（见 onQaBlur 的守卫） */
+    _qaKeepFocus() {
       if (this._qaChipFocusTimer) clearTimeout(this._qaChipFocusTimer);
       this._qaChipFocusTimer = setTimeout(() => {
         this._qaChipFocusTimer = null;
         if (this.data.qa) this.setData({ qaFocus: true });   // 失焦是刚才那下点击的副作用，收回来
       }, 30);
+    },
+    /* 点优先级 chip：与点类别同一套（不动草稿、键盘不闪断）。
+       默认档也照样写进记录（与记卡一致：不点也有值），只是列表里不插旗 */
+    onQaPrio(e) {
+      const i = +e.currentTarget.dataset.i;
+      if (i === this.data.qaPrioIdx) return;
+      const keepFocus = !!this.data.qaFocus;
+      this._qaChipAt = Date.now();
+      this.setData({ qaPrioIdx: i });
+      if (!keepFocus) return;
+      this._qaKeepFocus();
     },
     /* 回车（或点「记下」）即落库：不跳页、不清键盘，方便连着记几条 */
     onQaSave() {
@@ -300,8 +335,16 @@ Component({
       if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
       const a = this.data.qaCats[this.data.qaIdx] || {};
       const ts = Date.now();
-      // 待办 / 随记：把类别写进 ext（src=todoKind / jotKind）
-      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext: a.cat ? [a.cat] : [], extSrc: a.cat ? [a.src || 'todoKind'] : [], done: false, doneAt: 0, status: '' };
+      // 待办 / 随记：把类别写进 ext（src=todoKind / jotKind）；
+      // 待办再多写一份优先级（src=todoPrio）——与记卡同一份结构，清单页排序 / 小旗才认得它。
+      // 顺序按 FIELDS.todo（类别 → 优先级），导入与详情都按标签匹配，不受顺序影响
+      const ext = [], src = [];
+      if (a.cat) { ext.push(a.cat); src.push(a.src || 'todoKind'); }
+      if (a.m === 'todo') {
+        const prio = (this.data.qaPrios[this.data.qaPrioIdx] || {}).n;
+        if (prio) { ext.push(prio); src.push('todoPrio'); }
+      }
+      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext, extSrc: src, done: false, doneAt: 0, status: '' };
       store.addRecord(rec).then(rid => {
         rec._rid = rid; rec.id = rid;
         const G = getApp().globalData;

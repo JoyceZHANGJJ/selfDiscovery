@@ -17,6 +17,14 @@
         <text>{{item.n}}</text>
       </view>
     </view>
+    <!-- 优先级：只有待办类别才有这一格（随记类别下整行不渲染）。
+         与记卡同一套档位（紧急 / 重要 四象限），默认落在默认档——不点也记，只是列表不插旗 -->
+    <view wx:if="{{qaIsTodo && qaPrios.length > 1}}" class="qa-chips qa-prios">
+      <view wx:for="{{qaPrios}}" wx:key="n" class="qa-chip {{qaPrioIdx===index?'on':''}}" data-i="{{index}}" catchtap="onQaPrio">
+        <view class="qa-dot" style="background:{{item.c}}"></view>
+        <text>{{item.n}}</text>
+      </view>
+    </view>
     <view class="qa-row" catchtap="onQaNoop">
       <!-- adjust-position 关掉：面板的位置由我们自己按键盘高度给（见 _applyKb），
            不再让微信去「顶页面」——回看整页是 scroll-view（页面本身不滚），它顶不动，
