@@ -12,6 +12,9 @@
 //   4) action:'backfill'：手动给当前用户补齐历史周 / 月 / 年（控制台测试 / 排查用，
 //      可带 maxGen 放宽单次生成上限）。
 //   5) action:'stats'：诊断——返回当前用户记录的时间分布与「该补齐哪些周期」。
+//   6) action:'profile'：根据当前用户【全部历史记录】生成「个人画像」（擅长 / 感兴趣 /
+//      不太感兴趣 / 适合的方向 / 可以尝试 / 更深的模式），upsert 到 profile 集合。
+//   7) action:'profileGet'：读取已存的个人画像（进页面先调，不花大模型额度）。
 //
 // 提示词的设计目标（用户反馈迭代）：不做流水账复述，做有参考意义的复盘——
 //   指出模式与连接、说可能的内在动机与张力、给具体可做且有方向性的建议；
@@ -26,6 +29,7 @@ const db = cloud.database();
 const _ = db.command;
 const recCol = () => db.collection('records');
 const analysisCol = () => db.collection('analysis');
+const profileCol = () => db.collection('profile');   // 个人画像（每 openid 一份最新）
 
 // ---- 配置（非密钥项可放 config.json 的 env；密钥 LLM_API_KEY 必须在控制台环境变量里配） ----
 // LLM_BASE_URL 是「接口 base」，/chat/completions 由代码自动拼上，避免各家路径不一致写错。
@@ -245,6 +249,85 @@ function chatCompletion(messages) {
   });
 }
 
+// ============ 个人画像 ============
+// 基于用户【全部历史记录】勾勒稳定的「你是谁」——擅长、在意什么、回避什么、
+// 适合往哪走、可以试什么。是长期画像，不是某段时间的复盘。
+function profileFieldsSpec() {
+  return [
+    'summary（50~90 字：一句话整体画像——把「擅长 + 感兴趣 + 状态」说透，不堆砌、不客套）',
+    'strengths（数组 2~5 条：他真正擅长 / 做得稳 / 有积累的地方，每条 24 字内）',
+    'interests（数组 2~5 条：明显投入、在意、反复出现的主题 / 领域，每条 24 字内）',
+    'disinterests（数组 1~4 条：明显回避 / 敷衍 / 提不起劲的方向，每条 24 字内；没信号就给空数组 []）',
+    'directions（数组 2~5 条：基于 strengths + interests，具体可去的方向 / 领域 / 赛道，每条 24 字内）',
+    'tryThis（数组 2~4 条：接下来可以小步尝试的事，每条 30 字内——可执行、有方向感、暗含「为什么值得试」）',
+    'patterns（150~280 字：跨记录的重复模式、张力、被忽略的信号、能量 / 状态的稳定特征——这是画像最有分量的部分）'
+  ].map(s => '  ' + s).join('\n');
+}
+
+function buildProfileMessages(rows) {
+  const list = (rows || []).slice(0, 500).map(r => {
+    const mod = MODULE_LABELS[r.m] || r.m || '记录';
+    const parts = [];
+    if (r.txt) parts.push(r.txt);
+    const ext = (r.extSrc || []).map((s, idx) => (r.ext && r.ext[idx]) ? (s + '：' + r.ext[idx]) : null).filter(Boolean);
+    if (ext.length) parts.push('（' + ext.join('，') + '）');
+    return '[' + mod + '] ' + parts.join(' ') + (r.t ? ' ' + r.t : '');
+  }).join('\n');
+
+  const sys = COMMON_RULES
+    + '\n\n你这次的任务是根据用户【全部历史记录】勾勒一份稳定的「个人画像」——是长期地「他大概是哪种人」，不是某一段的复盘。'
+    + '\n注意区分：strengths 是「做得好 / 有积累」的事，interests 是「在意、反复出现」的主题，两者可能重叠但不等同；'
+    + 'disinterests 要从「回避 / 敷衍 / 提不起劲」的信号推断，不要硬凑；directions 要具体（领域 / 赛道 / 方向词），'
+    + '而不能只是「多尝试」这种空话；tryThis 是立刻能落地的小行动，要指向探索而非又一份待办。'
+    + '\n输出 JSON 字段：\n' + profileFieldsSpec();
+  const user = '以下是用户从开始使用到现在（共 ' + (rows ? rows.length : 0) + ' 条）的全部自我觉察记录（按时间先后）：\n\n'
+    + (list || '（没有记录）') + '\n\n请基于这些给出个人画像。';
+  return [{ role: 'system', content: sys }, { role: 'user', content: user }];
+}
+
+function arrOf(v) { return Array.isArray(v) ? v.map(x => (typeof x === 'string' ? x.trim() : String(x))).filter(Boolean).slice(0, 8) : []; }
+
+// 生成（或重新生成）当前用户的个人画像：取全部记录 → 调大模型 → upsert 到 profile 集合
+async function generateProfile(openid) {
+  if (genBudget <= 0) return { error: '本次调用额度已用完，请稍后或加大 maxGen 再试' };
+  const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
+  const rows = (recs.data || []).map(d => ({
+    m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
+  }));
+  if (!rows.length) return { empty: true, summary: '还没有记录，先去「记」里留下一点觉察，再回来生成画像。' };
+
+  const parsed = await chatCompletion(buildProfileMessages(rows));
+  genBudget--;
+  const clean = v => (typeof v === 'string' ? v : (v == null ? '' : String(v)));
+  const doc = {
+    openid,
+    summary: clean(parsed.summary).slice(0, 300),
+    strengths: arrOf(parsed.strengths),
+    interests: arrOf(parsed.interests),
+    disinterests: arrOf(parsed.disinterests),
+    directions: arrOf(parsed.directions),
+    tryThis: arrOf(parsed.tryThis),
+    patterns: clean(parsed.patterns).slice(0, 1200),
+    model: LLM_MODEL,
+    n: rows.length,
+    updatedAt: Date.now()
+  };
+  // 同一 openid 只保留一份最新画像（update 优先，没有才 add）
+  const ex = await profileCol().where({ openid }).limit(1).get();
+  if (ex.data && ex.data.length) {
+    await profileCol().doc(ex.data[0]._id).update({ data: doc });
+    return Object.assign({ _id: ex.data[0]._id, ok: true }, doc);
+  }
+  const add = await profileCol().add({ data: doc });
+  return Object.assign({ _id: add._id, ok: true }, doc);
+}
+
+// 读取当前用户已存的画像（没有则返回 null）
+async function getProfile(openid) {
+  const ex = await profileCol().where({ openid }).orderBy('updatedAt', 'desc').limit(1).get();
+  return (ex.data && ex.data.length) ? ex.data[0] : null;
+}
+
 // 为某个用户生成某个周期的回看（幂等：已有则跳过；期间无记录则跳过且不落空卡）
 async function generateFor(openid, type, p) {
   // 只生成「已完整结束」的周期：结束时刻还没到（未来 / 进行中）就不生成，
@@ -373,6 +456,19 @@ exports.main = async (event) => {
       });
     }
     return { total: rows.length, first: keys[0], last: keys[keys.length - 1], perDay, backfillShouldGenerate: cover };
+  }
+
+  // 个人画像：读取已存的（前端进页先调这个，快、不花大模型额度）
+  if (event && event.action === 'profileGet') {
+    if (!openid) return { error: 'no openid' };
+    const p = await getProfile(openid);
+    return { profile: p };
+  }
+
+  // 个人画像：根据全部记录（重新）生成并落库（默认的「刷新」按钮 / 下拉触发）
+  if (event && event.action === 'profile') {
+    if (!openid) return { error: 'no openid' };
+    return generateProfile(openid);
   }
 
   // 有用户上下文但没带可识别的 action（比如用测试模板直接跑）：不干活，

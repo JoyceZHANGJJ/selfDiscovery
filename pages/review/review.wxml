@@ -34,6 +34,16 @@
         <view class="ai-e-go">›</view>
       </view>
 
+      <!-- 个人画像入口：已生成就显示，点开看完整画像 -->
+      <view wx:if="{{profileLatest}}" class="ai-entry" bindtap="goProfile">
+        <view class="ai-e-badge prof">像</view>
+        <view class="ai-e-l">
+          <view class="ai-e-t">个人画像</view>
+          <view class="ai-e-s">{{profileLatest.summary}}</view>
+        </view>
+        <view class="ai-e-go">›</view>
+      </view>
+
       <!-- 周 / 月复盘，以及最后的「全部」（主题档案，全历史） -->
       <view class="filters">
         <view class="ft {{view==='week'?'on':''}}" data-v="week" bindtap="onView">周</view>

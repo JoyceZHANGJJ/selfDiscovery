@@ -1,0 +1,47 @@
+/* pages/profile/profile.wxss —— 个人画像
+   基础布局（.app / .screen / .body / .sect-t / .sk / .loadfail / .empty）沿用 app.wxss，
+   这里补本页的头部、刷新按钮与各画像区块。视觉语言与 AI 回看页（analysis.wxss）一致。 */
+
+.app { position: static; min-height: 100vh; display: block; }
+.screen { height: auto; }
+.body { min-height: calc(100vh + 60px); }
+
+/* 子页头部：返回 + 标题 + 刷新（与 options 页 .bk 同一套风格） */
+.a-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.a-hd .bk { flex-shrink: 0; font-size: 15px; color: var(--ink2); padding: 4px 2px; }
+.a-hd .a-tt { flex: 1; font-size: 17px; font-weight: 800; color: var(--ink); }
+.a-refresh { flex-shrink: 0; font-size: 12.5px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 99px; padding: 4px 11px; }
+.a-refresh.on { opacity: .55; }
+
+.hint { font-size: 12px; color: var(--ink3); margin: -2px 0 12px; line-height: 1.6; }
+
+/* 整体画像卡：强调色底，最吸睛 */
+.pcard { background: #fff; border: 1px solid var(--line); border-radius: var(--r-card); padding: 13px 14px; margin-bottom: 10px; }
+.pcard.sum { background: var(--accent); border-color: var(--accent); }
+.pcard.sum .pc-sum { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.7; }
+.pc-upd { margin-top: 7px; font-size: 11px; color: rgba(255,255,255,.82); }
+
+/* 两列：擅长 / 感兴趣 并排 */
+.pgrid { display: flex; gap: 10px; }
+.pgrid .pcard { flex: 1; }
+
+.pc-l { font-size: 12px; color: var(--ink3); margin-bottom: 8px; font-weight: 600; }
+.pc-sum { font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.7; }
+
+/* 标签：三类不同色，便于一眼区分 */
+.pc-tags { display: flex; flex-wrap: wrap; gap: 7px; }
+.pc-tag { font-size: 12.5px; border-radius: 99px; padding: 3px 10px; line-height: 1.5; }
+.pc-tag.s { color: var(--accent); background: var(--accent-soft); }
+.pc-tag.i { color: #B0853A; background: #F7EEDD; }
+.pc-tag.d { color: #9A6E8E; background: #F3E9F0; }
+
+/* 列表（方向 / 试试）：左点强调 */
+.pc-list { display: flex; flex-direction: column; gap: 6px; }
+.pc-li { font-size: 13.5px; color: var(--ink2); line-height: 1.7; word-break: break-word; }
+.pc-li.act { color: var(--ink); }
+
+.pc-pat { font-size: 13.5px; color: var(--ink2); line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+
+/* 空态按钮 */
+.empty-btn { margin-top: 16px; display: inline-block; font-size: 13.5px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 99px; padding: 9px 22px; }
+.empty-btn.on { opacity: .6; }

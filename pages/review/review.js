@@ -95,7 +95,8 @@ Page(pageBase({
     docHead: '',
     ready: false,        // 首屏数据未就绪时先渲染骨架屏（与记 / 看 同一套 .sk 样式）
     loadFail: false,     // 取数失败：撤掉骨架屏，给一句说明 + 可点的重试
-    aiLatest: null       // 最新一条 AI 回看（回看页顶部入口；没生成过 / 拉取失败则为 null）
+    aiLatest: null,      // 最新一条 AI 回看（回看页顶部入口；没生成过 / 拉取失败则为 null）
+    profileLatest: null  // 个人画像入口（已生成就显示摘要；没生成过 / 拉取失败则为 null）
   },
   _docs: [],             // 全量档案（不塞进 data，避免 setData 过大）
 
@@ -104,6 +105,7 @@ Page(pageBase({
     this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 3, theme: wx.getStorageSync('theme') || 'mint' });
     this.loadAiEntry();
+    this.loadProfileEntry();
     store.ensureAll().then(ok => {
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       this.setData({ ready: true });
@@ -134,6 +136,22 @@ Page(pageBase({
   },
 
   goAnalysis() { wx.navigateTo({ url: '/pages/analysis/analysis' }); },
+  goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+
+  // 拉已存的个人画像，填到顶部入口。失败 / 还没生成过都静默隐藏入口。
+  loadProfileEntry() {
+    if (this._pfLoading) return;
+    this._pfLoading = true;
+    wx.cloud.callFunction({ name: 'analysis', data: { action: 'profileGet' } })
+      .then(res => {
+        const p = res.result && res.result.profile;
+        this.setData({
+          profileLatest: p ? { summary: p.summary || '' } : null
+        });
+        this._pfLoading = false;
+      })
+      .catch(() => { this._pfLoading = false; this.setData({ profileLatest: null }); });
+  },
 
   /* 取数失败后点「重试」：再走一遍加载（store 失败时会把状态放回去，可以再来一次） */
   onRetry() {
@@ -430,6 +448,7 @@ Page(pageBase({
   /* 下拉刷新：从云端重新拉取全部数据 */
   onRefresh() {
     this.loadAiEntry();
+    this.loadProfileEntry();
     store.reload().then(() => { this.build(); wx.stopPullDownRefresh(); })
       .catch(() => wx.stopPullDownRefresh());
   }
