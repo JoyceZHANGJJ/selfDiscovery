@@ -36,9 +36,9 @@ page, .app {
 .tagrow-scroll { width: 100%; white-space: nowrap; }
 .tagrow .tg { flex-shrink: 0; }
 .tagrow-wrap { position: relative; }
-.tagrow-fade { position: absolute; top: 0; right: 0; width: 8px; height: 21px; background: linear-gradient(to right, rgba(51,50,45,0), rgba(51,50,45,.08)); pointer-events: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); }
+.tagrow-fade { position: absolute; top: 0; right: 0; width: 12px; height: 21px; z-index: 2; background: linear-gradient(to right, rgba(51,50,45,0), rgba(51,50,45,.11)); pointer-events: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); }
 /* 左侧那份：往回滚过、左边还有 chip 没露出来时给提示（与右侧同一套，只是镜像） */
-.tagrow-fade-l { right: auto; left: 0; background: linear-gradient(to left, rgba(51,50,45,0), rgba(51,50,45,.08)); }
+.tagrow-fade-l { right: auto; left: 0; background: linear-gradient(to left, rgba(51,50,45,0), rgba(51,50,45,.11)); }
 /* 命中区补齐：维度 tag 约 22px 高 → 撑到约 44px（左右只扩 5px；下划线仍是选中态的唯一标识） */
 .tg { font-size: 13.5px; padding: 0 0 4px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink3); display: inline-flex; align-items: center; gap: 5px; position: relative; }
 .tg::after { content: ''; position: absolute; left: -5px; right: -5px; top: -11px; bottom: -11px; }
@@ -181,6 +181,11 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
    标签用 ink4（比正文更淡）+ 右侧留白，不抢上面「今天发生了什么」那句的分量 */
 .tl-txt.tl-tmr { margin-top: 4px; }
 .tl-txt.tl-tmr .k { color: var(--ink4); font-size: 11.5px; margin-right: 6px; }
+/* 看页今日卡片的「明天的计划」：看页那块用的是 .todaycard-txt（不是 .tl-txt），
+   所以上面两条选择器匹配不上——同样的视觉要在这里补一份。
+   两处视觉必须一致（同一条记录在记页与看页长得不一样会让人以为是两条记录）。 */
+.todaycard-txt.tmr { margin-top: 4px; }
+.todaycard-txt.tmr .k { color: var(--ink4); font-size: 11.5px; margin-right: 6px; }
 /* 最近列表的今日行：能量与心情两个标签并排，中间留点空隙别挤成一串 */
 .tl-lab-2 { margin-left: 10px; }
 /* 记页「最近」里的今日行：这条能量条是**主项**（占 .tvw 那个位置），

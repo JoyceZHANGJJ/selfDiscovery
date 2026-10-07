@@ -143,8 +143,19 @@
               <!-- 右起显示创建时间：与时间线行同一口径（datePrefix + t） -->
               <text class="tl-when">{{grp.today.d}}{{grp.today.t}}</text>
             </view>
+            <!-- 心情指数：与能量同一套 5 格、另一套颜色（--mood），与记页只读摘要逐字一致。
+                 没记过心情（老记录）时整行不显示——画成 0 格会被读成「心情很差」 -->
+            <view wx:if="{{grp.today.mlv > 0}}" class="tl-row">
+              <text class="tl-lab">心情指数</text>
+              <view class="tl-bar tl-bar-mood">
+                <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-cell mood {{index<grp.today.mlv?'on':''}}"></view>
+              </view>
+              <text class="tl-when">{{grp.today.moodName}}</text>
+            </view>
             <text wx:if="{{grp.today.txt}}" class="todaycard-txt">{{grp.today.txt}}</text>
             <text wx:else class="todaycard-txt is-none">今天还没写能量说明</text>
+            <!-- 明天的计划：标签说清是哪一天的打算——不然明天再打开这句话会读不通 -->
+            <text wx:if="{{grp.today.tomorrow}}" class="todaycard-txt tmr"><text class="k">明天的计划</text>{{grp.today.tomorrow}}</text>
           </view>
           <!-- 手势：点一下出操作条 / 左滑进记卡改 / 长按复制（行内横滑优先，见 onRowTouchend） -->
           <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{r.desc?'has-desc':''}} {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">

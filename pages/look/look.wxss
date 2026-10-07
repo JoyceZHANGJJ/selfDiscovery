@@ -29,9 +29,12 @@
 .dimrow { display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
 .dimrow .ft { flex-shrink: 0; }
 /* 两端渐变：右侧「右边还有」，左侧「已经往回滚过」（各自独立，见 pageBase.applyScrollFade）。
-   上下用 mask 淡出，避免渐变的方角贴到标签的字上 */
-.dimrow-fade { position: absolute; top: 0; right: 0; width: 10px; height: 26px; background: linear-gradient(to right, rgba(51,50,45,0), rgba(51,50,45,.10)); pointer-events: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); }
-.dimrow-fade-l { right: auto; left: 0; background: linear-gradient(to left, rgba(51,50,45,0), rgba(51,50,45,.10)); }
+   上下用 mask 淡出，避免渐变的方角贴到标签的字上。
+   z-index 必须显式给：scroll-view 开了 enhanced（走原生渲染，是独立层），
+   不给 z-index 时遮盖会被原生层压住——症状是「数据层算对了、页面上一丝渐变都没有」，
+   和「判据算错」长得很像，但根因完全不同。 */
+.dimrow-fade { position: absolute; top: 0; right: 0; width: 14px; height: 26px; z-index: 2; background: linear-gradient(to right, rgba(51,50,45,0), rgba(51,50,45,.13)); pointer-events: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); }
+.dimrow-fade-l { right: auto; left: 0; background: linear-gradient(to left, rgba(51,50,45,0), rgba(51,50,45,.13)); }
 
 .loadmore { text-align: center; color: var(--ink4); font-size: 12px; padding: 14px 0 24px; }
 

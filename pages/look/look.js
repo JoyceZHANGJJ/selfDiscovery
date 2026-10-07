@@ -26,6 +26,14 @@ const STAT_PADS = { obs: 4 };
    统计却按别的分组」，数字对不上又看不出是哪边错了。 */
 const CAT_STAT = { jot: 'jotKind', book: 'bookKind', div: 'divType' };
 
+/* 维度行两端渐变提示在 data 里的字段名（pageBase.applyScrollFade 按字段名 setData）。
+   与记页的 TAG_FADE 同一套机制，只是两页字段名不同——所以传字段名而不写死。
+   ⚠️ 这个常量必须真的存在：写错成别的名字时 `node --check` 与 check-syntax 都照样通过
+   （前者只查语法、后者只查登记一致性），要到运行时才抛 ReferenceError，
+   而 checkDimFade 在 rebuild 里、onDimScroll 在滚动时，症状是「渐变一点不出现」，
+   不报错也不留痕迹。见 check-syntax.py 的 check_free_identifiers。*/
+const DIM_FADE = { r: 'dimFade', l: 'dimFadeL' };
+
 Page(pageBase({
   data: {
     modules: [],
@@ -421,6 +429,16 @@ Page(pageBase({
           d: store.datePrefix(tr.ts), t: tr.t,     // 右起显示创建时间，与时间线行同一口径
           lv: store.batLevel(bv), batName: store.batName(bv), txt: tr.txt || ''
         };
+        // 心情指数：与记页 _todayLockedOf 逐字同一套口径——
+        // 老记录没存这个字段时是 0 格，wxml 整行不显示（画成最低档会被读成「很低落」）。
+        // 三处口径必须一致：记页只读摘要、记页最近列表、看页今日卡片。
+        const mi = (tr.extSrc || []).indexOf('todayMood');
+        const mv = mi >= 0 ? (tr.ext || [])[mi] || '' : '';
+        g.today.mlv = mv ? store.moodLevel(mv) : 0;
+        g.today.moodName = store.moodName(mv);
+        // 明天的计划：自由文本，没写就不出那一行
+        const ti = (tr.extSrc || []).indexOf('free:tomorrow');
+        g.today.tomorrow = ti >= 0 ? ((tr.ext || [])[ti] || '') : '';
       }
       return g;
     });
@@ -453,10 +471,13 @@ Page(pageBase({
       tasks: this.buildTasks(tasks),
       empty: groups.length === 0 && tasks.length === 0,
       stats
+    }, () => {
+      // 维度标签渲染完再量，且必须等 setData 的回调：视图层是异步更新的，
+      // 紧跟着 setData 立刻查节点量到的是**上一帧**的宽度（首次渲染时是空行），
+      // 于是判成「内容没超出」→ 右侧渐变永远不出现。记页的 checkTagFade 同理。
+      this.checkDimFade();
+      this._flushAlign();   // 数据渲染完了，按最终布局对齐（见 _alignLater）
     });
-    // 维度标签渲染完再量：内容宽度这时才是最终值（首次 setData 前量到的是空行）
-    this.checkDimFade();
-    this._flushAlign();   // 数据渲染完了，按最终布局对齐（见 _alignLater）
   },
 
   /* 待办清单：待完成在上（口径与清单页逐字相同：优先级 → 计划完成时间 → 记录时间，
