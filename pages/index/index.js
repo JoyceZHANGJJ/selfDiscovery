@@ -9,7 +9,13 @@ const app = getApp();
 // 「有默认值」的选项组：见 ensureModuleDefaults——这几个组进入对应维度时会自动补一个默认值，
 // 既然有默认值就不该被点空（再点已选中的那一个＝什么也没发生，保持必选）
 // 待办的「优先级」也在内：它与类别一样有默认值，不该被点空（参见 PRIO_DEFAULT）
-const REQUIRED_PICK = { wantKind: 1, todoKind: 1, todoPrio: 1, jotKind: 1, obsStart: 1, todayBat: 1 };
+const REQUIRED_PICK = { wantKind: 1, todoKind: 1, todoPrio: 1, jotKind: 1, obsStart: 1, todayBat: 1, divType: 1, bookKind: 1 };
+
+// 只在「回顾」态出现的自由字段：占卜的「回顾」与「准确率」。
+// 两个都属于「过一段时间才有的东西」——占卜当下既没有实际发展，也没有准不准可言，
+// 摆在那儿只会让人以为必填。名字集中在这里，新加一个回顾字段改一处即可，
+// 别在过滤那里逐个枚举（枚举的写法加一项漏一次）。
+const REVIEW_ONLY_FREE = ['review', 'divAcc'];
 
 function nowStr() {
   const d = new Date();
@@ -32,6 +38,9 @@ function tsFromDate(dStr, tStr) {
   const ts = new Date(p[0], p[1] - 1, p[2], q[0], q[1], 0, 0).getTime();
   return { ts, t: ('0' + q[0]).slice(-2) + ':' + ('0' + q[1]).slice(-2) };
 }
+// 维度标签行两端渐变提示在 data 里的字段名（pageBase.applyScrollFade 按字段名 setData）
+const TAG_FADE = { r: 'tagFade', l: 'tagFadeL' };
+
 Page(pageBase({
   data: {
     ready: false,
@@ -53,6 +62,7 @@ Page(pageBase({
     dueTs: 0,
     // 维度标签行的「可滚动」渐变提示：只有标签真的超出、右侧还有内容时才显示
     tagFade: false,
+    tagFadeL: false,
     recSel: null,
     recSelRec: null,
     delUndo: null,
@@ -95,6 +105,9 @@ Page(pageBase({
     edit: null, ren: null, optUndo: null,
     startMode: false, completing: false, doing: false, showDoing: false, showDone: false,
     abandoning: false, showAbandon: false, ending: false, focusFree: '',
+    // 占卜的「回顾」态：从记录操作条点「回顾」进入编辑时为真，
+    // 此时才显示「回顾」那个输入框（平时它整行不出现，见 buildComposer）
+    reviewing: false,
     todayLocked: null   // 「今日」一日一记：当天已记过时存当天那条（只读锁定态），点「修改」才进编辑
   },
 
@@ -392,6 +405,11 @@ Page(pageBase({
     this.st.ending = !!g.editEnding; g.editEnding = null;
     this.st.focusFree = g.editEndFocus ? 'obsfeel' : '';
     g.editEndFocus = null;
+    // 占卜的「回顾」：进来就把光标放到「回顾」那个框里——
+    // 点这个按钮的人就是要写这一句，让他先找输入框是不合理的。
+    // 注意要在上面那行之后：focusFree 会被它清空，写反了这一步白做。
+    this.st.reviewing = !!g.editReview; g.editReview = null;
+    if (this.st.reviewing) this.st.focusFree = 'review';
     // 展示哪些字段：点「完成」(action)→仅做了的感受/收获并聚焦；点「开始」(action)→仅进行中感受并聚焦；
     // 点「放弃」(action)→仅“为什么不做了”并聚焦；普通点开编辑：做中→进行中感受；已做（做了）→进行中感受 与 做了的感受/收获 都可改；
     // 已「不做」→“为什么不做了”可改
@@ -546,7 +564,12 @@ Page(pageBase({
       const bi = (r.extSrc || []).indexOf('todayBat');
       const bv = bi >= 0 ? (r.ext || [])[bi] : '';
       v.bat = { lv: bv ? store.batLevel(bv) : 0, name: store.batName(bv) };
-      v.dt = dt.filter(d => d.src !== 'todayBat');
+      // 心情指数与能量同一套画法：库里没存（老记录）时 mv 为 0 格，
+      // 与能量一样「没填就不画」，而不是画成最低档——画成 1 格会被读成「很低落」。
+      const mi = (r.extSrc || []).indexOf('todayMood');
+      const mv = mi >= 0 ? (r.ext || [])[mi] : '';
+      v.mood = { lv: mv ? store.moodLevel(mv) : 0, name: store.moodName(mv) };
+      v.dt = dt.filter(d => d.src !== 'todayBat' && d.src !== 'todayMood');
     }
     v.doingDays = doingDays;
     v.dur = dur;
@@ -576,6 +599,10 @@ Page(pageBase({
     // 这条规则待办与可做同一套（待办以前漏了，导致每写一条待办都摆着「为什么不做了」）
     fitems = fitems.filter(it => it.free !== 'abandonWhy' ||
       this.st.abandoning || !!(this.st.edit && this.st.edit.status === 'abandon'));
+    // 占卜的「回顾」「准确率」：只有点「回顾」进来才出现。占卜当下既没有实际发展、
+    // 也没有准不准可言，摆在那儿只会让人以为必填；得由那个动作把它们请出来。
+    // （这与 abandonWhy 同一套路：条件字段平时藏起来，被动作唤出来时才占一行）
+    fitems = fitems.filter(it => REVIEW_ONLY_FREE.indexOf(it.free) < 0 || !!this.st.reviewing);
     if (tag === 'want') {
       fitems = fitems.filter(it => {
         if (it.free === 'doingNote') return !!this.st.showDoing;
@@ -600,19 +627,27 @@ Page(pageBase({
     }
     const items = fitems.map((it, idx) => {
       if (it.g) {
-        // 「今日」能量：5 段能量条（不再用电池图形）。n=档位名（段内小字），
-        // lv=格数（wxml 画 5 格、点亮前 lv 格）。lv 跟着选中档走，
-        // 所以从低档改到高档时是「一格一格亮起来」，和只读态那条一致。
-        // 未选时 lv=0：新建今日记录一进来 5 格全灭（不能借 store.batLevel('') 的兜底值 1
-        // 把第 1 格点亮——那会看起来像已经选了「很低」，用户就少点了一下、存下错档）。
-        if (it.g === 'todayBat') {
-          const cur = (this.st.pick['todayBat'] || [])[0] || '';
+        // 是否给「✎ 管理」入口：纯图示档位组（剩余能量 / 心情指数）不给——
+        // 它们不是选项池，那一页只会是个空列表，加进去的词也永远不会出现在格子上。
+        // 判据统一查 store.isGraphGroup，别在这儿写死组名（见 store 的 GRAPH_GROUPS 注释）
+        const canManage = !store.isGraphGroup(it.g);
+        // 5 格量（今日的剩余能量 / 心情指数，书·剧的精彩 / 喜爱程度）：同一套渲染，
+        // 只是档位表与名字不同。判据统一查 store.scaleOf——它在 SCALES 里查得到就是 5 格量，
+        // 不在这儿写死组名：写死的话新加一组要同时改三处（这里、wxml、wxss），漏一处不报错，
+        // 只是那条量画成普通 chips。档位表 / 格数 / 颜色键都从 store 取，wxml 只认 item.kind。
+        const scale = store.scaleOf(it.g);
+        if (scale) {
+          const cur = (this.st.pick[it.g] || [])[0] || '';
+          // 未选时 lv=0：新建记录一进来 5 格全灭（不能借 store.batLevel('') 的兜底值 1
+          // 把第 1 格点亮——那会看起来像已经选了「很低」，用户就少点了一下、存下错档）。
           const lv = cur ? store.batLevel(cur) : 0;
-          const opts = store.BATTERIES.map((b, i) => ({
+          const opts = scale.map((b, i) => ({
             v: b.v, n: b.name, lv: i,
-            on: (this.st.pick['todayBat'] || []).indexOf(b.v) >= 0
+            on: (this.st.pick[it.g] || []).indexOf(b.v) >= 0
           }));
-          return { type: 'g', first: idx === 0, group: it.g, label: store.GLABEL[it.g], single: true, noInput: true, opts, lv, cur, sub: false, hide: false };
+          // graph=true：这是 5 格量，不是普通 chips。渲染层靠它分岔（画格子还是画 chip），
+          // 不在 wxml 里比对组名——那样每加一组 5 格量都要改模板一次，漏改就退化成普通 chip。
+          return { type: 'g', first: idx === 0, group: it.g, label: store.GLABEL[it.g], single: true, noInput: true, canManage: false, opts, lv, cur, sub: false, hide: false, graph: true, kind: store.scaleKind(it.g), below: !!it.below };
         }
         const opts = store.getOPT(it.g).map(v => ({ v, on: (this.st.pick[it.g] || []).indexOf(v) >= 0 }));
         // 历史手填值不在选项池里（这个组后来取消了手填）：作为临时 chip 排在最前，
@@ -623,31 +658,40 @@ Page(pageBase({
         // 手填只记这一条，不进选项池（要复用同一句话，去「✎ 管理」里加）
         const ph = '也可以手填，和选项一起记下（不加入选项池）';
         // sub：情绪下面的档位副行——不显示标题、不给管理入口，chip 小一号，未选情绪时隐藏
-        return { type: 'g', first: idx === 0, group: it.g, label: it.sub ? '' : store.GLABEL[it.g], single: !!it.single, noInput: !!it.noInput, ph, opts, typedVal: this.st.typed[it.g] || '',
-          sub: !!it.sub, hide: !!it.sub && !showDeg };
+        return { type: 'g', first: idx === 0, group: it.g, label: it.sub ? '' : store.GLABEL[it.g], single: !!it.single, noInput: !!it.noInput, canManage: canManage, ph, opts, typedVal: this.st.typed[it.g] || '',
+          sub: !!it.sub, hide: !!it.sub && !showDeg, below: !!it.below };
       }
       if (it.fx) {
         const fx = store.FIXED[it.fx];
         const opts = fx.opts.map(v => ({ v, on: (this.st.pick['fx:' + it.fx] || []).indexOf(v) >= 0 }));
         return { type: 'fx', first: idx === 0, group: 'fx:' + it.fx, label: fx.label, opts };
       }
-      return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '' };
+      // inline + unit：标题与输入框同一行、输入框右侧带单位（如「准确率 [80] %」）。
+      // 只有短值才走这个形态——占一整行的 textarea 会把一个数字摆得比正文还重。
+      // num：给数字键盘（digit 允许小数）；值仍是字符串，不做任何校验——非必填、无默认
+      return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '',
+        inline: !!it.inline, unit: it.unit || '', num: !!it.num };
     });
-    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '说说今天的能量使用情况吧～' };
-    // 待办 / 随记 / 今日：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行。
+    // 今日那句改成同时提能量和心情：下面两条 5 格条是并列的，
+    // 只说「能量」的话，填的人会以为心情那栏没处写、或者干脆不填。
+    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '今天发生了哪些影响能量和心情的事呢？', div: '占卜的问题是？', book: '书名或剧名 · 回车就记下' };
+    // 待办 / 随记 / 今日 / 占卜 / 书·剧：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行。
     // 今日：电池（类别）摆在主输入框上方、印象（主输入框）在下方，无细节分割线（见 index.wxml 的 plain 分支）
-    const plain = store.isTask(tag) || tag === 'jot' || tag === 'today';
-    // 待办 / 随记的「类别」（todoKind / jotKind）摆在主输入框**上方**：先定类别，再写内容。
-    // 其余细节行（如待办的「原因」「放弃原因」）仍在输入框下方
-    const catItems = plain ? items.filter(it => it.type === 'g') : [];
-    const bodyItems = plain ? items.filter(it => it.type !== 'g') : items;
+    // 书·剧同理：类别在上、名称在中、评分与进度在下
+    const plain = store.isTask(tag) || tag === 'jot' || tag === 'today' || tag === 'div' || tag === 'book';
+    // 待办 / 随记 / 书·剧的「类别」（todoKind / jotKind / bookKind）摆在主输入框**上方**：先定类别，再写内容。
+    // 其余细节行（如待办的「原因」「放弃原因」）仍在输入框下方。
+    // below：书·剧的评分与进度要留在名称下方——它们评的是「这一本」，名字没写就无从评起，
+    // 跟着类别一起提到名字上面会变成「先打分再补名字」，顺序反了。
+    const catItems = plain ? items.filter(it => it.type === 'g' && !it.below) : [];
+    const bodyItems = plain ? items.filter(it => it.type !== 'g' || it.below) : items;
     // 待办的「计划完成」：档位表与文案都用 store.dueChips 那一份（与快捷记面板同源），
     // 记卡里只是换个位置渲染。只有待办有这一行——随记 / 今日没有「打算哪天做完」这回事
     const due = tag === 'todo' ? store.dueChips(this.st.due) : null;
     // 自动聚焦：开始 → 进行中感受；完成 → 做了的感受；放弃 → 放弃原因；结束(觉察) → 感受。
     // 索引按**真正渲染的那份**列表算：plain 时类别行不进 composer.items，用 items 会偏一位，
     // 聚焦与 #fld{idx} 都会落空（「放弃待办」要聚焦的正是这类被挤掉一位的框）
-    const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.focusFree || '')));
+    const focusKey = this.st.startMode ? 'doingNote' : (this.st.completing ? 'doneFeel' : (this.st.abandoning ? 'abandonWhy' : (this.st.reviewing ? 'review' : (this.st.focusFree || ''))));
     const focusIdx = focusKey ? bodyItems.findIndex(it => it.type === 'free' && it.key === focusKey) : -1;
     // focusIdx 必须返回：recompute 依赖它做「滚动到目标输入框 + 程序化聚焦弹键盘」
     return { main: main, mainLabel: store.GLABEL[main], mainOpts, mainVal: this.st.main || '', catItems, items: bodyItems, plain, due: due && { ts: due.ts, pick: due.pick, opts: due.chips }, focusIdx, mainPh: MAINPH[tag] || '手填或直接写一句 · 只记这一次',
@@ -791,6 +835,7 @@ Page(pageBase({
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.due = 0;
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
+    this.st.reviewing = false;   // 切走维度就退出回顾态：「回顾」是占卜那一条的事，不该跟着跑到别的维度去
     this.st.todayLocked = null;
     this.ensureModuleDefaults();
     this.setData({ tag: this.st.tag, todayLocked: null });
@@ -916,36 +961,15 @@ Page(pageBase({
     this._kbTimer = setTimeout(() => { this._kbTimer = null; this._keepFieldAboveBar(); }, 460);
   },
 
-  /* 维度标签行的「可滚动」渐变提示：只有内容真的超出、且右侧还有内容时才显示。
-     量一次缓存起来（滚动时不再重复查询），之后滚动只做比较。 */
+  /* 维度标签行的「可滚动」渐变提示：量一次缓存起来（滚动时不再重复查询），之后滚动只做比较。
+     实现与看页的维度筛选行共用 pageBase.measureScrollRow / applyScrollFade ——
+     这套判据（内容是否超出、右边还有没有、往回滚过没有）两边逐字相同，
+     各写一份的话改了一边忘了另一边，症状是「一端有提示、另一端没有」，且不报错。 */
   checkTagFade() {
-    const q = wx.createSelectorQuery().in(this);
-    q.select('.tagrow-scroll').boundingClientRect();
-    q.select('.tagrow-scroll').scrollOffset();
-    q.selectAll('.tg').boundingClientRect();
-    q.exec(res => {
-      const box = res[0], off = res[1], items = res[2] || [];
-      if (!box) return;
-      let content = (off && off.scrollWidth) || 0;
-      // 兜底：个别基础库上 scrollWidth 拿不到，就用最后一个标签的右边界推算内容宽度
-      if (!content && items.length) {
-        const right = items.reduce((m, it) => Math.max(m, it.right), 0);
-        content = right - box.left;
-      }
-      this._tagW = { box: box.width, content };
-      this._applyTagFade((off && off.scrollLeft) || 0);
-    });
+    this.measureScrollRow('.tagrow-scroll', '.tg', TAG_FADE);
   },
 
-  _applyTagFade(left) {
-    const w = this._tagW;
-    if (!w) return;
-    // 超出 + 右侧还有没露出来的内容 → 才提示；滚到底就收起来
-    const fade = w.content > w.box + 1 && left + w.box < w.content - 1;
-    if (fade !== this.data.tagFade) this.setData({ tagFade: fade });
-  },
-
-  onTagScroll(e) { this._applyTagFade((e.detail && e.detail.scrollLeft) || 0); },
+  onTagScroll(e) { this.applyScrollFade((e.detail && e.detail.scrollLeft) || 0, TAG_FADE); },
 
   /* 页面滚动：记录滚动位置，顺手收起记录操作条。
      页面级滚动下微信会同步原生输入层位置，无需再销毁重建输入框。 */
@@ -984,6 +1008,7 @@ Page(pageBase({
     this.st.startMode = false; this.st.doing = false; this.st.completing = false;
     this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
+    this.st.reviewing = false;
     this.st.todayLocked = null;   // 回初始态：清掉「今日」只读锁定（若停在今日维度再回来会重新判定）
     this.ensureModuleDefaults(def);
     this.setData({ editing: false, tag: def, focusIdx: -1, saveUndo: null, recentTab: 'recent', todayLocked: null });
@@ -1051,6 +1076,8 @@ Page(pageBase({
     if (t === 'todo' && store.todoPrioDefault) d.todoPrio = (store.todoPrioDefault() || [])[0];
     if (t === 'jot' && store.jotKindDefault) d.jotKind = (store.jotKindDefault() || [])[0];
     if (t === 'obs' && store.obsStartDefault) d.obsStart = (store.obsStartDefault() || [])[0];
+    if (t === 'div' && store.divTypeDefault) d.divType = (store.divTypeDefault() || [])[0];
+    if (t === 'book' && store.bookKindDefault) d.bookKind = (store.bookKindDefault() || [])[0];
     return d;
   },
   // 记卡里有内容时不切维度（切了整块内容就没了，且没有撤销），提示先处理掉
@@ -1156,9 +1183,13 @@ Page(pageBase({
     // 会以临时 chip 排在选项最前，编辑时照旧能改能留）。今日是唯一例外：只选能量不写字也行。
     if (!rec.txt && this.st.tag !== 'today') {
       const descItem = f && (f.items || []).find(it => it.free === store.DESC_KEY);
-      // 带「描述」的模块没有主输入框（主项只能点）→ 提示去点选项；其余模块提示写一句
+      // 带「描述」的模块没有主输入框（主项只能点）→ 提示去点选项；其余模块提示写一句。
+      // 占卜单独一句话：主项就是「问的是什么」，说清是哪一个框比「先写点什么」有用
       const ml = (descItem && f && f.main && store.GLABEL[f.main]) || '';
-      wx.showToast({ title: ml ? '先选一个「' + ml + '」' : '先写点什么', icon: 'none' });
+      const tip = this.st.tag === 'div' ? '先写下你要问的是什么'
+        : (this.st.tag === 'book' ? '先写下书名或剧名'
+        : (ml ? '先选一个「' + ml + '」' : '先写点什么'));
+      wx.showToast({ title: tip, icon: 'none' });
       return;
     }
     // 今日：能量为必选
@@ -1196,8 +1227,24 @@ Page(pageBase({
       wx.showToast({ title: '请选择类别', icon: 'none' });
       return;
     }
+    // 占卜：牌种必选（进入时已默认「塔罗」，这里防的是被点空或被别的路径清掉）；
+    // 抽到的牌必填——没有牌的占卜只剩一个问题，回头读不出该对照什么
+    if (this.st.tag === 'div' && (!this.st.pick['divType'] || !this.st.pick['divType'].length)) {
+      wx.showToast({ title: '先选一下用什么占的', icon: 'none' });
+      return;
+    }
+    if (this.st.tag === 'div' && !(this.st.free['divCard'] || '').trim()) {
+      wx.showToast({ title: '抽到了哪些牌？', icon: 'none' });
+      return;
+    }
     // 随记：类别为必选（默认已选「念头」）
     if (this.st.tag === 'jot' && (!this.st.pick['jotKind'] || !this.st.pick['jotKind'].length)) {
+      wx.showToast({ title: '请选择类别', icon: 'none' });
+      return;
+    }
+    // 书·剧：类别为必选（进入时已默认「小说」，这里防的是被点空或被别的路径清掉）。
+    // 名称必填在上面那条 rec.txt 校验里；两条 5 格量与进度都是可跳过的
+    if (this.st.tag === 'book' && (!this.st.pick['bookKind'] || !this.st.pick['bookKind'].length)) {
       wx.showToast({ title: '请选择类别', icon: 'none' });
       return;
     }
@@ -1262,12 +1309,17 @@ Page(pageBase({
     if (t === 'todo' && !this.st.pick['todoPrio']) this.st.pick['todoPrio'] = store.todoPrioDefault();
     if (t === 'jot' && !this.st.pick['jotKind']) this.st.pick['jotKind'] = store.jotKindDefault();
     if (t === 'obs' && !this.st.pick['obsStart']) this.st.pick['obsStart'] = store.obsStartDefault();
+    // 占卜：牌种必选，进入就默认选好「塔罗」（想改随时点另一个）
+    if (t === 'div' && !this.st.pick['divType']) this.st.pick['divType'] = store.divTypeDefault();
+    // 书·剧：类别必选，进入就默认选好「小说」（想看漫剧随时点另一个）
+    if (t === 'book' && !this.st.pick['bookKind']) this.st.pick['bookKind'] = store.bookKindDefault();
   },
 
   afterSave(rec) {
     const isEdit = !!this.st.edit;   // 先记下：编辑保存与新记下的提示不同（编辑没有「撤销这条」这回事）
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
+    this.st.reviewing = false;   // 回顾态是一次性的：记下之后「回顾」那行收回去，别把下一条也变成回顾
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.due = 0;   // 计划完成也一并归零：下一条待办默认又没有计划（「没计划」是常态）
     this.ensureModuleDefaults();   // 记下后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
@@ -1290,6 +1342,15 @@ Page(pageBase({
     const bi = (r.extSrc || []).indexOf('todayBat');
     const bv = bi >= 0 ? (r.ext || [])[bi] : '';
     r.lv = store.batLevel(bv);      // 能量条点亮几格（1..5）
+    // 心情指数：与能量同规则——库里没存（老记录）就是 0 格，不画，
+    // 而不是画成最低档让人误读成「很低落」。
+    const mi = (r.extSrc || []).indexOf('todayMood');
+    const mv = mi >= 0 ? (r.ext || [])[mi] : '';
+    r.mlv = mv ? store.moodLevel(mv) : 0;
+    r.moodName = store.moodName(mv);
+    // 明天的计划：自由文本，没写就不显示那一行（与「今天还没写能量说明」同一套处理）
+    const ti = (r.extSrc || []).indexOf('free:tomorrow');
+    r.tomorrow = ti >= 0 ? ((r.ext || [])[ti] || '') : '';
     r.d = store.datePrefix(r.ts);  // 右起显示创建时间用的日期前缀（与时间线行同一口径）
     r.batName = store.batName(bv);
     return r;
@@ -1309,7 +1370,7 @@ Page(pageBase({
     // 又能选一次剩余能量、再写一句，而今天其实已经记过了（保存时才不会重复，取消却露出空表单）。
     // 这里与 afterSave 同一口径：今天有「今日」记录 → 回只读锁定态，显示已记的那条
     const locked = (rec && rec.m === 'today') ? this._todayLockedNow(rec) : this.st.todayLocked;
-    this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {}; this.st.due = 0;
+    this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = ''; this.st.reviewing = false; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {}; this.st.due = 0;
     this.ensureModuleDefaults();   // 取消编辑后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
     this.st.todayLocked = locked;   // 与展示同步：接下来的判定（点 chip、切维度）都按这一份
     this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', todayLocked: locked });
@@ -1547,6 +1608,15 @@ Page(pageBase({
       this.recompute();
       return;
     }
+    if (type === 'review') {
+      // 占卜的「回顾」：打开记卡回显这一条，并展开「回顾」那一格聚焦它
+      if (r.m !== 'div') return;
+      app.globalData.editRec = store.decorate(r);
+      app.globalData.editReview = true;
+      this.setData({ recSel: null, recSelRec: null });
+      this.checkEdit(); this.recompute();
+      return;
+    }
     if (type === 'edit') {
       app.globalData.editRec = store.decorate(r);
       this.checkEdit(); this.recompute();   // 进入编辑态后由 checkEdit 统一滚回顶部
@@ -1695,7 +1765,7 @@ Page(pageBase({
       this._refreshing = false;
       this.st.edit = null; this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
       this.st.due = 0;
-      this.st.startMode = false; this.st.completing = false; this.st.abandoning = false; this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false; this.st.ending = false;
+      this.st.startMode = false; this.st.completing = false; this.st.abandoning = false; this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false; this.st.ending = false; this.st.reviewing = false;
       // 刷新后仍在「可做」/「待办」/「随记」时，补回默认分类 / 类别（避免被清空）
       this.ensureModuleDefaults();
       this.rotateGreet();
@@ -1729,6 +1799,12 @@ Page(pageBase({
     // 编辑态也允许去管理选项池：标记来源，返回时保留编辑中的内容与状态
     this.st.fromManage = true;
     const g = e.currentTarget.dataset.g;
+    // 纯图示档位组（剩余能量 / 心情指数）没有选项池，入口已在渲染层去掉（canManage=false）。
+    // 这里再兜一层：万一有别条路径传了这两个组进来，也不能把人送进一个空白的管理页
+    if (store.isGraphGroup(g)) {
+      console.warn('[manage] 纯图示档位组没有选项池，已拦下：', g);
+      return;
+    }
     const url = '/pages/options/options?group=' + encodeURIComponent(g);
     wx.navigateTo({
       url,

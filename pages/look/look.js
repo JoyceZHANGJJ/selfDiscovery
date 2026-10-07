@@ -7,6 +7,25 @@ const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
 const app = getApp();
 
+/* 统计块要补几行占位（补出来的行 visibility:hidden，只占高度）。
+   占位的目的是「换二级筛选时统计块不伸缩」——下面的时间线不跟着上下跳。
+
+   判据只有一条：**这个维度的统计会不会跟着二级筛选变**。
+     · 觉察：会（喜恶筛在 stats 的 extTags 里）→ tops 0~4 行会变 → 补到 4
+     · 此刻 / 做了 / 可做 / 全部：行数本来就固定（Top 上限 4 / 维度数 / 流转 4 态）→ 不用补
+     · 随记 / 书·剧 / 占卜：**刻意不跟**二级筛走（见 loadStats 的理由），
+       换筛选时这张图一个像素都不变 → 补了纯是空白，且池子越长空白越大
+   所以这张表只登记「需要补」的维度。查表而不是 if 链，是为了让「不补」成为
+   默认答案：将来加新维度时，不写进来就不会莫名其妙多出一片空白，
+   而真需要补的（跟着二级筛变的那种）忘了写，检查会报出来（见 tools/check-syntax.py）。 */
+const STAT_PADS = { obs: 4 };
+
+/* 「按类别 / 类型数数量」的那三个维度：各取哪个选项池。
+   loadStats（云端计数）与 catStatsVM（客户端计数 / 呈现）都查这一张——
+   两处各写一份的话，一边加了 divType 另一边没加，症状是「筛选行有选项、
+   统计却按别的分组」，数字对不上又看不出是哪边错了。 */
+const CAT_STAT = { jot: 'jotKind', book: 'bookKind', div: 'divType' };
+
 Page(pageBase({
   data: {
     modules: [],
@@ -18,6 +37,9 @@ Page(pageBase({
     // 觉察专用：喜恶筛选（喜欢 / 感兴趣 / 无感 / 讨厌，取选项池），与「可做」的流转状态筛选同一个位置
     kindFilter: 'all',
     kinds: [],
+    // 维度行两端渐变提示（横向滚动时各自独立，见 pageBase.applyScrollFade）
+    dimFade: false,
+    dimFadeL: false,
     recs: [],          // 已加载（装饰后）的记录，按 ts 倒序
     days: [],
     stats: {},
@@ -136,10 +158,13 @@ Page(pageBase({
      下面的时间线也就不会跟着上下跳——跳得最明显的就是觉察的喜恶筛选（Top 归类 0~4 行）。 */
   _padStats(stats, filter) {
     if (!stats || stats.hide || !stats.bars) return stats;
-    let max;
-    if (filter === 'all') max = stats.bars.length;                                // 全部：条数＝维度数，本来就固定
-    else if (filter === 'jot') max = (store.getOPT('jotKind') || []).length + 1;  // 随记：类别池 + 「未分类」
-    else max = 4;                                                                // 觉察 / 此刻 / 可做：Top 最多 4 条
+    // 占位行只给「统计确实跟着二级筛选走」的维度补（见 STAT_PADS 的理由）。
+    // 其余维度原样返回——补出来的空行用户是看得见的（真实 bug：随记 / 书·剧
+    // 的类别分布刻意不跟二级筛走，换筛选时这张图一个像素都不变，
+    // 那几行占位就纯粹是空白，而且池子越长空白越大：4 个类别只命中 1 个时，
+    // 卡片下半截全是空的）
+    const max = STAT_PADS[filter] || 0;
+    if (!max) return stats;
     const pads = [];
     for (let i = stats.bars.length; i < max; i++) pads.push(i);
     return Object.assign({}, stats, { pads });
@@ -174,6 +199,19 @@ Page(pageBase({
     if (filter === 'jot') {
       return this.jotStatsVM(stat.byCat || {}, stat.total || 0);
     }
+    // 「书·剧」：与随记同一口径——只数数量，按类别分（小说 / 漫剧，可增删）。
+    // 不做「最常记的」文本 Top：书·剧的主项是作品名，每本只出现一次，
+    // 「哪本被记得最多」没有参考价值（记下的次数由进度和评分表达，不在这里）
+    if (filter === 'book') {
+      return this.bookStatsVM(stat.byCat || {}, stat.total || 0);
+    }
+    // 「占卜」：按「类型」（塔罗 / 雷诺曼，可增删）数数量，与随记 / 书·剧 同一口径。
+    // 原来这里走的是 tops（占卜得最多的问题）——那是文本 Top，**每次换时间范围
+    // 榜首就换一次**，看不出「我常用哪种牌」。而类型是这条记录的属性，
+    // 数数量才和下面那条类型筛选对得上（也才知道自己到底在用哪种牌）
+    if (filter === 'div') {
+      return this.divStatsVM(stat.byCat || {}, stat.total || 0);
+    }
     // 「全部」：各觉察维度条数（不含备忘/购物，与下面清单口径区分开）
     const allMods = store.MODULES.filter(m => !store.isTask(m.k) && !m.quiet);
     if (filter === 'all') {
@@ -188,7 +226,7 @@ Page(pageBase({
     const total = stat.total || 0;
     const mxv = tops.length ? tops[0].n : 1;
     const bars = tops.slice(0, 4).map(t => ({ n: t.txt, c: store.mcolor(filter), n2: t.n, w: Math.round(t.n / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
     let extra = '';
     if (filter === 'obs' && total) {
       const e = stat.ext || {};
@@ -228,6 +266,22 @@ Page(pageBase({
       src.forEach(r => { const c = store.jotCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
       return this.jotStatsVM(byCat, src.length);
     }
+    // 「书·剧」：与随记同一套（含「统计不跟二级类别走」这条口径）
+    if (filter === 'book') {
+      const src = rawList || list;
+      const cats = store.getOPT('bookKind') || [];
+      const byCat = {};
+      src.forEach(r => { const c = store.bookCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
+      return this.bookStatsVM(byCat, src.length);
+    }
+    // 「占卜」：按类型数数量，与上面两个维度同一套（含「统计不跟二级筛走」）
+    if (filter === 'div') {
+      const src = rawList || list;
+      const cats = store.getOPT('divType') || [];
+      const byCat = {};
+      src.forEach(r => { const c = store.divCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
+      return this.divStatsVM(byCat, src.length);
+    }
     // 「全部」统计不计备忘/购物、也不计「睡」（静默维度，只有它的 tab 里统计）
     const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m) && !store.isQuiet(r.m)) : list;
     const allMods = store.MODULES.filter(m => !store.isTask(m.k) && !m.quiet);
@@ -241,7 +295,7 @@ Page(pageBase({
     const keys = Object.keys(acc).sort((a, b) => acc[b] - acc[a]).slice(0, 4);
     const mxv = keys.length ? acc[keys[0]] : 1;
     const bars = keys.map(k => ({ n: k, c: store.mcolor(filter), n2: acc[k], w: Math.round(acc[k] / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
     let extra = '';
     if (filter === 'obs' && list.length) {
       const fg = list.filter(r => (r.ext || []).indexOf('忘了时间') >= 0).length;
@@ -255,18 +309,36 @@ Page(pageBase({
   /* 随记统计的呈现：各类别的条数（类别取自选项池，可增删）——与待办同一口径，只数数量。
      池子里没有的（老记录还没类别 / 类别后来被删掉）归到「未分类」（与清单页同一叫法），
      这样每条记录都有归属，各行加起来就等于「共 N 条」。
-     数量为 0 的类别不占行（同待办的汇总行：没有的那项就不写） */
+     数量为 0 的类别不占行（同待办的汇总行：没有的那项就不写）
+
+     书·剧走同一份（bookStatsVM 只是把池子与取类函数换掉）：
+     两个维度的类别统计口径必须完全一致——两套写法各改各的，迟早会有一边漏掉
+     「0 不占行」或「未分类兜底」这类细节，两边数字对不上却看不出是哪边错了。 */
   jotStatsVM(byCat, total) {
-    const cats = store.getOPT('jotKind') || [];
-    const bars = cats.map(c => ({ n: c, c: store.jotColor(c), n2: byCat[c] || 0 }));
+    return this.catStatsVM('jot', byCat, total);
+  },
+  bookStatsVM(byCat, total) {
+    return this.catStatsVM('book', byCat, total);
+  },
+  // 占卜：按「类型」（牌种）数数量，与随记 / 书·剧 同一份实现
+  divStatsVM(byCat, total) {
+    return this.catStatsVM('div', byCat, total);
+  },
+  // 类别分布统计的通用呈现：类别池查 CAT_STAT、配色按维度查 store。
+  // 三个维度的口径必须完全一致（0 不占行 / 未分类兜底 / 标题写法），
+  // 各写一份的话日后改口径必漏一边，而两边数字对不上时没人知道该信哪个。
+  catStatsVM(m, byCat, total) {
+    const colorOf = { jot: store.jotColor, book: store.bookColor, div: store.divColor }[m];
+    const cats = store.getOPT(CAT_STAT[m]) || [];
+    const bars = cats.map(c => ({ n: c, c: colorOf(c), n2: byCat[c] || 0 }));
     const other = Math.max(0, (total || 0) - bars.reduce((s, b) => s + b.n2, 0));
-    if (other) bars.push({ n: '未分类', c: store.jotColor(''), n2: other });
+    if (other) bars.push({ n: '未分类', c: colorOf(''), n2: other });
     const shown = bars.filter(b => b.n2 > 0);
     const mx = shown.length ? Math.max(...shown.map(b => b.n2)) : 1;
     return {
       all: false,
-      title: '随记 · 类别',
-      lead: total ? `共 ${total} 条` : '还没有随记',
+      title: store.mname(m) + ' · ' + (m === 'div' ? '类型' : '类别'),
+      lead: total ? `共 ${total} 条` : ('还没有' + store.mname(m)),
       bars: shown.map(b => ({ n: b.n, c: b.c, n2: b.n2, w: Math.round(b.n2 / mx * 100) + '%' })),
       extra: ''
     };
@@ -310,6 +382,12 @@ Page(pageBase({
       } else if (this.data.filter === 'jot' && this.data.kindFilter !== 'all') {
         // 随记：类别筛（同上）
         f1b = store.jotCat(r) === this.data.kindFilter;
+      } else if (this.data.filter === 'book' && this.data.kindFilter !== 'all') {
+        // 书·剧：类别筛（小说 / 漫剧，与随记同一套写法）
+        f1b = store.bookCat(r) === this.data.kindFilter;
+      } else if (this.data.filter === 'div' && this.data.kindFilter !== 'all') {
+        // 占卜：类型筛（塔罗 / 雷诺曼，与上面几个同一套写法）
+        f1b = store.divCat(r) === this.data.kindFilter;
       }
       const f2 = !q || (r.txt + ' ' + (r.ext || []).join(' ')).toLowerCase().indexOf(q) >= 0;
       return f1 && f1b && f2;
@@ -349,28 +427,35 @@ Page(pageBase({
     // all＝本屏已加载的全部（模块 / 时间范围 / 搜索词都过了，但**没过二级类别筛**）——
     // 随记的统计要的就是这一份，换类别时数字才和「全部」时一样（见 buildStatsFromList）
     const stats = this._padStats(this.buildStats(effM, list, !!q, all), effM);
-    // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别时，标题也带上它——
+    // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别 / 某本书·剧类别时，标题也带上它——
     // 避免列表筛过了、标题却说整个模块
     // 「可做」也带分类（它与流转状态是两条筛，标题只写分类：状态那行 chip 自己就亮着）
-    const kn = (['obs', 'todo', 'jot', 'want'].indexOf(effM) >= 0 && this.data.kindFilter !== 'all') ? ' · ' + this.data.kindFilter : '';
+    const kn = (['obs', 'todo', 'want'].indexOf(effM) >= 0 || !!CAT_STAT[effM])
+      && this.data.kindFilter !== 'all' ? ' · ' + this.data.kindFilter : '';
     const filterName = effM === 'all' ? '全部' : (store.mname(effM) + kn);
-    // 统计块的标题与列表标题分家：**随记不跟二级类别走**（换类别时统计本来就是整模块的口径，
-    // 数字不变，标题也不该从「统计 · 随记」变成「统计 · 随记 · 念头」——看着像换了另一份统计）。
+    // 统计块的标题与列表标题分家：**按类别分布统计的那几个维度不跟二级筛走**
+    // （换类别时统计本来就是整模块的口径，数字不变，标题也不该从「统计 · 随记」
+    // 变成「统计 · 随记 · 念头」——看着像换了另一份统计）。
     // 觉察的喜恶是另一回事：它的统计确实落在筛过的那批上，跟着写才对得上线上的列表
-    const statName = effM === 'all' ? '全部' : (effM === 'jot' ? store.mname(effM) : filterName);
+    const statName = effM === 'all' ? '全部' : (CAT_STAT[effM] ? store.mname(effM) : filterName);
     this.setData({
       modules: this.modulesVM(),
-      // 子筛选取项池：觉察是「喜恶」，待办 / 随记是「类别」，可做是「分类」——
+      // 子筛选取项池：觉察是「喜恶」，待办 / 随记 / 书·剧是「类别」，可做是「分类」——
       // 用户在选项管理里增删后这里自动跟上
       kinds: effM === 'todo' ? store.getOPT('todoKind')
-        : (effM === 'jot' ? store.getOPT('jotKind')
-        : (effM === 'want' ? store.getOPT('wantKind') : store.getOPT('obsKind'))),
+        : (effM === 'want' ? store.getOPT('wantKind')
+        // 其余按类别分布统计的那三个维度（随记 / 书·剧 / 占卜）统一查 CAT_STAT：
+        // 「筛选行显示哪些类别」与「统计按哪些类别分组」必须来自同一张表，
+        // 否则会出现「筛选行有『雷诺曼』、统计里却没有这一行」
+        : (CAT_STAT[effM] ? store.getOPT(CAT_STAT[effM]) : store.getOPT('obsKind'))),
       filterName, statName,
       days: groups,
       tasks: this.buildTasks(tasks),
       empty: groups.length === 0 && tasks.length === 0,
       stats
     });
+    // 维度标签渲染完再量：内容宽度这时才是最终值（首次 setData 前量到的是空行）
+    this.checkDimFade();
     this._flushAlign();   // 数据渲染完了，按最终布局对齐（见 _alignLater）
   },
 
@@ -421,10 +506,16 @@ Page(pageBase({
             : (this.data.stateFilter === 'done' ? 'done'
             : (this.data.stateFilter === 'abandon' ? 'abandon' : 'all')));
     }
-    // 觉察的喜恶 / 待办的类别 / 随记的类别 / 可做的分类 筛选交给云端（否则分页会混进不匹配的记录，
-    // 页数与「已经到底了」都会不准）。可做是唯一「分类 + 流转状态」同时筛的：
-    // recWhere 里两条条件是叠加的（state 只在 m==='want' 时生效），所以照传就行
-    const subF = this.data.filter === 'obs' || this.data.filter === 'todo' || this.data.filter === 'jot' || this.data.filter === 'want';
+    // 觉察的喜恶 / 待办的类别 / 可做的分类 / 按类别分布那几个维度（随记 / 书·剧 / 占卜）
+    // 的类别·类型，筛选都交给云端——否则分页会混进不匹配的记录，
+    // 页数与「已经到底了」都会不准（而且「显示更多」按条数收口，混进来的那些会挤掉该显示的）。
+    // 可做是唯一「分类 + 流转状态」同时筛的：
+    // recWhere 里两条条件是叠加的（state 只在 m==='want' 时生效），所以照传就行。
+    // 判据是「这一行到底有没有二级筛选」：有就必须交给云端。
+    // 写成枚举的话，将来给某个维度加了二级筛却忘了加进这个名单，
+    // 症状是「筛选看着生效了，可翻页后混进别的记录」——很难一眼看出是查询漏了条件。
+    const subF = this.data.filter === 'obs' || this.data.filter === 'todo'
+      || this.data.filter === 'want' || !!CAT_STAT[this.data.filter];
     const extTags = (subF && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
     // 「全部」的时间线不看待办、也不看「睡」，所以查询里就把它们排掉：
     // 否则一页 20 条被待办占满，时间线只显示几条、页面短到滚不动，上拉加载更多点了没反应
@@ -550,14 +641,20 @@ Page(pageBase({
       store.countByStatus({ startTs, extTags: tags }).then(bySt => set({ bySt }));
       return;
     }
-    // 随记：按类别数数量（类别取自选项池，可增删）——和待办一样只看数量，不做文本 Top。
-    // **统计不跟二级类别走**：换类别时这块数字要跟「全部」时一模一样。
+    // 随记 / 书·剧 / 占卜：按「类别 / 类型」数数量（取值自选项池，可增删）——和待办一样
+    // 只看数量，不做文本 Top。
+    // **统计不跟二级筛选走**：换类别时这块数字要跟「全部」时一模一样。
     // 统计本身就是「各类别各多少条」，再被当前类别筛一遍＝只剩自己那一行、总数也缩到那一条，
     // 看着就像数字丢了（觉察的喜恶是另一回事：它不是类别分布，跟着筛才对得上线上的列表）
-    if (f === 'jot') {
-      const cats = store.getOPT('jotKind') || [];
-      const jobs = cats.map(c => store.countRecords({ m: 'jot', startTs, extTags: [c] }));
-      jobs.push(store.countRecords({ m: 'jot', startTs }));   // 最后一个＝总数（各类别之和可能漏掉未分类的）
+    //
+    // 三个维度逐字相同，只有「取哪个选项池」不一样——写成 CAT_STAT 这张表 + 一个分支，
+    // 而不是三份复制：复制的那份日后改口径（要不要算未分类、总数怎么来）必漏一边，
+    // 而两边数字对不上时没人知道该信哪个。
+    // 总数单独查一次而不是各类别相加：池子外的老记录（没类别 / 类别被删了）不在任何一行里。
+    if (CAT_STAT[f]) {
+      const cats = store.getOPT(CAT_STAT[f]) || [];
+      const jobs = cats.map(c => store.countRecords({ m: f, startTs, extTags: [c] }));
+      jobs.push(store.countRecords({ m: f, startTs }));   // 最后一个＝总数
       Promise.all(jobs).then(arr => {
         const total = arr[arr.length - 1] || 0;
         const byCat = {};
@@ -634,6 +731,14 @@ Page(pageBase({
     const patch = {}; patch[which] = map;
     this.setData(patch, () => this.rebuild());
   },
+  /* 维度行是否需要「可滚动」渐变提示：量一次缓存（滚动时不再查节点），之后只做比较。
+     实现在 pageBase（记页的维度标签行用同一份）——判据逐字相同，
+     两处各写一份的话改了一边忘了另一边，症状是「一端有提示、另一端没有」，不报错。 */
+  checkDimFade() {
+    this.measureScrollRow('.dimrow-scroll', '.dimrow .ft', DIM_FADE);
+  },
+  onDimScroll(e) { this.applyScrollFade((e.detail && e.detail.scrollLeft) || 0, DIM_FADE); },
+
   onFilter(e) {
     this.data.filter = e.currentTarget.dataset.f;
     this.data.stateFilter = 'all';
@@ -918,6 +1023,16 @@ Page(pageBase({
       app.globalData.editRec = r;
       app.globalData.editEnding = true;
       app.globalData.editEndFocus = true;
+      this.setData({ sel: null, selRec: null });
+      wx.switchTab({ url: '/pages/index/index' });
+      return;
+    }
+    if (type === 'review') {
+      // 占卜的「回顾」：不在这里写任何东西，跳到记页打开这一条的编辑态并展开「回顾」那一格，
+      // 等点「保存修改」时才真正落下（与「结束」同一套路）
+      if (r.m !== 'div') return;
+      app.globalData.editRec = r;
+      app.globalData.editReview = true;
       this.setData({ sel: null, selRec: null });
       wx.switchTab({ url: '/pages/index/index' });
       return;

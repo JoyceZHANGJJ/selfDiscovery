@@ -164,9 +164,25 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .tl-bar { display: flex; gap: 4px; flex: 1; max-width: 160px; }
 .tl-cell { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
 .tl-cell.on { background: var(--accent); }
+/* 「今日」心情指数：与能量同一套 5 格，只换颜色（--mood，见 utils/themes.js）。
+   两条条上下并排，颜色必须一眼分得开——否则会被读成「同一条画了两遍」。
+   未点亮的格子仍是 --line（与能量一样），变的只是点亮色。 */
+.tl-bar-mood .tl-cell.mood.on, .tl-cell.mood.on { background: var(--mood, var(--accent)); }
+/* 书·剧的两条 5 格量（精彩 / 喜爱）：再各换一个专色（--wow / --love）。
+   这是第三、第四种按颜色区分的量——同一个列表里最多四条 5 格条并排（全亮时四条），
+   全靠颜色才分得清谁是谁；四个色在 themes.js 里都避开了 accent 与 mood，
+   两个新色还彼此拉开了冷暖（wow 偏黄铜、love 偏粉紫）。 */
+.tl-bar-wow .tl-cell.wow.on, .tl-cell.wow.on { background: var(--wow, var(--accent)); }
+.tl-bar-love .tl-cell.love.on, .tl-cell.love.on { background: var(--love, var(--accent)); }
 .tl-txt { display: block; font-size: 13.5px; line-height: 1.6; color: var(--ink2); }
 /* 没写印象时的占位：淡化（不用括号，原「（今天还没写印象）」太重） */
 .tl-txt.tl-none { color: var(--ink4); }
+/* 只读摘要里的「明天的计划」：与上面那句自由文本同一档字号，靠前面那个小标签区分；
+   标签用 ink4（比正文更淡）+ 右侧留白，不抢上面「今天发生了什么」那句的分量 */
+.tl-txt.tl-tmr { margin-top: 4px; }
+.tl-txt.tl-tmr .k { color: var(--ink4); font-size: 11.5px; margin-right: 6px; }
+/* 最近列表的今日行：能量与心情两个标签并排，中间留点空隙别挤成一串 */
+.tl-lab-2 { margin-left: 10px; }
 /* 记页「最近」里的今日行：这条能量条是**主项**（占 .tvw 那个位置），
    .tvw 是 align-items: baseline（为了「主项 + 描述」同排），而空方格没有文字基线、
    会被按底边对齐吊高一点 —— 这里改回居中，与只读摘要 / 看页卡片的 .tl-row（align-items: center）同一观感 */
@@ -178,6 +194,17 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .ebar-cell { height: 20px; border-radius: 6px; }
 .ebar-cell.cur { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .ebar-cell-hover { background: var(--line2); }
+/* 编辑态心情条：点亮色与「当前选中」的描边都换成 --mood，与能量条区分。
+   hover 仍用 line2 浅底——那是「可以点」的反馈，不该跟着主题色变 */
+.ebar-mood .ebar-cell.on { background: var(--mood, var(--accent)); }
+.ebar-mood .ebar-cell.cur { box-shadow: inset 0 0 0 1.5px var(--mood, var(--accent)); }
+/* 书·剧的评分条：点亮色与描边各换一个专色（--wow / --love），与上面两条区分。
+   这两条由 wxml 的 ebar-{{it.kind}} 生成（kind 来自 store.scaleKind），所以这里按类名收，
+   页面不必知道「精彩程度」这组的英文名。 */
+.ebar-wow .ebar-cell.on { background: var(--wow, var(--accent)); }
+.ebar-wow .ebar-cell.cur { box-shadow: inset 0 0 0 1.5px var(--wow, var(--accent)); }
+.ebar-love .ebar-cell.on { background: var(--love, var(--accent)); }
+.ebar-love .ebar-cell.cur { box-shadow: inset 0 0 0 1.5px var(--love, var(--accent)); }
 .st-sum { font-size: 12.5px; color: var(--ink2); margin-bottom: 11px; }
 .st-sum b { color: var(--ink); font-weight: 800; }
 .st-ex { font-size: 12px; color: var(--ink3); margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--line); }

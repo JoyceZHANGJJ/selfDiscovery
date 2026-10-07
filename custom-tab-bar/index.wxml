@@ -5,7 +5,7 @@
   <view wx:if="{{(qa || qaUndo) && !qaDueOpen}}" class="qa-mask" bindtap="onMaskTap" bindtouchstart="onMaskTouch" bindtouchmove="onMaskTouch"></view>
   <!-- 月历浮层开着时面板整块不渲染：那是整屏的一层，盖着的这层留着没有意义，
        而且浮层里点「取消」之外的空白会落到它上面（面板在 62、遮罩 61，浮层 70 之上但空白处透下来） -->
-  <view wx:if="{{qa && !qaDueOpen}}" class="qa" style="bottom:{{qaBottom}}" bindtap="onQaBgTap">
+  <view wx:if="{{qa && !qaDueOpen}}" class="qa" style="bottom:{{qaBottom}}" bindtap="onQaBgTap" catchtouchmove="onQaScroll">
     <!-- 标题只留「快捷记」：原先右上角的「清单 ›」入口已去掉。
          进清单页：看页待办块里的「去清单页管理 ›」，或长按这个「＋」球 -->
     <view class="qa-hd">

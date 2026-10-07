@@ -36,8 +36,24 @@ const COLMAP = {
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了',
   'free:likeFeel': '当时感受',
   'free:howto': '怎么做',
-  todayBat: '剩余能量', todoPrio: '优先级'
+  todayBat: '剩余能量', todayMood: '心情指数', todoPrio: '优先级',
+  'free:tomorrow': '明天的计划',
+  divType: '类型', divSpan: '时间范围',
+  'free:divCard': '抽到的牌', 'free:divRead': '解读', 'free:review': '回顾',
+  'free:divAcc': '准确率',
+  bookKind: '类别', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
+  'free:bookWhy': '记入原因'
 };
+// 带单位的字段（与 utils/store.js 的 UNIT_SUFFIX 同源，check_rec_labels 守着两边一致）。
+// 存储里只存数字，回读时在这里补单位：不补的话 AI 看到「准确率：80」，
+// 分不清是 80 分还是 80%
+const UNIT_SUFFIX = { 'free:divAcc': '%' };
+function withUnit(src, v) {
+  const u = UNIT_SUFFIX[src];
+  if (!u || v === '' || v == null) return v;
+  const s = String(v);
+  return s.indexOf(u) >= 0 ? s : s + u;
+}
 // 维度名（与 utils/store.js 的 MODULES 的 n 同源）。
 // 注意「今日」在 store 里叫「今日」，云函数原先的 MODULE_LABELS 写的是
 // 「今日能量」——这里跟 store 对齐，让两边看起来是同一份数据。
@@ -48,7 +64,7 @@ const COLMAP = {
 // 在人读的导出里叫「做了」、在 AI 眼里叫「done」（check_rec_labels() 会守住这条）。
 const MODULE_N = {
   today: '今日', obs: '觉察', now: '此刻', want: '可做',
-  todo: '待办', jot: '随记', sleep: '睡', wake: '起', done: '做了'
+  todo: '待办', jot: '随记', sleep: '睡', wake: '起', done: '做了', div: '占卜', book: '书·剧'
 };
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
 
@@ -112,6 +128,21 @@ function batLevel(v) {
   const n = parseInt(batValOf(v), 10);
   return isNaN(n) ? 1 : Math.max(1, Math.min(5, n));
 }
+/* 「今日」心情指数：与剩余能量同一套值域（'1'..'5'）、另一套档位名。
+   与 store.js 的 MOODS / moodName / moodLevel 必须逐项一致——
+   AI 看到的就是这两行，名字对不上会让「平静」和「一般」混成一个意思。 */
+const MOODS = [
+  { v: '1', name: '很低落' },
+  { v: '2', name: '有点低' },
+  { v: '3', name: '平静' },
+  { v: '4', name: '不错' },
+  { v: '5', name: '很好' }
+];
+function moodName(v) { const m = MOODS.find(x => x.v === batValOf(v)); return m ? m.name : ''; }
+function moodLevel(v) {
+  const n = parseInt(batValOf(v), 10);
+  return isNaN(n) ? 1 : Math.max(1, Math.min(5, n));
+}
 
 // ---------------- 状态（与 store.recMname / exporter 同口径）----------------
 // 可做：未做 / 在做 / 做了 / 不做
@@ -171,11 +202,32 @@ function extLabel(src, m) {
 // 所以这里直接写死；将来 store.js 里新增 hideDetail 字段时，
 // check_rec_labels() 会因为这里对不上而报错（见下）。
 const HIDE_DETAIL = { wantKind: 1 };
+// 5 格量（与 utils/store.js 的 SCALES 同源）：值域都是 '1'..'5'，回读一律写成「x/5」——
+// 光给一个 3 读不出是 3 格还是 3 分，写成 3/5 才自明。没值时返回空串（那一栏就不出现，
+// 而不是显示成「0/5」，那看着像打了 0 分）。
+// **今天的两条（todayBat / todayMood）不在这里**：它们走 displayExtras 的
+// 「档位名（N/5 格）」写法（AI 分析能量/心情需要看得懂档位名，只给 3/5 没有信息量），
+// 所以那一侧刻意留在 SCALE_RICH 里不补 x/5（见 store 的 fmtVal），两边口径必须一致。
+// 书·剧的两条（bookWow / bookLove）只有 x/5 这一种写法：它们不参与任何状态分析，
+// 数值本身就是全部信息（多精彩 / 多喜欢），补个档位名反而啰嗦。
+const SCALES = { bookWow: 1, bookLove: 1 };
+function scaleScore(src, v) {
+  if (!SCALES[src] || v == null || v === '') return '';
+  const s = String(v);
+  if (s.indexOf('/') >= 0) return s;          // 已经是「3/5」这种写法，不重复加工
+  const n = parseInt(s, 10);
+  return isNaN(n) ? '' : (Math.max(1, Math.min(5, n)) + '/5');
+}
+// 回读格式化：先看是不是 5 格量，是就补 x/5；否则按单位补（withUnit）
+function fmtVal(src, v) {
+  const s = scaleScore(src, v);
+  return s || withUnit(src, v);
+}
 function buildExt(m, ext, extSrc) {
   const list = (ext || []).map((v, i) => {
     const src = (extSrc || [])[i] || '';
-    return { src: src, lbl: extLabel(src, m), v: v };
-  }).filter(d => !HIDE_DETAIL[d.src] && d.src !== DESC_SRC && d.src !== 'jotKind');
+    return { src: src, lbl: extLabel(src, m), v: fmtVal(src, v) };
+  }).filter(d => !HIDE_DETAIL[d.src] && d.src !== DESC_SRC && d.src !== 'jotKind' && d.src !== 'bookKind');
 
   if (m === 'obs' || m === 'now') {
     // 感受是一组：程度 + 情绪连写成「有点焦虑」，再与自由感受用 · 连起来。
@@ -212,6 +264,8 @@ function moduleLabel(r) {
   if (r.m === 'want') { const k = extOf(r, 'wantKind'); return k ? n + '·' + k : n; }
   if (isTask(r.m)) { const k = extOf(r, 'todoKind'); return k ? n + '·' + k : n; }
   if (r.m === 'jot') { const k = extOf(r, 'jotKind'); return k ? n + '·' + k : n; }
+  // 书·剧：类别（小说 / 漫剧）拼进维度名，与 store.recMname 同一口径
+  if (r.m === 'book') { const k = extOf(r, 'bookKind'); return k ? n + '·' + k : n; }
   if (r.m === 'obs') { const k = extOf(r, 'obsKind'); return k ? n + '·' + k : n; }
   // 「此刻」的喜恶不给维度名：此刻不是「对某件事的感受」，写「此刻·喜欢」读着别扭。
   // 它在下面 displayExtras 里补。
@@ -231,6 +285,15 @@ function displayExtras(r) {
     if (bv !== '') {
       const nm = batName(bv), lv = batLevel(bv);
       push('剩余能量', nm ? nm + '（' + lv + '/5 格）' : (lv + '/5 格'));
+    }
+    // 心情指数：与能量同一口径补成「平静（3/5 格）」。
+    // 同样必须在 SKIP_IN_DETAIL 里跳过 todayMood，否则会出现
+    // 「心情指数：平静（3/5 格） | 心情指数：3」这种自相矛盾的两行。
+    // 没记过心情的老记录（空值）不写——写了反而像「心情是空的」。
+    const mv = extOf(r, 'todayMood');
+    if (mv !== '') {
+      const nm = moodName(mv), lv = moodLevel(mv);
+      push('心情指数', nm ? nm + '（' + lv + '/5 格）' : (lv + '/5 格'));
     }
   }
   const desc = extOf(r, DESC_SRC);
@@ -261,7 +324,8 @@ function readLine(r) {
   //   todayBat —— 能量档位已补成「一般（3/5 格）」，这里再写个「3」既重复又看不懂
   //   todoKind —— 类别已进维度名（「待办·购物」），再写一遍读起来像两件事
   //   wantKind / jotKind —— buildExt 本来就排除了
-  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todoKind: 1, obsKind: 1 };
+  //   bookKind —— 同理：类别已进维度名（「书·剧·小说」），buildExt 里已排掉
+  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todayMood: 1, todoKind: 1, obsKind: 1, bookKind: 1 };
   const dl = buildExt(r.m, r.ext, r.extSrc).filter(d => {
     if (d.v === '' || d.v == null) return false;
     if (SKIP_IN_DETAIL[d.src]) return false;
@@ -349,13 +413,21 @@ function summary(list) {
     }
   }
 
-  const todays = list.filter(r => r.m === 'today' && extOf(r, 'todayBat') !== '');
+  // 今日那两个 5 格量（剩余能量 / 心情指数）：平均值 + 分布。与 exporter.js 的汇总段同源，
+  // 改一边必须改另一边（见 tools/check-syntax.py 的 check_exporter_rectext_alignment）。
+  // 分开计数：老记录只有能量没有心情，用同一个天数会把「没记心情」说成「记了 N 天心情」。
+  const todays = list.filter(r => r.m === 'today');
   if (todays.length) {
-    const lvs = todays.map(r => batLevel(extOf(r, 'todayBat')));
-    const avg = lvs.reduce((a, b) => a + b, 0) / lvs.length;
-    const low = lvs.filter(v => v <= 2).length;
-    out.push('每日剩余能量：记录 ' + todays.length + ' 天，平均 ' + (Math.round(avg * 10) / 10)
-      + '/5 格' + (low ? '，其中 ' + low + ' 天在 2 格及以下' : ''));
+    [['todayBat', '每日剩余能量', batLevel],
+     ['todayMood', '每日心情指数', moodLevel]].forEach(cfg => {
+      const rows = todays.filter(r => extOf(r, cfg[0]) !== '');
+      if (!rows.length) return;
+      const lvs = rows.map(r => cfg[2](extOf(r, cfg[0])));
+      const avg = lvs.reduce((a, b) => a + b, 0) / lvs.length;
+      const low = lvs.filter(v => v <= 2).length;
+      out.push(cfg[1] + '：记录 ' + rows.length + ' 天，平均 ' + (Math.round(avg * 10) / 10)
+        + '/5 格' + (low ? '，其中 ' + low + ' 天在 2 格及以下' : ''));
+    });
   }
   return out;
 }
@@ -405,5 +477,5 @@ module.exports = {
   recText, readLine, summary, buildExt, moduleLabel, displayExtras,
   wantState, taskState, stateAt, isTask, taskPrio, dueLabel, dueOver,
   batName, batLevel, batValOf, ymd, md, hhmm, weekOf, daysSince,
-  COLMAP, MODULE_N, BATTERIES, HIDE_DETAIL, DESC_SRC
+  COLMAP, MODULE_N, BATTERIES, MOODS, SCALES, HIDE_DETAIL, DESC_SRC
 };

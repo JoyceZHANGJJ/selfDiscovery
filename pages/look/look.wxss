@@ -20,6 +20,19 @@
 .rg.on { color: #fff; background: var(--accent); }
 
 /* 上拉加载更多 */
+/* 维度行：横向滚动，维度多也不换行（换行会把下面整块内容往下顶一截）。
+   结构与记页的 .tagrow-wrap 同一套（滚动区 + 两侧渐变提示），但类名分开：
+   两处的字号、间距、下边框样式都不同，共用类名就得靠更多的覆盖规则去掰，
+   那样改一处会牵动另一处 */
+.dimrow-wrap { position: relative; margin: 11px 0 4px; }
+.dimrow-scroll { width: 100%; white-space: nowrap; }
+.dimrow { display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
+.dimrow .ft { flex-shrink: 0; }
+/* 两端渐变：右侧「右边还有」，左侧「已经往回滚过」（各自独立，见 pageBase.applyScrollFade）。
+   上下用 mask 淡出，避免渐变的方角贴到标签的字上 */
+.dimrow-fade { position: absolute; top: 0; right: 0; width: 10px; height: 26px; background: linear-gradient(to right, rgba(51,50,45,0), rgba(51,50,45,.10)); pointer-events: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent); }
+.dimrow-fade-l { right: auto; left: 0; background: linear-gradient(to left, rgba(51,50,45,0), rgba(51,50,45,.10)); }
+
 .loadmore { text-align: center; color: var(--ink4); font-size: 12px; padding: 14px 0 24px; }
 
 /* 看页待办只作概览：标题行右端给一个「去清单页管理」入口（与左边的「待办」标题同一行）。

@@ -65,6 +65,12 @@
   background: var(--bg, #FAF8F4); border: 1px solid var(--line2, #E2DCD1); border-radius: 16px;
   padding: 11px 12px 12px; box-sizing: border-box;
   box-shadow: 0 14px 30px rgba(35,35,31,.20), 0 4px 10px rgba(35,35,31,.12);
+  /* 高度上限：面板吸在球上方往上长，键盘弹着时可用高度只剩一点点，
+     类别一多（最多 10 个）就会顶出屏幕——被裁掉的那些在下面，看着就像「类别没显示全」。
+     留出顶部一条边距，别让标题贴到状态栏。超出部分自己滚。 */
+  max-height: calc(100vh - 92px - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .qa-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .qa-title { font-size: 12.5px; color: var(--ink2, #55524A); font-weight: 600; }

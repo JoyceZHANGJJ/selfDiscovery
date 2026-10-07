@@ -24,6 +24,19 @@ const MODULES = [
   // 「是备忘还是购物」看 ext 里的「类别」（todoKind），颜色也按类别给（见 catColor / taskColor）
   { k: 'todo', n: '待办', c: '#9A8C7A' },
   { k: 'jot', n: '随记', c: '#948AA8' },
+  /* 占卜：记一次占卜（塔罗 / 雷诺曼）——问的是什么、抽到哪些牌、怎么看的时间范围。
+     它是唯一一个「记的时候还没结果」的维度：一条占卜记录的完整形态要等事情走完才成立，
+     所以后面可以在操作条上点「回顾」补一句「后来实际怎么样了」（free:review）。
+     一开始就定好的时间范围（一周内 / 半个月 / …）就是为了这一天——
+     到点了回头看当初的解读准不准，这条记录才算完成。 */
+  { k: 'div', n: '占卜', c: '#7B5EA8' },
+  /* 书·剧：看过 / 在看的一本小说、一集漫剧。记的是「名字 + 类别 + 有多精彩 / 多喜欢 + 看到哪了」。
+     它和占卜相反——**记的时候就已经知道一部分结果**（已经读过的精彩程度、已经喜欢的程度），
+     所以不需要「回顾」那种事后补的动作；但「进度」会变（待看 → 在看 → 看完），
+     同一个选项组改一次就是这条记录的现状，不需要另开维度。
+     精彩程度 / 喜爱程度是**两条 5 格量**（与今日的剩余能量 / 心情指数同一套纯图示机制，
+     不进选项池），回看时统一按「x/5」显示——见 GRAPH_GROUPS 与 SCALES。 */
+  { k: 'book', n: '书·剧', c: '#3F7A8A' },
   // 「睡」：睡前点一下，只记一个入睡时刻（入口在顶部圆点左边，见 components/theme-switcher；
   // 「睡」tab 里看统计与时间线）。
   // quiet：它确实是一条记录，但**不进记录流**——不出现在维度栏、时间线、复盘各维度、
@@ -68,6 +81,30 @@ const OPT = {
   // 今日：电池档位（一日一记，必选其一）是**纯图示**——不进选项池、不在「✎ 管理」里增删，
   // 档位与图片见下方 BATTERIES；这里只留空占位，避免旧代码把 emoji 当选项残留
   todayBat: [],
+  // 心情指数：与 todayBat 同一套机制（纯图示档位、不进选项池、不在「✎ 管理」里增删），
+  // 池留空占位，档位与名字见 MOODS
+  todayMood: [],
+  // 占卜的两个 chips 组（都能在「✎ 管理」里增删）：
+  //   divType 牌种（必选，默认「塔罗」，见 divTypeDefault）——改算法也要能加别的牌种；
+  //   divSpan 问的是多久以后的事。这一段的用途是「到点了回头看」，不是当天的心情，
+  //   所以它属于记录内容而不是时间戳：同一次占卜可能横跨半年，也可能只问一周。
+  divType: ['塔罗', '雷诺曼'],
+  divSpan: ['一周内', '半个月', '一个月', '三个月', '半年'],
+  // 占卜的主项＝「问的是什么」，是一句话、每次都不一样，所以纯手填、不进选项池
+  divItem: [],
+  /* 书·剧的两个 chips 组（都能在「✎ 管理」里增删）：
+     bookKind 类别（小说 / 漫剧，必选、默认「小说」，见 bookKindDefault）——
+               它是这条记录最要紧的归类：看页的统计与二级筛选都按它分。
+     bookProg 进度（待看 / 在看 / 看完）——**故意不给默认值**：刚记下时往往是「在看」，
+               但也有人是读完才想起来记的（那就是「看完」）。默认替人挑一档，
+               等于替他决定「这条是还没看还是看完了」，而这恰恰是他记这条时最想说清的事。
+               所以这一组非必填、不点就是「没写」，回看时那一栏就不出现。 */
+  bookKind: ['小说', '漫剧'],
+  bookProg: ['待看', '在看', '看完'],
+  // 书·剧的两条 5 格量（精彩程度 / 喜爱程度）：纯图示、不进选项池，档位见 SCALES
+  bookWow: [], bookLove: [],
+  // 书·剧的主项＝书名 / 剧名，是自由文本、每次都不一样，纯手填
+  bookItem: [],
   todoItem: [], jotItem: [], todayItem: []
   // 注：原先还有 doneFeel / doneGain 两组默认词，但可做里「做了的感受 / 收获」是自由文本框、
   // 没有 chips 入口，那两组池子永远不会被用到（选项池界面里也看不到），已删掉
@@ -83,7 +120,9 @@ const GLABEL = {
   obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
   genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶',
   doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', todoPrio: '优先级', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
-  todayItem: '能量说明', todayBat: '剩余能量'
+  todayItem: '能量说明', todayBat: '剩余能量', todayMood: '心情指数',
+  divItem: '占卜的问题', divType: '类型', divSpan: '时间范围',
+  bookItem: '名称', bookKind: '类别', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
@@ -98,6 +137,16 @@ const OPTGROUPS = [
   { m: 'todo', gs: ['todoKind', 'todoPrio'] },
   { m: 'jot', gs: ['jotKind'] }
 ];
+
+/* 纯图示档位组：界面画成固定 5 格条，档位表写死在代码里（BATTERIES / MOODS）。
+   它们**不是选项池**——没有可增删的条目，所以哪儿都不给「✎ 管理」入口。
+   给入口的后果不是「多一个没用的按钮」那么轻：点进去是一个空白的可增删列表，
+   在里面加的词既不会出现在格子上（渲染只认 BATTERIES / MOODS），也不会被 AI 读到，
+   但对用户来说「我明明加了」——是一次必输的操作。
+   集中在这一处登记，页面统一查 isGraphGroup(g)，不要在各处写死组名：
+   写死的话，以后再加一条类似的 5 格条（比如专注度）就会又露出一个无效的管理入口。 */
+const GRAPH_GROUPS = { todayBat: 1, todayMood: 1, bookWow: 1, bookLove: 1 };
+function isGraphGroup(g) { return !!GRAPH_GROUPS[g]; }
 
 /* 「今日」电池：纯图示档位（一日一记，必选其一）。
    值存档位 v（'0'..'4'），渲染时用内嵌 SVG（base64 data URI）现画——不依赖任何外部图片文件，
@@ -117,6 +166,78 @@ const BATTERIES = [
   { v: '4', name: '较高' },
   { v: '5', name: '满' }
 ];
+/* 「今日」心情指数：与剩余能量**同一套 5 格机制、另一套档位名**。
+   为什么分开两组而不是复用 BATTERIES：能量和心情是两个不同的量——
+   「能量很低但心情不错」（熬夜做喜欢的事）、「能量满但心情低落」都常见，
+   合成一个指标就把这两种状态都抹平了。分开记，回看时才能看出两者的关系。
+   值域与存储方式完全对齐能量（'1'..'5'、存 ext），所以归一化/取格数的逻辑共用一份，
+   只是档位名不同（心情说「平静 / 不错」，能量说「一般 / 较高」）。 */
+const MOODS = [
+  { v: '1', name: '很低落' },
+  { v: '2', name: '有点低' },
+  { v: '3', name: '平静' },
+  { v: '4', name: '不错' },
+  { v: '5', name: '很好' }
+];
+/* 书·剧的两条 5 格量：与上面两组同一套机制（纯图示、不进选项池、'1'..'5' 存 ext），
+   档位名各写一份。分成两组而不是共用一组，因为「好看」和「好看」在这两个问题里
+   不是一回事——「精彩」说的是作品本身（写得好不好），「喜爱」说的是我对它的感觉。
+   合成一条量的话，「这本书写得很精彩但我不太喜欢」就被抹平了，回看时看不出这个区别。 */
+const WOWS = [
+  { v: '1', name: '很一般' },
+  { v: '2', name: '一般' },
+  { v: '3', name: '还不错' },
+  { v: '4', name: '挺精彩' },
+  { v: '5', name: '非常精彩' }
+];
+const LOVES = [
+  { v: '1', name: '不喜欢' },
+  { v: '2', name: '一般' },
+  { v: '3', name: '有点喜欢' },
+  { v: '4', name: '挺喜欢' },
+  { v: '5', name: '非常喜欢' }
+];
+/* 5 格档位表的总目录：组名 -> 档位表。
+   现在有四组（能量 / 心情 / 精彩 / 喜爱），写法与值域完全一样，差别只在档位名，
+   所以集中在这里登记一次，页面取档位表 / 取名字 / 取格数都查这里——
+   各自散一份函数（batName / moodName / …）的话，加一组就要改六处，
+   而漏掉一处不会报错，只会在那一处的页面上显示成英文代号或空白。 */
+const SCALES = { todayBat: BATTERIES, todayMood: MOODS, bookWow: WOWS, bookLove: LOVES };
+/* 5 格量 -> 主题色键（themes.js 里每个主题都给了 wow / love / mood 这几个色）。
+   bat（今日的剩余能量）**故意不给色键**：它就是主题色本身（--accent），
+   从项目第一天起那条只读摘要与编辑态都是直接吃 accent 的，给它另配一个色
+   只会让「能量」不再是这个主题的主色，视觉上像是换了个控件。
+   映射也放在登记层：页面只认 'wow' / 'love' / 'bat' 这种键（见 app.wxss 的
+   .tl-bar-wow / .ebar-love），不必知道「精彩程度」这组的英文名，将来再加一组只改这一行。 */
+const SCALE_KIND = { todayBat: 'bat', todayMood: 'mood', bookWow: 'wow', bookLove: 'love' };
+// 色键 -> 是否需要自己的 CSS 类。bat 例外：它直接吃 --accent（见上面注释），
+// 所以 app.wxss 里没有 .tl-bar-bat / .ebar-bat 那几行——这是**有意的**，不是漏写。
+// 查样式与主题色的地方按这张表排除，别把「bat 没有独立色」报成缺失（这个坑踩过一次）。
+const SCALE_NO_CSS = { bat: 1 };
+// 某组的颜色键；不是 5 格量则返回 ''（调用方据此回落成默认色）
+function scaleKind(g) { return SCALE_KIND[g] || ''; }
+// 某组的档位表；不是 5 格量则返回 null
+function scaleOf(g) { return SCALES[g] || null; }
+// 档位 -> 文字名。**已带后缀的值（导入 / 手改可能带「3/5」）原样返回**，
+// 不认不出就返回空——调用方（导出 / 喂 AI）只在自己那层决定要不要补格式。
+function scaleName(g, v) {
+  const list = SCALES[g]; if (!list || v == null || v === '') return '';
+  const s = String(v);
+  if (s.indexOf('/') >= 0) return s;          // 已经是「3/5」这种写法，不再套档位名
+  const b = list.find(x => x.v === batValOf(v));
+  return b ? b.name : '';
+}
+// 档位 -> 「x/5」。这是记录里**回读展示**的统一口径（列表 / 复制 / 导出 / 喂 AI）：
+// 光给一个 3 读不出是 3 格还是 3 分，写成 3/5 才自明。
+// 没值时返回空串——那一栏就不出现，而不是显示成「0/5」（看着像打了 0 分）。
+function scaleScore(g, v) {
+  if (v == null || v === '') return '';
+  const s = String(v);
+  if (s.indexOf('/') >= 0) return s;
+  const n = parseInt(batValOf(v), 10);
+  return isNaN(n) ? '' : (Math.max(1, Math.min(5, n)) + '/5');
+}
+
 // 把任意值归一化成档位 v；认不出返回 ''。
 // 「运行时不做老值 +1」——老值 '1'..'4' 和新值域完全重叠，运行时无法区分新老，硬转会二次错位
 // （老「满」被当成新「较高」）。数据量小，手动改一次即可（见上方注释）。
@@ -142,6 +263,16 @@ function batName(v) { const b = BATTERIES.find(x => x.v === batValOf(v)); return
 // 也更好点（命中区大）。1..5 而不是 0..4：5 格 5 档一一对应，点满第 5 格就真的是满，
 // 不留一个「怎么点都不亮」的空档。
 function batLevel(v) {
+  const n = parseInt(batValOf(v), 10);
+  return isNaN(n) ? 1 : Math.max(1, Math.min(5, n));
+}
+// 心情指数：与能量同一套值域与存储，所以归一化直接复用 batValOf，
+// 只在「取档位名」这一步换成 MOODS——两组只差名字，不值得各养一份解析。
+function moodName(v) { const m = MOODS.find(x => x.v === batValOf(v)); return m ? m.name : ''; }
+// 与 batLevel 同规则：认不出按 1，最少一格。
+// 注意：这里**不给「没填」返回 0**——与能量一致，调用方自己判断「有没有值」再决定
+// 画几格（见 index 的 buildComposer：未选时 lv=0，一格都不亮）。
+function moodLevel(v) {
   const n = parseInt(batValOf(v), 10);
   return isNaN(n) ? 1 : Math.max(1, Math.min(5, n));
 }
@@ -583,12 +714,56 @@ const FIELDS = {
   ] },
   /* 今日：**主项＝剩余能量**（todayBat，5 格能量条，必选其一；池为空、纯档位），
      附属＝手填「能量说明」那句话（todayItem 池为空，纯手填，可不写）。
+     心情指数（todayMood）紧随剩余能量，同一套 5 格、另一套颜色与档位名——
+     两个是一天里最值得回头对照的两个量，摆在一起才看得出关系。
      注：存储上 txt 仍是「能量说明」那句话——它是唯一有文字的字段，导出/导入要靠它非空；
      「主项」说的是**展示口径**（行里能量格在上、文字在下），见 index 的 recVM 与 copyRec。
      一日一记的行为（当天已记 → 直接载入编辑）在 index 的 onTag / doSave 里做，
      看页把它拼在日期行旁（look 的 grp.today） */
   today: { main: 'todayItem', items: [
-    { g: 'todayBat', single: true, noInput: true }
+    { g: 'todayBat', single: true, noInput: true },
+    { g: 'todayMood', single: true, noInput: true },
+    // 「明天的计划」：与能量说明一样是自由文本、可跳过。
+    // 为什么放在今日这条记录里而不是单独开一个维度：它本来就是「今天结束时对明天的打算」，
+    // 离开「今天」这个上下文就失去意义（明天再看，它已经不是「明天的计划」了）。
+    // 一日一记，所以它天然跟着当天那条走，不需要额外的日期逻辑。
+    { free: 'tomorrow', label: '明天的计划', ph: '明天准备做什么呢', ta: true }
+  ] },
+  /* 占卜：**主项＝问的是什么**（divItem，纯手填，必填），
+     上面两条 chips 是「用什么占的」和「问的是多久以后的事」；
+     下面依次为 抽到的牌（必填）→ 解读（可跳过）→ 回顾（平时不出现）。
+     前两组摆在主输入框**上方**（与待办类别同一套 plain 布局）：先定牌种与范围，再写问题。
+     「抽到的牌」是必填的：没有牌的占卜只剩一个问题，回头读起来不知道该对照什么；
+     「解读」可跳过——刚抽完还没想明白是正常的，回头还能补；
+     「回顾」不在这里决定显不显示：它平时整行不出现，只有从记录操作条点「回顾」进入编辑时
+     才露出来（见 index 的 buildComposer），因为它是过一段时间才有的东西。
+     顺序＝存储顺序（导出 / 导入按位对齐），新字段只能往后加。 */
+  div: { main: 'divItem', items: [
+    { g: 'divType', single: true, noInput: true },
+    { g: 'divSpan', single: true, noInput: true },
+    { free: 'divCard', label: '抽到的牌', ph: '抽到了哪些牌？', ta: true },
+    { free: 'divRead', label: '解读', ph: '这些牌在说什么？可跳过', ta: true },
+    { free: 'review', label: '回顾', ph: '回顾事件的实际发展', ta: true },
+    // 准确率：与「回顾」同一批出现（也只有回顾时才有意义），非必填、无默认。
+    // inline + unit：标题与输入框同一行、输入框右侧带「%」，不占一整行——
+    // 它是个短数字，摆成和「回顾」一样的整行大框会显得比正文本还重要
+    { free: 'divAcc', label: '准确率', ph: '可跳过', inline: true, unit: '%', num: true }
+  ] },
+  /* 书·剧：**主项＝名称**（bookItem，纯手填，必填——没有名字这条记录以后认不出来）。
+     编辑顺序：类别 → 名称 → 精彩程度 → 喜爱程度 → 进度 → 记入原因。
+     「类别」用 plain 布局摆在名称上方（与待办 / 随记同一套：先定是什么，再写是哪一本）。
+     两条 5 格量夹在名称之后：它们评的是**这一本**，名字还没写就评不了，所以不跟类别一起提到上面。
+     「进度」放在评分之后、原因之前：它是这条记录当前的状态（可看可改），和评分一样会变；
+     「记入原因」是自由文本、可跳过（为什么想看它 / 为什么记它），可留到想写时再补。
+     below：plain 布局默认把所有选项组都提到主输入框上方（先定是什么、再写内容），
+     这三组标 below＝留在名称下方。见 index 的 catItems 取用。
+     顺序＝存储顺序（导出 / 导入按位对齐），新字段只能往后加。 */
+  book: { main: 'bookItem', items: [
+    { g: 'bookKind', single: true, noInput: true, required: true },
+    { g: 'bookWow', single: true, noInput: true, below: true },
+    { g: 'bookLove', single: true, noInput: true, below: true },
+    { g: 'bookProg', single: true, noInput: true, below: true },
+    { free: 'bookWhy', label: '记入原因', ph: '为什么记它？可跳过', ta: true }
   ] }
 };
 
@@ -675,7 +850,21 @@ const COLMAP = {
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受',
   'free:howto': '怎么做',
-  todayBat: '剩余能量', todoPrio: '优先级'
+  todayBat: '剩余能量', todayMood: '心情指数', todoPrio: '优先级',
+  divType: '类型', divSpan: '时间范围',
+  'free:divCard': '抽到的牌', 'free:divRead': '解读',
+  // 回顾：事后翻回来补的一句「后来实际怎么样了」，只由「回顾」这个动作产生（见 index.checkEdit）。
+  // 它和前面那句「解读」（当时怎么看）必须分开存——同一个人对同一件事，事前和事后
+  // 说的话不一样才是这次回顾的全部价值，合成一条就只剩一句，没法对照了
+  'free:review': '回顾',
+  // 准确率：回顾时顺手给的一个百分比（非必填、无默认）。单位「%」不进存储值——
+  // 存储里只留数字，单位由 UNIT_SUFFIX 在回读时补，改单位不必洗数据
+  'free:divAcc': '准确率',
+  // 「明天的计划」：必须给标签。它是自由文本，没有标签的话在导出 / 喂给 AI 的文本里
+  // 就是一句光秃秃的话，和上面「今天发生了什么」那句混在一起分不清哪句是哪天的事
+  'free:tomorrow': '明天的计划',
+  bookKind: '类别', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
+  'free:bookWhy': '记入原因'
 };
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
 
@@ -714,6 +903,13 @@ function groupOwner(g) {
   return null;
 }
 function getOPT(g) { const O = G.OPT || OPT; return O[g] || []; }
+/* 选项池是否已经真的载入（G.OPT 非 null）。
+   getOPT 在没载入时**回退到内置默认池**——那样读是安全的（拿默认词凑合显示），
+   但拿它当「用户真实的池」去**过滤**用户的勾选，就会把用户自己加的类别静默筛掉。
+   快捷记面板踩过这个：冷启动时 app.js 的 ensureAll 还在路上，面板同步读池子，
+   于是「重新打开小程序后第一次点球，类别少了几项」，第二次点又全了。
+   要区分这两种用途，就得有这句显式判断，别靠「getOPT 有没有回退」去猜。 */
+function optsReady() { return !!G.OPT; }
 // 快捷创建（「＋」球面板）里平铺哪些类别：待办类别（todoKind 池）+ 随记类别（jotKind 池）。
 // 由用户在「设置」里勾选，最多 QUICKCATS_MAX 个；没勾过时给默认（全部待办类别 + 随记类别，截断到上限）。
 const QUICKCATS_LS = 'self_quickcats_v1';
@@ -779,10 +975,49 @@ function obsStartDefault() {
   const def = k.indexOf('自己想做') >= 0 ? '自己想做' : (k[0] || '自己想做');
   return [def];
 }
+// 占卜默认牌种：优先锁定值「塔罗」（不随选项顺序变化），找不到再退第一个，最后兜底「塔罗」
+function divTypeDefault() {
+  const k = getOPT('divType');
+  const def = k.indexOf('塔罗') >= 0 ? '塔罗' : (k[0] || '塔罗');
+  return [def];
+}
+// 书·剧默认类别：优先锁定值「小说」（不随选项顺序变化），找不到再退第一个，最后兜底「小说」
+function bookKindDefault() {
+  const k = getOPT('bookKind');
+  const def = k.indexOf('小说') >= 0 ? '小说' : (k[0] || '小说');
+  return [def];
+}
+
+// 带单位的字段：回读时把单位补在值后面（存储里只存数字）。
+// 单位在编辑器里显示在输入框右侧（见 index.wxml 的 it.unit），但列表、导出、
+// 喂给 AI 的文本走的是 buildExt 出来的纯值——不在这里补，「准确率：80」读不出
+// 是 80 分还是 80%。值里已经写了单位的不重复补（导入 / 手改都可能带进来）。
+const UNIT_SUFFIX = { 'free:divAcc': '%' };
+function withUnit(src, v) {
+  const u = UNIT_SUFFIX[src];
+  if (!u || v === '' || v == null) return v;
+  const s = String(v);
+  return s.indexOf(u) >= 0 ? s : s + u;
+}
 
 function extLabel(src, m) {
   if (src && src.indexOf('fallback:') === 0) return FALLBACK[m] || '';
   return COLMAP[src] || FALLBACK[m] || '';
+}
+/* 今日那两个 5 格量（能量 / 心情）在**导出与喂 AI 那一侧**另有更完整的写法
+   （档位名 + 「N/5 格」，见 exporter 的 displayExtras 与 recText 的同名函数），
+   而页面上今日是一块画格子的卡片、根本不走 buildExt 的值。
+   所以它们不在这里补「x/5」——补了只会与那一侧的写法对不上（同一个能量两种说法）。
+   书·剧的两条（精彩 / 喜爱）没有那套更完整的写法，就在这里统一成「x/5」，
+   于是列表、复制、导出、喂 AI 四处逐字一致（各调用 buildExt 的地方自动同步）。 */
+const SCALE_RICH = { todayBat: 1, todayMood: 1 };
+// ext 里某一格回读时的值：带单位的补单位、5 格量补成「x/5」，其余原样
+function fmtVal(src, v) {
+  if (SCALES[src] && !SCALE_RICH[src]) {
+    const s = scaleScore(src, v);
+    return s || v;
+  }
+  return withUnit(src, v);
 }
 // 生成记录的细节展示列表 [{lbl, v}]
 // obs：按「喜恶 → 程度 → 感受 → 怎么开始 / 沉浸 / 精力」排序，情绪与自由感受合成「感受」一行
@@ -792,11 +1027,12 @@ function buildExt(m, ext, extSrc) {
   const hideSrc = f ? (f.items.filter(it => it.hideDetail && it.g).map(it => it.g)) : [];
   const list = (ext || []).map((v, i) => {
     const src = (extSrc || [])[i] || '';
-    return { src, lbl: extLabel(src, m), v };
+    return { src, lbl: extLabel(src, m), v: fmtVal(src, v) };
   // 「具体的描述」不并进细节区：它要和「归类」同排展示（见页面 recVM 的 desc），
   // 这里排掉，避免同一句话在标题行和细节行各出现一次；
-  // 随记的「类别」同理——行首显示的模块名就是类别本身（念头 / 灵感），不再重复成一行
-  }).filter(d => hideSrc.indexOf(d.src) < 0 && d.src !== DESC_SRC && d.src !== 'jotKind');
+  // 随记 / 书·剧的「类别」同理——行首显示的模块名里已经带上了（见 recMname），
+  // 再写一遍就成了同一个词在一行里出现两次，读着像有两件事
+  }).filter(d => hideSrc.indexOf(d.src) < 0 && d.src !== DESC_SRC && d.src !== 'jotKind' && d.src !== 'bookKind');
   // 觉察 / 此刻：详情按「喜恶 → 感受 → …」展示，与编辑器里的顺序一致。
   // 「感受」是一组：程度（obsDeg）与情绪（obsMood）连写成「有点焦虑」，再和自由感受用 · 连成一行
   // —— 与编辑器里「档位 + 情绪 + 自由输入框」合成一块的口径一致（此刻整块复用觉察，见 FIELDS.now）；
@@ -900,6 +1136,13 @@ function recMname(r) {
   if (r.m === 'jot') {
     const k = extVal('jotKind');
     return k || mname('jot');
+  }
+  // 书·剧：带上类别（书·剧·小说）。与觉察/可做同一口径——
+  // 类别决定这条记录归在哪一栏（看页的统计与二级筛选都按它分），列表上一眼就要能看出来。
+  // 主项是书名本身，所以这里不用类别代替模块名（那是随记的做法：它的主项只是一句话）
+  if (r.m === 'book') {
+    const k = extVal('bookKind');
+    return k ? mname('book') + '·' + k : mname('book');
   }
   // 待办：显示类别（备忘 / 购物），而不是模块名「待办」——列表 / 操作条上一眼能分清
   if (isTask(r.m)) return taskCat(r);
@@ -1228,6 +1471,41 @@ function wantCat(r) {
   const es = r.extSrc || [], ex = r.ext || [];
   const i = es.indexOf('wantKind');
   return i >= 0 ? (ex[i] || '') : '';
+}
+// 书·剧的「类别」：取 ext 里的 bookKind（与上面三个同一套写法）。
+// 看页的二级筛选与按类别统计都读它
+function bookCat(r) {
+  if (!r) return '';
+  const es = r.extSrc || [], ex = r.ext || [];
+  const i = es.indexOf('bookKind');
+  return i >= 0 ? (ex[i] || '') : '';
+}
+// 书·剧类别颜色：与待办 / 随记共用那块调色板，再往后错开两段
+// （待办类别占前几位、随记类别接在后面，书·剧再往后——同屏里三族类别颜色互不重复）
+function bookColor(cat) {
+  if (!cat) return mcolor('book');
+  const i = getOPT('bookKind').indexOf(cat);
+  if (i < 0) return mcolor('book');
+  const off = (getOPT('todoKind') || []).length + (getOPT('jotKind') || []).length;
+  return CAT_PALETTE[(i + off) % CAT_PALETTE.length];
+}
+
+// 占卜的「类型」（牌种）：取 ext 里的 divType（塔罗 / 雷诺曼）。
+// 看页的类型二级筛选与按类型统计都读它——与上面三个取类函数同一套写法
+function divCat(r) {
+  if (!r) return '';
+  const es = r.extSrc || [], ex = r.ext || [];
+  const i = es.indexOf('divType');
+  return i >= 0 ? (ex[i] || '') : '';
+}
+// 占卜类型颜色：与待办 / 随记 / 书·剧 共用那块调色板，再往后错开一段
+// （三族类别占住前面的位，占卜类型接在最后——同屏里四族类别颜色互不重复）
+function divColor(cat) {
+  if (!cat) return mcolor('div');
+  const i = getOPT('divType').indexOf(cat);
+  if (i < 0) return mcolor('div');
+  const off = (getOPT('todoKind') || []).length + (getOPT('jotKind') || []).length + (getOPT('bookKind') || []).length;
+  return CAT_PALETTE[(i + off) % CAT_PALETTE.length];
 }
 
 // 每天默认最多先渲染多少条：超过才有「展开全部」。这个数只在这里写一份——
@@ -2256,12 +2534,16 @@ function reload(opts) {
 }
 
 module.exports = {
-  MODULES, OPT, GLABEL, OPTGROUPS, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, syncWindowBg,
+  MODULES, OPT, GLABEL, OPTGROUPS, GRAPH_GROUPS, isGraphGroup, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, syncWindowBg,
   BATTERIES, batName, batValOf, batLevel,
+  MOODS, moodName, moodLevel,
+  // 5 格档位表总目录（SCALES）与其上的两个取值函数：页面按组取档位表画格子，
+  // 回读展示统一走 scaleScore（「x/5」）。今日那两个仍用 bat*/mood*（它们另有更完整的写法）
+  SCALES, WOWS, LOVES, scaleOf, scaleKind, scaleName, scaleScore, SCALE_NO_CSS,
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, fieldsOf, groupOwner, getOPT, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, fieldsOf, groupOwner, getOPT, optsReady, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, divTypeDefault, bookKindDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, bookCat, bookColor, divCat, divColor, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap, noteAddedOpt, takeAddedMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,

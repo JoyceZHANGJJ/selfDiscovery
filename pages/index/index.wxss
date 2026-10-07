@@ -50,6 +50,15 @@
 /* 在做：第 N 天 标签（与看页一致） */
 .tag.doing { font-size: 11px; color: #fff; background: #C0A05A; padding: 1px 7px; border-radius: 999px; margin-right: 6px; line-height: 1.5; }
 
+/* 一行式字段（准确率）：标题在左，短输入框在右，单位紧贴框右。
+   输入框只给 76px —— 它最多三位数，给成整行宽会让人以为里面能写一段话。
+   单位用 ink3（和标题同色）：它是标题的一部分，不是输入框的内容。 */
+.qrow.inline { align-items: center; margin: 11px 0 0; }
+.qrow.inline .ql { flex-shrink: 0; }
+.inline-fld { display: flex; align-items: center; gap: 6px; }
+.inline-fld .num-in { width: 76px; flex: none; text-align: center; font-variant-numeric: tabular-nums; }
+.inline-fld .unit { font-size: 12px; color: var(--ink3); }
+
 /* 「已删除 …」撤销条（浮在屏幕上，与记卡无关）：位置与样式统一由全局 .undo-bar 管——
    现在是屏幕正中的小卡片（带弹出动效 + 实心「撤销」药丸），不再贴底部，也不再各页各调。
    注：「已记入 …」那条不在这里——它排进记卡内部、跟着记卡一起收放（见上面的 .sbline） */
