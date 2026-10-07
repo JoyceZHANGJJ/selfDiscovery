@@ -324,6 +324,30 @@ def _function_body(src, name):
     return None
 
 
+def _method_body(src, name):
+    """取对象方法（Page({ ensureModuleDefaults(tag) { … } }) 这种简写）的函数体。
+
+    页面上几乎全是方法简写，`function x()` 那个取法（`_function_body`）在这里匹配不到——
+    匹配不到时它会返回 None，而「None 就跳过」的写法会让整条检查变成没跑，
+    脚本却照样报「问题 0 个」。所以这里单写一个，并对「没找到」显式报错。
+    """
+    m = re.search(r'(?:^|\n)\s*%s\s*\([^)]*\)\s*\{' % re.escape(name), src)
+    if not m:
+        return None
+    start = src.find('{', m.start())
+    if start < 0:
+        return None
+    depth = 0
+    for j in range(start, len(src)):
+        if src[j] == '{':
+            depth += 1
+        elif src[j] == '}':
+            depth -= 1
+            if depth == 0:
+                return src[start:j]
+    return None
+
+
 def _spec_fields(src, fn_name):
     """返回契约函数里声明的字段名集合（含嵌套对象的子字段）。"""
     got = _function_body(src, fn_name)
@@ -612,7 +636,7 @@ def _flat_kv(body):
                     k2 = j
                     while k2 < n and body[k2] != ',':
                         k2 += 1
-                    out[key] = body[j:k2].strip()
+                    out[key] = body[j:k2].split('\n')[0].strip()
                     i = k2
             else:
                 i = e + 1
@@ -637,10 +661,14 @@ def _flat_kv(body):
                 out[key] = body[j:k2 + 1].strip()
                 i = k2 + 1
             else:
+                # 标量：读到逗号 / 右花括号为止。
+                # **最后一个键值必须切到换行为止**——它是「值\n}」的形态，
+                # 那个 } 已经越界到对象本身去了，连着换行收进来就变成 `'明天的计划'\n}`；
+                # 两份 COLMAP 最后一项不同时会因此误报漂移（给 COLMAP 补「回顾」时撞上过）
                 k2 = j
                 while k2 < n and body[k2] not in ',}':
                     k2 += 1
-                out[key] = body[j:k2].strip()
+                out[key] = body[j:k2].split('\n')[0].strip()
                 i = k2
             continue
         i += 1
@@ -653,6 +681,28 @@ def _unquote(v):
     if len(v) >= 2 and v[0] == v[-1] and v[0] in '"\'':
         return v[1:-1]
     return v
+
+
+def _js_unit_map(src):
+    """取 js 文件里的 `UNIT_SUFFIX = { '键': '值', … }`，取不到返回 None。
+
+    用朴素的「'键': '值'」正则，**不用 _flat_kv**：那个提取器按「读到逗号 / 右花括号」
+    切标量，而 UNIT_SUFFIX 是**单行**对象，最后一个值会把闭合的 } 一起收进来
+    （比出 store 是 "'%' }"、recText 是 "'%'"），于是一条本来没问题的对比报成漂移。
+    假报警多了，人会习惯性忽略整个脚本，比不查更糟。
+    """
+    body = _js_object_literal(src, 'UNIT_SUFFIX') or ''
+    if not body:
+        return None
+    found = dict(re.findall(r"'([\w:]+)'\s*:\s*'([^']*)'", body))
+    return found or None
+
+
+def _how_many(d):
+    """提取结果转成能安全写进报错的说法：None 也要能说，不能在 len() 上崩掉。"""
+    if d is None:
+        return '取不到'
+    return '%d 项' % len(d)
 
 
 def check_rec_labels(root):
@@ -749,6 +799,406 @@ def check_rec_labels(root):
                    '能量档位是喂给 AI 的关键信息（「一般（3/5 格）」比孤零零一个「3」有用得多），'
                    '两边不一样时同一份能量会读出两种说法。'
                    % (os.path.relpath(cloud_p, root), s_bat, c_bat))
+
+    # 心情档位：MOODS 与 BATTERIES 同一套机制、同一套漂移风险——
+    # 两边名字对不上时，AI 看到的「平静」在导出里会变成「不错」，
+    # 两个情绪词被当成两个意思，回看结论直接跑偏。所以一并机械比对。
+    def moods(s):
+        b = _js_array_literal(s, 'MOODS')
+        if not b:
+            return None
+        found = re.findall(r"v:\s*'([^']*)'\s*,\s*name:\s*'([^']*)'", b)
+        return found or None
+    s_mood, c_mood = moods(store_src), moods(cloud_src)
+    if s_mood is None or c_mood is None:
+        out.append('  MOODS 提取失败（store=%s / recText=%s），心情档位这条比对没跑。'
+                   % ('有' if s_mood is not None else '无',
+                      '有' if c_mood is not None else '无'))
+    elif s_mood != c_mood:
+        out.append('%s  MOODS 与 store.js 不一致：\n      store  : %s\n      recText: %s\n'
+                   '心情档位与能量档位是一对，名字对不上时「平静」和「一般」会被读成两种状态。'
+                   % (os.path.relpath(cloud_p, root), s_mood, c_mood))
+
+    # 带单位字段：UNIT_SUFFIX 两边都是**单行对象**（{ 'free:divAcc': '%' }）。
+    # 漏一边 → 人读的导出写「准确率：80」、喂给 AI 的写「准确率：80%」，
+    # 同一份数据两种说法，对账时看不出是哪边错了（与 COLMAP 漂移同一类事故）。
+    s_unit, c_unit = _js_unit_map(store_src), _js_unit_map(cloud_src)
+    # 提取失败要报出来而不是跳过：UNIT_SUFFIX 只有一项，被改名 / 删掉时
+    # 「两边都是空 dict」会判成一致，检查就成了摆设。
+    # 注意别在 len() 上直接用 None（提取失败时返回 None）——那会让整个脚本崩掉，
+    # 崩掉比误报更糟：一行都跑不完，等于所有检查都没做（这里真崩过一次）
+    if s_unit is None or c_unit is None:
+        out.append('  UNIT_SUFFIX 提取失败（store=%s / recText=%s），单位一致性这条没跑。'
+                   '一边被改名 / 删空时最容易这样；两边都空也会被误判成「一致」，检查形同虚设。'
+                   % (_how_many(s_unit), _how_many(c_unit)))
+    su, cu = s_unit or {}, c_unit or {}
+    for k in sorted(set(su) | set(cu)):
+        a, b = su.get(k), cu.get(k)
+        if a == b:
+            continue
+        out.append('%s  UNIT_SUFFIX[%s]：store 是 %r，recText 是 %r。单位只在回读时补，'
+                   '漏一边就出现「导出写 80、AI 写 80%%」这种对不上的文本。'
+                   % (os.path.relpath(cloud_p, root), k, a, b))
+    # 登记进 UNIT_SUFFIX 的来源必须有中文标签，否则补了单位也没人知道那是什么
+    for k in sorted(su):
+        if 'free:' + k.split(':', 1)[-1] not in s_col and k not in s_col:
+            out.append('  UNIT_SUFFIX 里的 %s 没有对应的 COLMAP 标签。' % k)
+    return out
+
+
+def check_dimension_registration(root):
+    """新增维度最常见的一类事故：**登记表漏一行**。
+
+    一个维度在这个项目里不是一处注册，而是散落在 store.js 的几张表
+    （MODULES / FIELDS / COLMAP / GLABEL / OPT）+ 页面上的几处硬编码。
+    漏任何一张都不报错——表现为：
+      · 漏 FIELDS  → 维度能看见但**不能编辑**（checkEdit 里一行 return 就放弃了，连提示都没有）
+      · 漏 COLMAP  → 细节 / 导出 / 复制里出现**没有标签的裸值**（「 LSTM」这一栏到底是什么）
+      · 漏 look.js 的 labelMap → 单维度统计标题显示成 literal「undefined：xxx · 3 次」
+    「悄悄错、且不报错」正是这三条的危险之处，所以机械查，不靠人记。
+
+    另外查「三驾马车」：有默认值的必选组必须在 REQUIRED_PICK / ensureModuleDefaults /
+    _defaultPicks 三处都登记，少一处要么被拦住不给保存，要么一进维度就划不动（判脏）。
+    """
+    out = []
+    store_p = os.path.join(root, 'utils', 'store.js')
+    index_p = os.path.join(root, 'pages', 'index', 'index.js')
+    look_p = os.path.join(root, 'pages', 'look', 'look.js')
+    topt_p = os.path.join(root, 'cloudfunctions', 'analysis', 'recText.js')
+    for p in (store_p, index_p, look_p, topt_p):
+        if not os.path.exists(p):
+            return []
+    store_src = read(store_p)
+    index_src = read(index_p)
+    look_src = read(look_p)
+
+    # MODULES 必须用 MODULES 那一段：store.js 里还有一份「时刻」表也是 { k, n } 的写法
+    # （FIXED.am / noon / pm 之类），直接 findall 会把那批时刻当成维度报一遍——错的不是代码，
+    # 是提取器。假报警一多，人就会习惯性忽略整个脚本，那比不查更糟。
+    mods_arr = _js_array_literal(store_src, 'MODULES') or ''
+    mods = dict(re.findall(r"\{\s*k:\s*'([\w]+)'\s*,\s*n:\s*'([^']*)'", mods_arr))
+    quiet = set(re.findall(r"k:\s*'([\w]+)'[^}]*quiet:\s*true", mods_arr))
+    fields = _js_object_literal(store_src, 'FIELDS') or ''
+    live = [k for k in mods if k not in quiet]
+    if not live or not fields:
+        out.append('  MODULES / FIELDS 提取失败（%d 个维度 / FIELDS %d 字符），维度登记这条没跑。'
+                   % (len(live), len(fields)))
+    else:
+        for k in sorted(live):
+            # 别按固定缩进 / 空格数去找（`jot:  {` 这种双空格就漏了），按「 key: { 」找
+            if not re.search(r"\b%s\s*:\s*\{" % re.escape(k), fields):
+                out.append('%s  MODULES 里的维度 %s（%s）没有 FIELDS 骨架。'
+                           '没有它这条记录**能看见但不能编辑**——checkEdit 第一行就 '
+                           'return 掉了，连提示都没有。'
+                           % (os.path.relpath(store_p, root), k, mods[k]))
+
+    col = _flat_kv(_js_object_literal(store_src, 'COLMAP') or '')
+    # COLMAP：每个会出现在 extSrc 里的来源都要有中文标签，否则是没标签的裸值。
+    # 但有一批 src 是**刻意不进细节区**的——它们已经在别处出现过了，再写一遍就是同一个词
+    # 在一行里出现两次（历史上专门为这事修过）。这一类按证据排除，不靠手抄名单：
+    #   ① buildExt 里被直接排掉的（描述 / 随记类别）
+    #   ② FIELDS 里标了 hideDetail 的组
+    #   ③ 导出 / AI 文本里 SKIP_IN_DETAIL 跳过的那些
+    def buildext_filter():
+        got = _function_body(store_src, 'buildExt')
+        body = got[0] if got else ''
+        return set(re.findall(r"d\.src !== '([\w:]+)'", body))
+    hidden = set(re.findall(r"g:\s*'([\w]+)'[^}]*hideDetail:\s*true", fields))   # ② 跨行写法要单独找
+    hidden |= set(re.findall(r"hideDetail[^\n]*?g:\s*'([\w]+)'", fields))
+    ex_p2 = os.path.join(root, 'utils', 'exporter.js')
+    skip3 = set()
+    if os.path.exists(ex_p2):
+        m3 = re.search(r'SKIP_IN_DETAIL\s*=\s*\{(.*?)\}', read(ex_p2), re.S)
+        if m3:
+            # 老老实实写下 [\w:]+ 就好。写成 `[\w:']*([\w:]+)[\w:']*` 那种「前面先吞一段」的
+            # 写法，前面的部分会把整个词吃掉，只给捕获组留下最后一个字母
+            # （干活的是 SKIP_IN_DETAIL = { todoPrio: 1 … } → 抓出来是 ['o','t','d']），
+            # 于是「跳过清单」看起来有东西、实际是空的，每一个该放行的都被报了一遍
+            skip3 = set(re.findall(r"([\w:]+)\s*:\s*1", m3.group(1)))
+    excused = buildext_filter() | hidden | skip3 | {'free:desc'}
+    srcs = set(re.findall(r"g:\s*'([\w]+)'", fields)) | set('free:' + x for x in re.findall(r"free:\s*'([\w]+)'", fields))
+    for s in sorted(srcs - excused):
+        if s not in col:
+            out.append('%s  COLMAP 缺 %s 的中文标签。这个字段会出现在 extSrc 里，'
+                       '没标签时细节行 / 导出 / 复制里是一串没有名字的值，'
+                       '读者看不出那是哪一栏。' % (os.path.relpath(store_p, root), s))
+
+    # 看页的单维度统计标题：两份 labelMap 都要覆盖全部非静默维度
+    rel_l = os.path.relpath(look_p, root)
+    maps = re.findall(r'const labelMap = \{(.*?)\}', look_src, re.S)
+    if len(maps) != 2:
+        out.append('%s  单维度统计的 labelMap 应该是两份（非搜索态 / 搜索态），现在 %d 份。'
+                   % (rel_l, len(maps)))
+    for idx, body in enumerate(maps):
+        got = set(re.findall(r"(\w+):\s*'", body))
+        miss = [k for k in live if k not in got and k != 'today']
+        if miss:
+            out.append('%s  第 %d 份 labelMap 少了 %s。筛到这些维度时会显示成'
+                       '「undefined：xxx · 3 次」——不报错，只有肉眼能发现。'
+                       % (rel_l, idx + 1, '、'.join(miss)))
+
+    # 三驾马车：REQUIRED_PICK / ensureModuleDefaults / _defaultPicks 必须一起登记
+    req = set(re.findall(r"(\w+):\s*1", read(index_p).split('const REQUIRED_PICK')[1].split('}')[0]
+                         ) if 'const REQUIRED_PICK' in index_src else [])
+    ensure = _method_body(index_src, 'ensureModuleDefaults')
+    defpicks = _method_body(index_src, '_defaultPicks')
+    if ensure is None or defpicks is None:
+        out.append('  取不到 ensureModuleDefaults / _defaultPicks 的函数体'
+                   '（ensure=%s / _defaultPicks=%s），三驾马车这条没跑。'
+                   '页面里是方法简写，别用只认 `function x()` 的取法。'
+                   % ('有' if ensure is not None else '无', '有' if defpicks is not None else '无'))
+    rel_i = os.path.relpath(index_p, root)
+    # 方向一（严格）：**补了默认值的组**必须同时登记成「不许点空」，
+    # 否则用户能把它点空 → 保存被必填提示拦住，界面却看不出该点哪里
+    with_default = set(re.findall(r"(\w+)':\s*store\.\w+Default\(\)", ensure or '')) \
+        | set(re.findall(r"d\.(\w+) =", defpicks or ''))
+    for g in sorted(with_default):
+        if g not in req:
+            out.append('%s  %s 会自动补默认值，却没登记进 REQUIRED_PICK：'
+                       '用户能把它点空，然后被必填提示拦住——界面上看不出该点哪里。'
+                       % (rel_i, g))
+    # 方向二：反过来。**唯一的例外**是今日的能量（todayBat）——它不许被点空，
+    # 但绝不能自动补默认：一进「今日」就亮着一格，看着像已经记过了，
+    # 用户就少点那一下、存下错误的档位。其余少登记的都必须补齐。
+    for g in sorted(req - {'todayBat'}):
+        if ensure is not None and g not in ensure:
+            out.append('%s  REQUIRED_PICK 里的 %s 没在 ensureModuleDefaults 里补默认值。'
+                       % (rel_i, g))
+        if defpicks is not None and g not in defpicks:
+            out.append('%s  REQUIRED_PICK 里的 %s 没登记进 _defaultPicks：'
+                       '自动补的默认值会被当成「用户填的内容」，一进这个维度就划不动（判脏）。'
+                       % (os.path.relpath(index_p, root), g))
+
+    # 一行式字段（inline + unit，如准确率）：声明了 inline 就得有三处配套，
+    # 少任何一处都**不报错**，只会表现成「那个输入框不见了」或「单位只在界面上有」：
+    #   ① index.js 把它透给 wxml（inline/unit/num）
+    #   ② index.wxml 有 it.inline 的渲染分支（没有就退回 textarea，占卜是 plain 布局时会挤成一整行）
+    #   ③ store 的 UNIT_SUFFIX 登记了单位（否则导出和 AI 看到的是裸数字，读不出是百分比）
+    wxml_p = os.path.join(root, 'pages', 'index', 'index.wxml')
+    inl = sorted(set(re.findall(r"free:\s*'(\w+)'[^}\n]*inline:\s*true", store_src)))
+    if inl and os.path.exists(wxml_p):
+        wxml = read(wxml_p)
+        # 注释行剔掉：wxml 里这几处的上方都写着解释为什么这么写的注释，
+        # 注释里出现同样的字样不算「渲染分支存在」
+        live = '\n'.join(ln for ln in wxml.split('\n') if '<!--' not in ln)
+        idx_src = read(index_p)
+        # 判据要**精确到那一行的条件表达式**。查「文件里有没有 it.inline」会漏：
+        # 记页有两种布局（plain / 常规），各有一处 inline 分支，把其中一处改成
+        # false && 之后子串仍在，检查照样通过——这已经是本脚本第五次栽在子串断言上。
+        for cond, where in (("wx:if=\"{{it.type==='free' && it.inline}}\"", 'plain 布局'),
+                            ("wx:if=\"{{item.type==='free' && item.inline}}\"", '常规布局')):
+            if cond not in live:
+                out.append('%s  FIELDS 里有 inline 字段（%s），但 wxml 的%s没在渲染它。'
+                           '输入框会退回整行 textarea，或整个不出现——页面照常编译，只是少一个框。'
+                           % (os.path.relpath(wxml_p, root), '、'.join(inl), where))
+        if 'unit: it.unit' not in idx_src:
+            out.append('%s  FIELDS 里有 inline 字段，但 buildComposer 没把 unit 透出来。'
+                       '单位不会显示在输入框后面。' % rel_i)
+        if '{{it.unit}}' not in live or '{{item.unit}}' not in live:
+            out.append('%s  有 inline 字段但 wxml 没渲染单位（it.unit / item.unit）——'
+                       '输入框后面不会显示 %%。' % os.path.relpath(wxml_p, root))
+        units = _js_unit_map(store_src)
+        for k in inl:
+            if units is not None and ('free:' + k) not in units:
+                out.append('%s  FIELDS 里的 %s 声明了 inline/unit，却没在 UNIT_SUFFIX 里登记单位。'
+                           '界面上输入框后面有「%%」，导出和喂给 AI 的文本里却是裸数字——'
+                           '同一个数在一处看得出是百分比、另一处看不出。'
+                           % (os.path.relpath(store_p, root), k))
+    return out
+
+
+def check_rec_action_handlers(root):
+    """操作条组件发出的每一种按钮，**每个挂载它的页面都得接住**。
+
+    为什么要有这条：组件的 compute() 决定显示哪些按钮，点下去只是 triggerEvent 发一个 type。
+    页面如果没对应的分支，它会被 if-else 链的末尾静默吞掉——**点了没反应，而且没有任何报错**
+    （历史上「改 / 删除」在记页和看页点不动就是这么回事：'edit'/'del' 被前面一条 return 截了）。
+    「看看都有着这种行为」正是这类 bug 难查的原因：代码看着很正常。
+
+    清单页（pages/list/list.js）不参与这条：它只放行待办 / 随记（见 canList），
+    那些维度的按钮和记录operations 是它自己的另一套，硬套全集会误报。
+    """
+    out = []
+    comp_p = os.path.join(root, 'components', 'rec-actions', 'rec-actions.js')
+    if not os.path.exists(comp_p):
+        return []
+    comp_src = read(comp_p)
+    types = set(re.findall(r"type:\s*'([\w]+)'", comp_src))
+    if not types:
+        out.append('%s  提取不到按钮类型（%d 个），这条比对没跑。'
+                   % (os.path.relpath(comp_p, root), len(types)))
+        return out
+    for rel in ('pages/index/index.js', 'pages/look/look.js'):
+        p = os.path.join(root, rel)
+        if not os.path.exists(p):
+            continue
+        src = read(p)
+        body = _method_body(src, 'onRecAction')
+        if body is None:
+            out.append('%s  取不到 onRecAction（页面里是方法简写），这条比对没跑。' % rel)
+            continue
+        miss = sorted(t for t in types if ("=== '%s'" % t) not in body)
+        if miss:
+            out.append('%s  操作条上的 %s 在这个页面没有对应分支。'
+                       '按钮照样显示、点了照样触发事件，然后被 if-else 链末尾静默吞掉——'
+                       '什么都不发生，也不报错。（「回顾」只在占卜记录上出现，'
+                       '在另一个页面忘了加分支，用户只会觉得这个按钮时灵时不灵）'
+                       % (rel, '、'.join(miss)))
+    return out
+
+
+def check_graph_no_manage(root):
+    """纯图示档位组（剩余能量 / 心情指数）不许露出「✎ 管理」入口。
+
+    为什么要有这条：它们不是选项池——5 个档位写死在代码里（BATTERIES / MOODS）。
+    给个管理入口，用户点进去是一张空白的可增删列表，在里面加的词既不会出现在格子上、
+    也永远不会被 AI 看到，但用户以为自己「加过了」。是一次必输的操作，还不报错。
+
+    判据一：这类组在 store.js 的 GRAPH_GROUPS 里集中登记，而不是在页面上枚举组名——
+      枚举的写法（`it.group!=='todayBat'`）每加一个新档位组就要改一遍 wxml，
+      漏改就重新露出一个无效入口。现在是 index.js 统一算 canManage，wxml 只认这个标记。
+    判据二：登记过的组必须在 FIELDS 里真的用得上，别留死条目。
+    """
+    out = []
+    store_p = os.path.join(root, 'utils', 'store.js')
+    index_p = os.path.join(root, 'pages', 'index', 'index.js')
+    wxml_p = os.path.join(root, 'pages', 'index', 'index.wxml')
+    for p in (store_p, index_p, wxml_p):
+        if not os.path.exists(p):
+            return []
+    store_src, index_src, wxml_src = read(store_p), read(index_p), read(wxml_p)
+
+    graph = _js_object_literal(store_src, 'GRAPH_GROUPS')
+    if graph is None:
+        out.append('%s  找不到 GRAPH_GROUPS。没有它，「哪些组不该给管理入口」就只能在页面上'
+                   '枚举组名——每加一个 5 格档位组都要记得改一遍 wxml。'
+                   % os.path.relpath(store_p, root))
+        return out
+    keys = sorted(re.findall(r"(\w+):\s*1", graph))
+    if not keys:
+        out.append('%s  GRAPH_GROUPS 是空的（提取器与写法可能对不上，别当成「没有这类组」）。'
+                   % os.path.relpath(store_p, root))
+        return out
+    if 'isGraphGroup' not in store_src:
+        out.append('%s  缺 isGraphGroup 判断函数（判据要集中在这里，别散到页面上去）。'
+                   % os.path.relpath(store_p, root))
+
+    # 登记过的组必须真的在 FIELDS 里被引用（否则是死条目，白占一次判断）
+    fields = _js_object_literal(store_src, 'FIELDS') or ''
+    for k in keys:
+        if "g: '%s'" % k not in fields:
+            out.append('%s  GRAPH_GROUPS 里的 %s 在 FIELDS 里没有引用（死条目）。'
+                       % (os.path.relpath(store_p, root), k))
+
+    # index.js：给 canManage 赋值的那一行必须用 store.isGraphGroup。
+    # 不能查「整个文件里有没有 isGraphGroup」——index.js 里 onManage 的兜底也用了一次，
+    # 光那一处就足以让子串检查通过，而真正决定「露不露入口」的算式已经退化成写死组名。
+    # 写死组名＝新加一个纯图示档位组就重新露出一个无效入口。这个坑真踩过一次。
+    cmg = [ln.strip() for ln in index_src.split('\n') if 'canManage =' in ln]
+    if not cmg:
+        out.append('%s  buildComposer 没算 canManage，wxml 就分不出哪一组不该给入口。'
+                   % os.path.relpath(index_p, root))
+    for ln in cmg:
+        if 'isGraphGroup' not in ln:
+            out.append('%s  canManage 的算式退回了写死组名：%s\n'
+                       '    ——应该是 store.isGraphGroup(it.g)。'
+                       % (os.path.relpath(index_p, root), ln[:100]))
+
+    # wxml：管理入口一律认 canManage 标记，不许再按组名排除
+    relw = os.path.relpath(wxml_p, root)
+    for ln in wxml_src.split('\n'):
+        if 'bindtap="onManage"' not in ln:
+            continue
+        # 主项那个入口（data-g="{{composer.main}}"）不进 catItems，另行判断；
+        # 其余每一处都必须用 canManage，出现具体组名就是又绕回了「枚举」
+        if 'canManage' in ln:
+            continue
+        if 'composer.main' in ln:
+            continue
+        out.append('%s  管理入口不是按 canManage 判断：%s\n'
+                   '    ——按组名枚举的话，新加一个纯图示档位组就会重新露出无效入口。'
+                   % (relw, ln.strip()[:120]))
+    return out
+
+
+def check_exporter_rectext_alignment(root):
+    """可读导出（utils/exporter.js）与喂给 AI 的文本（recText.js）必须同步改。
+
+    为什么要有这条：这两份是**同一口径的两处实现**（用户选定「喂 AI 的格式与可读导出
+    完全对齐」）。recText 拿不到 wx，只能复刻 exporter 的输出，复刻就会漂移——
+    心情指数就是这样只在一边落了地：AI 那边写的是「心情指数：有点低（2/5 格）」，
+    导出给人的还是孤零零一个「心情指数：2」。同一个数两种说法，用户对账时只觉得
+    「导出好像不对」，但说不出哪里不对。
+
+    判据一：两边的 SKIP_IN_DETAIL 键集必须一致。漏一个＝那一项在一边被原样再写一遍。
+    判据二：两边对「今日」的 5 格量（todayBat / todayMood）都要做「名字（N/5 格）」的补写。
+    判据三：末尾汇总里也要有这两个量（平均几格 / 几天偏低），同样不许只在一边加。
+    """
+    out = []
+    ex_p = os.path.join(root, 'utils', 'exporter.js')
+    rt_p = os.path.join(root, 'cloudfunctions', 'analysis', 'recText.js')
+    if not (os.path.exists(ex_p) and os.path.exists(rt_p)):
+        return []
+    ex_src, rt_src = read(ex_p), read(rt_p)
+    rx, rt_rel = os.path.relpath(ex_p, root), os.path.relpath(rt_p, root)
+
+    def skip_keys(s):
+        m = re.search(r'SKIP_IN_DETAIL\s*=\s*\{(.*?)\}', s, re.S)
+        if not m:
+            return None
+        return sorted(re.findall(r'[\'"]?([\w:]+)[\'"]?\s*:\s*1', m.group(1)))
+
+    ex_k, rt_k = skip_keys(ex_src), skip_keys(rt_src)
+    if not ex_k or not rt_k:
+        out.append('  SKIP_IN_DETAIL 提取失败（exporter=%s / recText=%s），这条比对没跑。'
+                   % ('有' if ex_k else '无', '有' if rt_k else '无'))
+    elif ex_k != rt_k:
+        miss_rt = [k for k in ex_k if k not in rt_k]
+        miss_ex = [k for k in rt_k if k not in ex_k]
+        out.append('%s / %s  SKIP_IN_DETAIL 不一致：\n      exporter: %s\n      recText : %s\n'
+                   '%s——漏的那一边会把同一项再写一遍，写成数字（如「心情指数：2」）。'
+                   % (rx, rt_rel, ex_k, rt_k,
+                      ('recText 少了 %s' % miss_rt) if miss_rt else ('exporter 少了 %s' % miss_ex)))
+
+    def today_block(s):
+        i = s.find("r.m === 'today'")
+        if i < 0:
+            return None
+        j = s.find('\n  }', i)          # 到本 if 块的闭合为止
+        return s[i:j] if j > 0 else s[i:i + 600]
+
+    ex_b, rt_b = today_block(ex_src), today_block(rt_src)
+    if ex_b is None or rt_b is None:
+        out.append('  「今日」补写段提取失败（exporter=%s / recText=%s），这条比对没跑。'
+                   % ('有' if ex_b else '无', '有' if rt_b else '无'))
+    else:
+        for k in ('todayBat', 'todayMood'):
+            if k not in ex_b:
+                out.append('%s  「今日」补写段里没有 %s：导出给人的会是原始档位值'
+                           '（「心情指数：2」这种），和 AI 看到的对不上。' % (rx, k))
+            if k not in rt_b:
+                out.append('%s  「今日」补写段里没有 %s：AI 看不到这一项。' % (rt_rel, k))
+
+    # 汇总段：两边都要算出这两个量的「平均几格 / 几天偏低」。
+    # 只在一边加的后果是两份文本的结论不一样——人读的那份看不出心情趋势，
+    # AI 却已经在按它写回看报告，用户无从发现。
+    def summary_block(s):
+        i = s.find('每日剩余能量')
+        if i < 0:
+            return None
+        return s[max(0, i - 900):i + 900]
+
+    ex_s, rt_s = summary_block(ex_src), summary_block(rt_src)
+    if ex_s is None or rt_s is None:
+        out.append('  汇总段提取失败（exporter=%s / recText=%s），这条比对没跑。'
+                   % ('有' if ex_s else '无', '有' if rt_s else '无'))
+    else:
+        for k, name in (('todayBat', '每日剩余能量'), ('todayMood', '每日心情指数')):
+            if k not in ex_s:
+                out.append('%s  汇总里没有 %s：人读的那份导出少了这个量，'
+                           '和 AI 看到的结论对不上。' % (rx, name))
+            if k not in rt_s:
+                out.append('%s  汇总里没有 %s：AI 看不到这个量的平均与低谷。' % (rt_rel, name))
     return out
 
 
@@ -774,6 +1224,285 @@ def check_no_inline_rectext(root):
                 out.append('%s  %s() 里又在内联拼记录文本（直接遍历 extSrc 生成标签片段）。'
                            '三处各拼一份，改一处忘另两处就对不上了。改成调 recText.recText()。'
                            % (rel, fn))
+    return out
+
+
+def check_scale_groups(root):
+    """5 格量（纯图示档位组）的四张表必须互相对得上：SCALES / SCALE_KIND / GRAPH_GROUPS / 主题色。
+
+    为什么要有这条：5 格量原先只有今日的能量 / 心情两组，档位表与取值函数各写一份
+    （BATTERIES + batLevel / MOODS + moodLevel）。书·剧加了第三、四组之后，
+    「加一组要改六处」这件事第一次真的咬人——而漏掉任何一处都不报错，只在那一处的
+    页面上显示成英文代号、空白格子，或者两个量画成同一个颜色分不开。
+    所以先把它收敛成一张登记表（store 的 SCALES + SCALE_KIND），再机械地查这张表自身完整。
+
+    具体查四件事：
+      ① GRAPH_GROUPS 里的每个组都在 SCALES 里登记了档位表（否则取档位名返回空）
+      ② SCALES 里的每个组都在 GRAPH_GROUPS 里（否则会露出无效的「✎ 管理」入口）
+      ③ SCALES 里的每个组都在 SCALE_KIND 里映射了颜色键（否则渲染层拿不到该画什么颜色）
+      ④ SCALE_KIND 的每个色键在 app.wxss 有样式、且每个启用主题都给了色
+         ——第 ④ 条最容易漏：颜色漏了不报错，那条量只是悄悄回落成 accent，
+         和旁边那条并排时看着像同一个量画了两遍。
+    """
+    out = []
+    store_p = os.path.join(root, 'utils', 'store.js')
+    themes_p = os.path.join(root, 'utils', 'themes.js')
+    wxss_p = os.path.join(root, 'app.wxss')
+    index_p = os.path.join(root, 'pages', 'index', 'index.js')
+    wxml_p = os.path.join(root, 'pages', 'index', 'index.wxml')
+    for p in (store_p, themes_p, wxss_p, index_p, wxml_p):
+        if not os.path.exists(p):
+            return []
+    store_src, themes_src = read(store_p), read(themes_p)
+    wxss, index_src, wxml = read(wxss_p), read(index_p), read(wxml_p)
+    rs, rw = os.path.relpath(store_p, root), os.path.relpath(wxss_p, root)
+
+    # SCALES 的值是一串变量名（BATTERIES / MOODS / WOWS / LOVES…），逐个取出它定义的组
+    scales = _js_object_literal(store_src, 'SCALES') or ''
+    names = re.findall(r"(\w+):\s*(\w+)", scales)
+    if not names:
+        out.append('%s  提取不到 SCALES 的登记项（%d 字符）。5 格量的档位表现在应当集中在这里——'
+                   '散成 BATTERIES / MOODS 各一份函数的话，加一组要改六处，漏一处不报错。'
+                   % (rs, len(scales)))
+        return out
+    # 组名 -> 定义它的那份数组常量
+    var2group = {}
+    for g, var in names:
+        var2group.setdefault(var, g)
+    sgroups = set()
+    for var in var2group:
+        arr = _js_array_literal(store_src, var)
+        if arr is None:
+            out.append('%s  SCALES 里的 %s 找不到定义（它应当是一个 5 项的档位数组常量）。'
+                       '取档位名 / 取格数会返回空，那条量在页面上显示成空白。'
+                       % (rs, var))
+            continue
+        sgroups.add(var2group[var])
+
+    graph = _js_object_literal(store_src, 'GRAPH_GROUPS') or ''
+    ggroups = set(re.findall(r"(\w+):\s*1", graph))
+    kinds = _js_object_literal(store_src, 'SCALE_KIND') or ''
+    kmap = dict(re.findall(r"(\w+):\s*'([\w]+)'", kinds))
+
+    # SCALE_NO_CSS 登记的色键是有意的例外（今日的能量条就吃 --accent，本就没有独立色类）——
+    # 靠「wxss 里恰好没有这几行」来推断例外，早晚会有人好心补上 .ebar-bat，
+    # 然后多出一套同色样式，白带一个没人维护的分叉。
+    nocss = _js_object_literal(store_src, 'SCALE_NO_CSS') or ''
+    nokeys = set(re.findall(r"(\w+):\s*1", nocss))
+
+    for g in sorted(sgroups - ggroups):
+        out.append('%s  SCALES 里的 %s 没登记进 GRAPH_GROUPS：它不是选项池（档位写死在代码里），'
+                   '不给「✎ 管理」入口是对的——漏登记就会露出一个点进去是空白页的入口，'
+                   '而用户在里加的词永远不会出现在格子上。' % (rs, g))
+    for g in sorted(ggroups - sgroups):
+        out.append('%s  GRAPH_GROUPS 里的 %s 没在 SCALES 登记档位表：取档位名返回空，'
+                   '那条量的格子里就没有小字（看着像一排空方块）。' % (rs, g))
+    for g in sorted(sgroups - set(kmap)):
+        out.append('%s  SCALES 里的 %s 没在 SCALE_KIND 映射颜色键：渲染层拿不到该画什么色，'
+                   '会回落成默认的 accent，和旁边那条量并排时看着像同一个东西。' % (rs, g))
+    for k in sorted(nokeys - set(kmap.values())):
+        out.append('%s  SCALE_NO_CSS 里的色键 %s 已经不是任何一组的色键了——'
+                   '它是改色键名之后留下的死条目，会让人以为还有一组要走这个例外。' % (rs, k))
+
+    # 渲染层不许再退回「写死组名」判 5 格量：加一组时那种写法要改三处，漏一处不报错
+    if not any(re.search(r'store\.scaleOf\(', ln) and not ln.strip().startswith('//')
+               for ln in index_src.split('\n')):
+        out.append('%s  buildComposer 不再查 store.scaleOf——5 格量的分支退回了写死组名，'
+                   '新加的一组不会被渲染成格子（只当普通 chips，页面照常编译）。'
+                   % os.path.relpath(index_p, root))
+    live_wxml = '\n'.join(ln for ln in wxml.split('\n') if '<!--' not in ln)
+    if 'todayBat' in live_wxml:
+        out.append('%s  wxml 里还在按 todayBat 写死判断 5 格量——新加的一组不会画成格子。'
+                   '应该统一按 it.graph 分岔（判据由 store.scaleOf 给）。'
+                   % os.path.relpath(wxml_p, root))
+    if 'ebar-{{it.kind}}' not in live_wxml:
+        out.append('%s  wxml 没按 item.kind 生成 5 格条的颜色类名（ebar-{{it.kind}}）——'
+                   '几条量会画成同一个颜色，在密集布局里分不出谁是谁。'
+                   % os.path.relpath(wxml_p, root))
+
+    # 色键 -> 样式 / 主题色。少一处都只表现为「那条量跟旁边那条同色」，不报错
+    # 色键 -> 样式 / 主题色。少一处都只表现为「那条量跟旁边那条同色」，不报错
+    for g in sorted(sgroups):
+        k = kmap.get(g)
+        if not k:
+            continue
+        if k in nokeys:
+            continue
+        for sel in ('.tl-bar-%s' % k, '.tl-cell.%s.on' % k, '.ebar-%s .ebar-cell.on' % k,
+                    '.ebar-%s .ebar-cell.cur' % k):
+            if sel not in wxss:
+                out.append('%s  5 格量 %s（色键 %s）缺样式 %s——只读态或编辑态会画成默认色。'
+                           % (rw, g, k, sel))
+        nthemes = len(re.findall(r"\{\s*k:\s*'[a-z]+',\s*n:\s*'", themes_src))
+        ncol = len(re.findall(r"(?:^|[\s,{])%s:\s*'#" % re.escape(k), themes_src, re.M))
+        if nthemes and ncol < nthemes:
+            out.append('%s  色键 %s 只在 %d/%d 个主题里给了值——缺的主题下这条量会回落成 accent，'
+                       '和旁边那条并排时看着像同一个量。'
+                       % (os.path.relpath(themes_p, root), k, ncol, nthemes))
+    return out
+
+
+def check_optpool_filtering(root):
+    """凡是**拿选项池当「用户真实的池」去过滤东西**的地方，池子没就绪时必须先让开。
+
+    背景（真实 bug）：快捷记面板（custom-tab-bar）把用户在「设置」里勾选的类别，
+    按 todoKind / jotKind 两个池过滤一遍，好剔掉已经被删掉的类别。
+    但 store.getOPT() 在 G.OPT 还没载入（冷启动，app.js 的 ensureAll 还在路上）时
+    **回退到代码里的内置默认池**——于是用户自己加的类别被当成「已删除」而静默筛掉。
+    表现是「重新打开小程序后第一次点球，类别少了几项」，第二次点又全了（那时池子到了）。
+    难复现的原因：它只在冷启动那一瞬出现，且第二次点自己就好了。
+
+    为什么这条检查守得住：这类过滤的**后果是不对称的**——池子没到时「多摆几个」只是
+    难看，「少摆几个」是丢用户数据。所以判据是「有没有 optsReady 守卫」，
+    而不是「过滤逻辑对不对」（后者要跑起来才知道池子状态）。
+    顺带要求 store 真的导出 optsReady，否则守卫写了个空调用、恒为真。
+    """
+    out = []
+    store_p = os.path.join(root, 'utils', 'store.js')
+    if not os.path.exists(store_p):
+        return out
+    store_src = read(store_p)
+    if 'function optsReady' not in store_src:
+        out.append('%s  没有 optsReady()：选项池未就绪时无法判断，'
+                   '任何「按池过滤」的逻辑都会在冷启动那一瞬用内置默认池误删用户数据。'
+                   % os.path.relpath(store_p, root))
+    elif re.search(r"module\.exports[\s\S]*?\boptsReady\b", store_src) is None:
+        out.append('%s  定义了 optsReady() 但没导出：调用方拿到 undefined，'
+                   '守卫会静默失效（写成 optsReady && optsReady() 时恒为 false）。'
+                   % os.path.relpath(store_p, root))
+
+    # 已审议过的豁免：**刻意不加守卫**，连同理由一起登记。
+    # 靠「读代码猜它危不危险」会两头出错：漏判就放过真 bug，误判就报假警。
+    # 假警比漏报更糟——会让人习惯性忽略整个脚本，所以豁免必须写清楚为什么安全，
+    # 而不是把判据放宽到「都放过」。
+    #   utils/pageBase.js: copyRec 用 isPick 只决定【】里 txt 与 desc 的先后顺序，
+    #     不过滤掉任何条目；且只在用户主动点「复制」时才跑，那时机上池子早已就绪。
+    exempt = {'utils/pageBase.js'}
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in ('.git', 'node_modules', 'miniprogram_npm')]
+        for fn_ in filenames:
+            if not fn_.endswith(JS_EXT):
+                continue
+            p = os.path.join(dirpath, fn_)
+            rel = os.path.relpath(p, root)
+            if p == store_p or rel in exempt:
+                continue
+            src = read(p)
+            if 'getOPT(' not in src:
+                continue
+            # 出现「池.indexOf(...) >= 0」这种过滤，且该文件里没有 optsReady 守卫
+            filt = re.findall(r"\b(?:pool|jpool|opts|kinds|list)\w*\s*\.indexOf\([^)]*\)\s*>=\s*0", src)
+            if not filt:
+                continue
+            # 判「有没有守卫」要看**它真的被调用了**，而不是文件里出现过这个词。
+            # 写成 store.optsReady && store.optsReady() 时，函数缺失会让左边短路成
+            # undefined——守卫看着在，实际恒假，恰好在最需要它的冷启动那一瞬失效。
+            # 光「文件里调用过 optsReady()」不够：过滤那几行本身必须落在守卫里。
+            # 否则别处一句无关的 optsReady 调用就能冒充守卫（把守卫改成 if (true) 就骗过了）。
+            # 判法：过滤语句所在的那一行，往上找最近的一行 if，看它有没有判 optsReady。
+            lines = src.split('\n')
+            filt_lines = [i for i, l in enumerate(lines)
+                          if re.search(r"\b(?:pool|jpool|opts|kinds|list)\w*\s*\.indexOf\([^)]*\)\s*>=\s*0", l)]
+            guarded = False
+            for i in filt_lines:
+                for j in range(i, max(-1, i - 6), -1):
+                    if re.search(r"\bif\s*\(", lines[j]):
+                        guarded = bool(re.search(r"optsReady", lines[j]))
+                        break
+            if not guarded:
+                out.append('%s  按选项池过滤（%s 处）但过滤语句不在 optsReady 守卫里：'
+                           '冷启动时池子还没载入，getOPT 回退到内置默认池，'
+                           '用户自己加的选项会被当成「已删除」而静默筛掉。'
+                           % (rel, len(filt_lines)))
+                continue
+            guard = len(re.findall(r"optsReady\s*\(\s*\)", src))
+            if not guard:
+                out.append('%s  按选项池过滤（%s 处）却没有真正调用 optsReady()：'
+                           '冷启动时池子还没载入，getOPT 回退到内置默认池，'
+                           '用户自己加的选项会被当成「已删除」而静默筛掉。'
+                           % (rel, len(filt)))
+            elif guard and len(re.findall(r"optsReady\s*&&", src)):
+                out.append('%s  optsReady 写成了 `optsReady && optsReady()`：'
+                           '函数缺失时左边短路成 undefined，守卫恒假——'
+                           '恰好在最需要它的冷启动那一瞬失效。用 `!store.optsReady()` 直接判。' % rel)
+    # 豁免名单里已经没人了（文件改名 / 删掉了）——留着会让检查名存实亡
+    for rel in sorted(exempt):
+        if not os.path.exists(os.path.join(root, rel)):
+            out.append('%s  check_optpool_filtering 的豁免名单里还有它，但文件已经不在了——'
+                       '请确认那处过滤的去向，别让检查名存实亡。' % rel)
+    return out
+
+
+def check_scroll_hints(root):
+    """横向可滚动区域的两端提示要**成对**：能往一边滚，就要在另一边也给出提示。
+
+    背景（真实 bug）：记卡的维度标签行只有右侧有渐变遮盖（tagFade），
+    往回滚时左边那一排 chip 被硬切掉一半，看着像渲染坏了，而不是「还能往回滚」。
+
+    为什么要机械地查：「只有右侧」这件事在页面上表现为「少了个渐变」，
+    不报错、不少功能、也没有任何一条测试会失败——它只是不太好看。
+    靠人记得「这个滚动区该有两份提示」必然漏，所以查「有没有单向的提示」。
+
+    同类第二条：快捷记面板（custom-tab-bar）要能滚（max-height + overflow-y）。
+    它从球上方往上长，类别最多 10 个，键盘弹着时可用高度只剩一点点，
+    顶出屏幕的部分会被裁掉——被裁的那些在下面，看着就像「类别没显示全」。
+    """
+    out = []
+    index_p = os.path.join(root, 'pages', 'index', 'index.js')
+    wxml_p = os.path.join(root, 'pages', 'index', 'index.wxml')
+    if os.path.exists(index_p) and os.path.exists(wxml_p):
+        js, wxml = read(index_p), read(wxml_p)
+        rel = os.path.relpath(wxml_p, root)
+        # 右侧提示在 wxml 里是 tagFade，左侧那条必须同时存在（数据字段 + 节点）
+        if 'tagFade' in js or 'tagrow-fade' in wxml:
+            for field, why in (('tagFade', '右侧（内容超出时提示右边还有）'),
+                               ('tagFadeL', '左侧（往回滚过时提示左边还有）')):
+                if field not in wxml:
+                    out.append('%s  维度标签行有横向滚动，但只渲染了单向提示：缺 %s。'
+                               '%s缺了，滚到那一头时边缘的 chip 被硬切掉一半，'
+                               '看着像渲染坏了，而不是「还能往那边滚」。'
+                               % (rel, field, why))
+            if 'tagFadeL' in wxml and 'tagFadeL' not in js:
+                out.append('%s  声明了 tagFadeL 但 index.js 里从不置它：'
+                           '左侧遮盖永远不显示。' % os.path.relpath(index_p, root))
+            if 'tagFadeL' in js and 'tagFadeL' not in wxml:
+                out.append('%s  index.js 算了 tagFadeL，但 wxml 里没有对应的节点：'
+                           '遮盖不会显示（数据层与视图层脱节，不报错）。'
+                           % os.path.relpath(index_p, root))
+
+    # 快捷记面板：吸底往上长，必须有高度上限 + 自己能滚
+    qa_wxss = os.path.join(root, 'custom-tab-bar', 'index.wxss')
+    qa_wxml = os.path.join(root, 'custom-tab-bar', 'index.wxml')
+    if os.path.exists(qa_wxss) and os.path.exists(qa_wxml):
+        wxss, wxml = read(qa_wxss), read(qa_wxml)
+        rel = os.path.relpath(qa_wxss, root)
+        if '.qa {' in wxss and 'position: fixed' in wxss.split('.qa {')[1].split('}')[0]:
+            blk = wxss.split('.qa {')[1].split('}')[0]
+            blk_raw = blk
+            if 'max-height' not in re.sub(r'/\*[\s\S]*?\*/', '', blk):
+                out.append('%s  快捷记面板是 fixed 吸底、往上长，却没有 max-height：'
+                           '类别最多 10 个，键盘弹着时顶出屏幕的部分被裁掉，'
+                           '看着像「类别没显示全」。' % rel)
+            # 判 overflow 要同时躲两个坑：① 注释里常写「overflow」作说明；
+            # ② -webkit-overflow-scrolling 里也含「overflow」这个子串——
+            # 拿子串匹配判的话，删掉真正的 overflow-y 反而判不出（那一行还在）。
+            # 所以只认独立的 overflow 属性名。
+            blk_code = re.sub(r'/\*[\s\S]*?\*/', '', blk)
+            has_of = re.search(r'(?<![-\w])overflow(-[xy])?\s*:', blk_code) is not None
+            if 'max-height' in blk_code and not has_of:
+                out.append('%s  快捷记面板有 max-height 却没 overflow：'
+                           '超出的部分仍然直接被裁掉，加了上限也没用。' % rel)
+            # 自己要滚，就得拦住滚动冒泡，否则会带着背后的页面一起滚；
+            # 而 catchtouchmove 绑的方法必须真的存在，绑了个没有的会「找不到 handler」，
+            # 面板整个点不动（这类错只在真机上点一下才暴露）。
+            qa_js = os.path.join(root, 'custom-tab-bar', 'index.js')
+            if 'catchtouchmove' in wxml and os.path.exists(qa_js):
+                m = re.search(r'catchtouchmove="(\w+)"', wxml)
+                if m and ('%s(' % m.group(1)) not in read(qa_js):
+                    out.append('%s  面板上绑了 catchtouchmove="%s"，但 index.js 里没有这个方法：'
+                               '点面板时会报「找不到 handler」，面板整个点不动。'
+                               % (os.path.relpath(qa_wxml, root), m.group(1)))
     return out
 
 
@@ -808,6 +1537,13 @@ def main():
     # 跨文件的约束只在全量扫描时查（依赖 utils/store.js 与云函数同时在场）
     if not args:
         problems += check_rec_labels(root)
+        problems += check_rec_action_handlers(root)
+        problems += check_dimension_registration(root)
+        problems += check_exporter_rectext_alignment(root)
+        problems += check_graph_no_manage(root)
+        problems += check_scale_groups(root)
+        problems += check_optpool_filtering(root)
+        problems += check_scroll_hints(root)
         problems += check_no_inline_rectext(root)
 
     for line in problems:

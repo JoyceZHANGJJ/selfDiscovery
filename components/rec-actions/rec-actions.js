@@ -51,6 +51,12 @@ Component({
       // 放弃只是小概率事件，放这儿不会影响「点一下勾掉」这条主路径
       if (isTask && !rec.done && status !== 'abandon') flow.push({ type: 'abandon', label: '放弃', cls: 'abandon' });
       if (isTask && status === 'abandon') flow.push({ type: 'restore', label: '恢复', cls: 'restore' });
+      /* 占卜：事后补一句「后来实际怎么样了」。
+         只给占卜——它是唯一一个「记的时候还没结果」的维度：牌抽完、解读写完，
+         准不准要等事情走完才知道（记录上那个时间范围就是提醒何时该回头看）。
+         其余维度记下的本身就是已经发生的事，不需要再「回顾」一次。 */
+      const isDiv = rawm === 'div';
+      if (isDiv) flow.push({ type: 'review', label: '回顾', cls: 'review' });
       /* 「推到日历」：只有**待办且定了计划完成时间**才有这个入口。
          没计划就不出现——不给一条本来不需要截止的待办偷偷补日期（与 dueTs「0 是常态」一致）。
          已推过的写成「再推一次?」之外的中性说法：推过了就说「已推日历」，
@@ -61,7 +67,8 @@ Component({
         calLabel: canCal ? (rec.calTs ? '已推日历' : '推到日历') : '',
         showEditDel: !!rawm,
         showEndSep: isObsNope && !rec.ended,
-        showWantSep: (isWant && status !== 'done') || (isTask && flow.length > 0),
+        // 有流转按钮时，与右边的「改 / 删除」之间加一道分隔线（占卜的「回顾」同理）
+        showWantSep: (isWant && status !== 'done') || (isTask && flow.length > 0) || isDiv,
         title: rec.m ? (rec.m + ' · ' + rec.txt) : ''
       });
     },

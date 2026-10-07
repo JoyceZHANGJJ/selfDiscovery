@@ -18,6 +18,17 @@ Page(pageBase({
   onLoad(q) {
     const group = decodeURIComponent(q.group || '');
     this.group = group;
+    // 纯图示档位组（剩余能量 / 心情指数）不是选项池：留在这儿只会是张空页，
+    // 而且加进去的词永远不会被读到——记卡的入口已经不进来，这条是给旧导航 / 深链兜底
+    if (store.isGraphGroup(group)) {
+      wx.showToast({ title: '这一项是固定档位，没有可管理的选项', icon: 'none' });
+      // 没有上一级可退时（比如从分享链接直接打开）不能干等着白屏，回落到「记」页
+      setTimeout(() => wx.navigateBack({
+        delta: 1,
+        fail: () => wx.switchTab({ url: '/pages/index/index' })
+      }), 800);
+      return;
+    }
     this.setData({ group, label: store.GLABEL[group] || '管理选项' });
     this.refresh();
     this.diag();

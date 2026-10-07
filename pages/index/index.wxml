@@ -48,8 +48,12 @@
               </view>
             </view>
           </scroll-view>
-          <!-- 「可滚动」渐变提示：只在标签真的超出、且右侧还有内容时出现（见 checkTagFade） -->
+          <!-- 「可滚动」渐变提示：各自独立 —— 右侧看「右边还有没露出来的」，
+               左侧看「已经往回滚过」（往回滚时左边同样还有 chip 没露出来，
+               少了这一份的话，滚到中间时左侧会是一排被硬切掉一半的字，
+               看着像渲染坏了，而不是「还能往回滚」）。见 checkTagFade -->
           <view wx:if="{{tagFade}}" class="tagrow-fade"></view>
+          <view wx:if="{{tagFadeL}}" class="tagrow-fade tagrow-fade-l"></view>
         </view>
 
         <!-- 「今日」已填：顶部只读摘要（内容禁填，点整块进编辑）。编辑态不显示。
@@ -65,8 +69,21 @@
             <!-- 右起显示创建时间：与时间线行同一口径（datePrefix + t），不另造格式 -->
             <text class="tl-when">{{todayLocked.d}}{{todayLocked.t}}</text>
           </view>
+          <!-- 心情指数：与能量同一套 5 格、另一套颜色。
+               没记过心情（老记录）时整行不显示——画成 0 格会让人以为「心情很差」，
+               其实只是当时还没这个字段。 -->
+          <view wx:if="{{todayLocked.mlv > 0}}" class="tl-row">
+            <text class="tl-lab">心情指数</text>
+            <view class="tl-bar tl-bar-mood">
+              <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-cell mood {{index<todayLocked.mlv?'on':''}}"></view>
+            </view>
+            <text class="tl-when">{{todayLocked.moodName}}</text>
+          </view>
           <text wx:if="{{todayLocked.txt}}" class="tl-txt">{{todayLocked.txt}}</text>
           <text wx:else class="tl-txt tl-none">今天还没写能量说明</text>
+          <!-- 明天的计划：写在「今天」这条里、回看的是「明天要做什么」，
+               所以给个标签说清楚是哪一天的打算——不然明天再打开这句话会读不通 -->
+          <text wx:if="{{todayLocked.tomorrow}}" class="tl-txt tl-tmr"><text class="k">明天的计划</text>{{todayLocked.tomorrow}}</text>
         </view>
 
         <!-- 待办 / 随记：纯主输入框（不要主项标题）。
@@ -76,15 +93,19 @@
              「今日」已记过时，内容由上面那块只读摘要（能量条 + 能量说明）全权代表，
              这里再显示一遍「剩余能量」选择器和禁用的输入框就是纯重复、还让人以为能改 -->
         <block wx:if="{{composer.plain && !(tag==='today' && todayLocked && !editing)}}">
+          <!-- 「✎ 管理」只给真正的选项池：纯图示档位组（剩余能量 / 心情指数）的 canManage 是 false，
+               这两栏的 5 格写死在代码里，没有可增删的选项——给个入口只是送用户进一个空白页 -->
           <view wx:for="{{composer.catItems}}" wx:key="index" wx:for-item="it" class="extra cattop">
-            <view class="qrow"><view class="ql">{{it.label}}</view><view wx:if="{{it.group!=='todayBat'}}" class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
+            <view class="qrow"><view class="ql">{{it.label}}</view><view wx:if="{{it.canManage}}" class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
             <view class="chips">
-              <!-- 「今日」能量：与只读摘要同一套 5 格条（同一个 .tl-bar/.tl-cell 的视觉），只是这里可点。
-                   点第 N 格＝选 N 格能量（1 很低 / 2 低 / 3 一般 / 4 较高 / 5 满）。
-                   未选时（新建）一格都不亮，必须自己点一下才算选过。
-                   cur==当前档位，用 .cur 标出来，方便看清落在哪一格 -->
-              <block wx:if="{{it.group==='todayBat'}}">
-                <view class="tl-bar ebar">
+              <!-- 5 格量（今日的能量 / 心情，书·剧的精彩 / 喜爱）：同一套画法，只是这里可点。
+                 点第 N 格＝选 N 格。未选时（新建）一格都不亮，必须自己点一下才算选过。
+                 cur==当前档位，用 .cur 标出来，方便看清落在哪一格。
+                 it.graph 由 store.scaleOf 判定（见 index 的 buildComposer），it.kind 决定颜色
+                 （见 wxss 的 .ebar-mood / .ebar-wow / .ebar-love），
+                 并排的两条量才不会看成同一个。 -->
+              <block wx:if="{{it.graph}}">
+                <view class="tl-bar ebar ebar-{{it.kind}}">
                   <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this"
                         class="tl-cell ebar-cell {{index<it.lv?'on':''}} {{it.cur===o.v?'cur':''}}"
                         data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip"
@@ -115,8 +136,41 @@
           <textarea wx:if="{{tag==='today'}}" class="big-in plain-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{todayLocked && !editing}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindinput="onMainInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
           <input wx:else class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{tag==='today' && todayLocked && !editing}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
-            <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
-            <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+            <!-- 一行式（准确率）：标题 + 短输入框 + 单位挤在同一行。
+                 它只是个数字，摆成一整行的 textarea 会比「回顾」那段正文还显眼 -->
+            <view wx:if="{{it.type==='free' && it.inline}}" class="qrow inline">
+              <view class="ql">{{it.label}}</view>
+              <view class="inline-fld">
+                <input class="mini-in num-in" type="{{it.num?'digit':'text'}}" placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
+                <text wx:if="{{it.unit}}" class="unit">{{it.unit}}</text>
+              </view>
+            </view>
+            <block wx:else>
+              <!-- 书·剧的评分 / 进度留在名称下方（FIELDS 里标了 below），
+                   所以它们会落到这个循环里——这个循环原先只管 free 字段，
+                   不补一段 g 的话，这三行在页面上根本不出现（看着像「评不了」）。
+                   5 格量与普通 chips 各走各的分支，判据与上面 catItems 里那套一致。 -->
+              <block wx:if="{{it.type==='g'}}">
+                <view wx:if="{{it.label}}" class="qrow"><view class="ql">{{it.label}}</view></view>
+                <view class="chips">
+                  <block wx:if="{{it.graph}}">
+                    <view class="tl-bar ebar ebar-{{it.kind}}">
+                      <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this"
+                            class="tl-cell ebar-cell {{index<it.lv?'on':''}} {{it.cur===o.v?'cur':''}}"
+                            data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip"
+                            hover-class="ebar-cell-hover" hover-stay-time="80"></view>
+                    </view>
+                  </block>
+                  <block wx:else>
+                    <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
+                  </block>
+                </view>
+              </block>
+              <block wx:else>
+                <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
+                <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+              </block>
+            </block>
           </view>
         </block>
         <!-- 今日已填且只读：这个分支（能量说明 / 细节·都可跳过）也一并藏掉。
@@ -145,7 +199,7 @@
                档位副行（item.sub）连管理入口也不给——它就是感受的一个强度档位 -->
           <view wx:if="{{!item.sub && (item.label || item.type==='g')}}" class="qrow">
             <view class="ql">{{item.label}}</view>
-            <view wx:if="{{item.type==='g'}}" class="mg" data-g="{{item.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view>
+            <view wx:if="{{item.canManage}}" class="mg" data-g="{{item.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view>
           </view>
           <block wx:if="{{item.type==='g' || item.type==='fx'}}">
             <view class="chips">
@@ -158,7 +212,16 @@
                而截断是静默的（不报错、不提示），用户只会以为自己没打上。
                这里给自由抒发的框（感受 / 收获 / 原因 / 描述一类）全部放开；
                主输入框与「归类」输入框保持默认，那些本来就该短。 -->
-          <textarea wx:if="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+          <!-- 一行式（准确率）：标题 + 短输入框 + 单位，同上（占卜走 plain，这里留一份是
+               为了让任何维度都能用这个形态，不至于换个布局就整行消失） -->
+          <view wx:if="{{item.type==='free' && item.inline}}" class="qrow inline">
+            <view class="ql">{{item.label}}</view>
+            <view class="inline-fld">
+              <input class="mini-in num-in" type="{{item.num?'digit':'text'}}" placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
+              <text wx:if="{{item.unit}}" class="unit">{{item.unit}}</text>
+            </view>
+          </view>
+          <textarea wx:elif="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
         </view>
         </block>
         </block>
@@ -251,6 +314,14 @@
                    不改名的话内层会把外层的 item 顶掉，item.bat.lv 就取不到了（格子全不亮） -->
               <view wx:for="{{[0,1,2,3,4]}}" wx:for-item="c" wx:key="*this" class="tl-cell {{index<item.bat.lv?'on':''}}"></view>
             </view>
+            <!-- 心情指数紧跟能量：两行并排才看得出「能量高心情低」这类错位。
+                 没记过心情的老记录不画这一行（lv=0 会画成空的，反像心情很差） -->
+            <block wx:if="{{item.mood.lv > 0}}">
+              <text class="tl-lab tl-lab-2">心情指数</text>
+              <view class="tl-bar tl-bar-mood">
+                <view wx:for="{{[0,1,2,3,4]}}" wx:for-item="c" wx:key="*this" class="tl-cell mood {{index<item.mood.lv?'on':''}}"></view>
+              </view>
+            </block>
           </view>
           <view wx:else class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.desc}}" class="tdesc">{{item.desc}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
           <!-- 待办的右侧那一格：与清单页 / 看页的 todo-list **逐字相同**（同一份 vm.baseVM + 同一段结构）——

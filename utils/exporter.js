@@ -101,17 +101,21 @@ function displayExtras(r) {
   const out = [];
   const push = (lbl, v) => { if (v !== '' && v != null) out.push({ lbl: lbl, v: String(v) }); };
 
-  // 「今日」的能量：存储里是档位值 1~5，页面显示的是能量条 + 档位名，两个都给。
+  // 「今日」的能量与心情：存储里是档位值 1~5，页面显示的是 5 格条 + 档位名，两个都给。
   // 这一项**必须在这里写、同时从细节里跳过**（见 readLine 的 SKIP_IN_DETAIL）：
   // buildExt 会把 todayBat 原样吐出来（值 '3'），不跳过就成了
   // 「剩余能量：一般（3/5 格） | 剩余能量：3」——同一件事写两遍，还写法不同。
+  // 心情（todayMood）同理：跳过它之前导出行里是孤零零一个「心情指数：2」，
+  // 既不和页面上的 5 格对得上，也和喂给 AI 的那份文本不一致（那边是「有点低（2/5 格）」）。
+  // 两个量都走 G / level / 5 格 的同一句式，能量与心情因此在同一行里长得一样好读。
   if (r.m === 'today') {
-    const bv = extOf(r, 'todayBat');
-    if (bv !== '') {
-      const nm = store.batName(bv);
-      const lv = store.batLevel(bv);
-      push('剩余能量', nm ? nm + '（' + lv + '/5 格）' : (lv + '/5 格'));
-    }
+    [['todayBat', '剩余能量', store.batName, store.batLevel],
+     ['todayMood', '心情指数', store.moodName, store.moodLevel]].forEach(cfg => {
+      const v = extOf(r, cfg[0]);
+      if (v === '') return;
+      const nm = cfg[2](v), lv = cfg[3](v);
+      push(cfg[1], nm ? nm + '（' + lv + '/5 格）' : (lv + '/5 格'));
+    });
   }
 
   // 「具体的描述」：页面上跟主项并排的那一句，最容易在导出时被漏掉
@@ -185,7 +189,10 @@ function readLine(r) {
   //   todayBat —— 能量档位已补成「一般（3/5 格）」，这里再写个「3」既重复又看不懂
   //   todoKind —— 类别已经进了维度名（「待办·购物」），这里再写「购物」读起来像两件事
   //   wantKind / jotKind —— buildExt 本来就排除了
-  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todoKind: 1, obsKind: 1 };
+  //   todayMood —— 心情也已在上面补成「平静（3/5 格）」，这里同理不能再写
+  //   bookKind —— 同理：类别已进维度名（「书·剧·小说」），store.buildExt 里已排掉
+  //     书·剧的两条评分**不在**跳过名单里：它们就该以「精彩程度：4/5」出现在细节区
+  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todayMood: 1, todoKind: 1, obsKind: 1, bookKind: 1 };
   const dl = (store.buildExt(r.m, r.ext, r.extSrc) || []).filter(d => {
     if (d.v === '' || d.v == null) return false;
     if (SKIP_IN_DETAIL[d.src]) return false;
@@ -232,6 +239,8 @@ function moduleLabel(r) {
   if (r.m === 'want') { const k = extOf(r, 'wantKind'); return k ? n + '·' + k : n; }
   if (store.isTask(r.m)) { const k = extOf(r, 'todoKind'); return k ? n + '·' + k : n; }
   if (r.m === 'jot') { const k = extOf(r, 'jotKind'); return k ? n + '·' + k : n; }
+  // 书·剧：类别（小说 / 漫剧）拼进维度名，与 store.recMname / 云函数 moduleLabel 同一口径
+  if (r.m === 'book') { const k = extOf(r, 'bookKind'); return k ? n + '·' + k : n; }
   if (r.m === 'obs') { const k = extOf(r, 'obsKind'); return k ? n + '·' + k : n; }
   // 「此刻」的喜恶不给维度名 —— 它在 App 里复用觉察那套情绪 chips（见 store 的 FIELDS.now），
   // 但此刻不是「对某件事的感受」，写出来「此刻·喜欢」读着别扭。放到下面的补充项里带。
@@ -334,14 +343,25 @@ function summary(list) {
     }
   }
 
-  // 今日能量：平均值 + 分布。这个是页面上用 5 格条表示的，导出用文字反而更清楚
-  const todays = list.filter(r => r.m === 'today' && extOf(r, 'todayBat') !== '');
+  // 今日那两个 5 格量（剩余能量 / 心情指数）：平均值 + 分布。
+  // 页面上是两条并排的格子，导出用文字反而更清楚（读者不用去数格子）；
+  // 两个量的句式完全一致，横着读一眼就能对上。
+  // 分开计数而不统一计：老记录只有能量没有心情，用同一个天数会把「没记心情」
+  // 说成「记了 N 天心情」，平均也就跟着虚低了。
+  // 情绪的两端都比能量更值得单独拎出来——「平均几格」看不出「其中有几天特别低」，
+  // 而回看时最想知道的正是那几天。
+  const todays = list.filter(r => r.m === 'today');
   if (todays.length) {
-    const lvs = todays.map(r => store.batLevel(extOf(r, 'todayBat')));
-    const avg = lvs.reduce((a, b) => a + b, 0) / lvs.length;
-    const low = lvs.filter(v => v <= 2).length;
-    out.push('每日剩余能量：记录 ' + todays.length + ' 天，平均 ' + (Math.round(avg * 10) / 10) + '/5 格'
-      + (low ? '，其中 ' + low + ' 天在 2 格及以下' : ''));
+    [['todayBat', '每日剩余能量', store.batLevel],
+     ['todayMood', '每日心情指数', store.moodLevel]].forEach(cfg => {
+      const rows = todays.filter(r => extOf(r, cfg[0]) !== '');
+      if (!rows.length) return;
+      const lvs = rows.map(r => cfg[2](extOf(r, cfg[0])));
+      const avg = lvs.reduce((a, b) => a + b, 0) / lvs.length;
+      const low = lvs.filter(v => v <= 2).length;
+      out.push(cfg[1] + '：记录 ' + rows.length + ' 天，平均 ' + (Math.round(avg * 10) / 10) + '/5 格'
+        + (low ? '，其中 ' + low + ' 天在 2 格及以下' : ''));
+    });
   }
   return out;
 }

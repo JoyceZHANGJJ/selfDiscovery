@@ -26,11 +26,20 @@
       <view class="sect-t" id="blk-title">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
       <input id="searchBox" class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{true}}" cursor-spacing="20" always-embed="{{true}}" bindfocus="onSearchFocus" />
 
-      <view class="filters">
-        <view class="ft {{filter==='all'?'on':''}}" data-f="all" bindtap="onFilter">全部</view>
-        <view wx:for="{{modules}}" wx:key="k" class="ft {{filter===item.k?'on':''}}" data-f="{{item.k}}" bindtap="onFilter">
-          <text class="fd" style="background:{{item.c}}"></text>{{item.n}}
-        </view>
+      <!-- 维度行：横向滚动，维度多也不换行（换行会把下面整块内容往下顶一截）。
+           渐变提示与记页维度标签行同一套（见 checkDimFade）——两侧各自独立，
+           往回滚时左边那排字被硬切掉一半会看着像页面坏了 -->
+      <view class="dimrow-wrap">
+        <scroll-view class="dimrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" bindscroll="onDimScroll">
+          <view class="dimrow">
+            <view class="ft {{filter==='all'?'on':''}}" data-f="all" bindtap="onFilter">全部</view>
+            <view wx:for="{{modules}}" wx:key="k" class="ft {{filter===item.k?'on':''}}" data-f="{{item.k}}" bindtap="onFilter">
+              <text class="fd" style="background:{{item.c}}"></text>{{item.n}}
+            </view>
+          </view>
+        </scroll-view>
+        <view wx:if="{{dimFade}}" class="dimrow-fade"></view>
+        <view wx:if="{{dimFadeL}}" class="dimrow-fade dimrow-fade-l"></view>
       </view>
 
       <!-- 快捷时间选择：待办与「今日」不展示这一行。
@@ -91,9 +100,12 @@
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
       </view>
 
-      <!-- 随记 · 类别：全部 + 各随记类别（与觉察的喜恶、待办的类别同一套）——
-           随记记录走下面的时间线，标题会带上所选类别 -->
-      <view wx:if="{{filter==='jot' && kinds.length}}" class="filters states">
+      <!-- 随记 · 类别 / 书·剧 · 类别 / 占卜 · 类型：全部 + 各该类别（与觉察的喜恶、待办的类别同一套）。
+           三个维度合在这一处而不是各抄一份：筛法完全相同（同一个 kindFilter、
+           同一份 kinds、同一个处理函数），抄一份就多一处日后要同步改的地方。
+           筛哪些选项由 CAT_STAT 决定（与统计分组同源，见 rebuild）。
+           选项取自选项池，所以在「✎ 管理」里增删，这一行自动跟上 -->
+      <view wx:if="{{(filter==='jot' || filter==='book' || filter==='div') && kinds.length}}" class="filters states">
         <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
       </view>

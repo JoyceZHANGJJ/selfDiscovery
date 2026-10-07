@@ -26,6 +26,7 @@
 .flow.abandon { color: #948AA8; background: rgba(148,138,168,.14); }   /* 放弃：灰紫，区别于开始/完成 */
 .flow.restore { color: #7C9A86; background: rgba(124,154,134,.15); }      /* 恢复：绿，区别于放弃 */
 .flow.end { color: #5E9A94; background: rgba(94,154,148,.14); }          /* 结束：青，区别于完成(蓝)/恢复(绿) */
+.flow.review { color: #B79BE0; background: rgba(155,123,192,.18); }     /* 回顾：紫，唯一「事后补一句」的动作 */
 
 /* 「推到日历」：条子是深色底的，按钮统一用低饱和青（与「结束」同色系但不撞——
    两者不会同时出现，纯粹是为了和完成/放弃/恢复这批色区分开）。命中区同 .flow */

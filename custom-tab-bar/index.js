@@ -43,8 +43,14 @@ function buildQaCats() {
   let cats = (store.getQuickCats() || []).map(qc => {
     const info = catInfo(qc);
     return { key: (qc.m === 'jot' ? 'jot:' : 'todo:') + info.cat, m: info.k, src: info.src, cat: info.cat, n: info.n, c: info.c, ph: info.ph };
-  }).filter(qc => qc.m !== 'todo' || pool.indexOf(qc.cat) >= 0)
-    .filter(qc => qc.m !== 'jot' || jpool.indexOf(qc.cat) >= 0);
+  });
+  // 池子没就绪时**先不过滤**：此刻 pool / jpool 是内置默认池（getOPT 的回退），
+  // 用户自己加的类别会被它当成「已删除」而静默筛掉——冷启动后第一次点球就少几项，
+  // 第二次点又全了（那时 ensureAll 回来了）。宁可先多摆几个，等 _syncQaCats 补完再收。
+  if (store.optsReady()) {
+    cats = cats.filter(qc => qc.m !== 'todo' || pool.indexOf(qc.cat) >= 0)
+      .filter(qc => qc.m !== 'jot' || jpool.indexOf(qc.cat) >= 0);
+  }
   // 顺序以排列为准：待办类别按 todoKind 池顺序，随记类别接在后面按 jotKind 池顺序（不随勾选先后）
   cats.sort((a, b) => {
     const ai = a.m === 'jot' ? (pool.length + jpool.indexOf(a.cat)) : pool.indexOf(a.cat);
@@ -146,6 +152,10 @@ Component({
       // 吸底面板要跟着键盘走：页面级滚动下微信不会缩小视口（而是滚动页面让输入框可见），
       // 所以直接把键盘高度当 bottom，面板始终落在键盘上方（与记页吸底操作行同一套做法）
       this._bindKb();
+      // 选项池往往还在路上（app.js 的 ensureAll 异步）。冷启动那一刻算出来的类别是拿
+      // 内置默认池凑的，等真池子到了要重算一次——否则「重新打开后第一次点球类别不全」。
+      // attached 只跑一次，所以这次重算是一次性的；用户勾选的类别增减仍由 openQa 每次现算。
+      store.onLoaded(() => { this._syncQaCats(); });
     },
     detached() {
       if (wx.offKeyboardHeightChange && this._kbHandler) wx.offKeyboardHeightChange(this._kbHandler);
@@ -287,7 +297,28 @@ Component({
       // 位置按**当前**键盘状态给：不能沿用上一次记下的键盘高度——键盘已经收了、面板还按旧高度
       // 悬在页面中间（这就是「再打开位置变了」）。键盘真在的话，点输入框那一下会再来一次高度事件
       this._applyKb(0);
+      // 池子还没到（冷启动那一瞬）也照样开面板：此时 buildQaCats 跳过了过滤，
+      // 摆出来的类别只多不少。等 onLoaded 到了自然会重算（见 attached 的订阅），
+      // 这里再补一道是因为 attached 那次订阅可能已经触发过了、而池子仍未到。
+      if (!store.optsReady()) store.onLoaded(() => { if (this.data.qa) this._syncQaCats(); });
     },
+    /* 真池子到了之后把类别重算一遍。保住在选中的那一个（按 key 比，不按下标——
+       下标会因补进新类别而错位，用户会看到自己点的类别跳到别的字上），
+       也保住已经写了一半的草稿和它聚焦着没有。重算只在 attached 订阅一次里调用。 */
+    _syncQaCats() {
+      const cats = buildQaCats();
+      const key = (this.data.qaCats || [])[this.data.qaIdx] || {};
+      let idx = cats.findIndex(c => c.key === key.key);
+      if (idx < 0) idx = 0;
+      const a = cats[idx] || {};
+      const fields = { qaCats: cats, qaIdx: idx, qaName: a.n, qaPh: a.ph, qaC: a.c, qaIsTodo: a.m !== 'jot' };
+      // 草稿在就不动优先级那一行：用户可能已经挑过档，别让补数据把他选的冲掉
+      if (!this.data.qaTxt) Object.assign(fields, qaPrioDefIdx());
+      this.setData(fields);
+      // 面板正开着的话，补完可能要换占位符（当前类别的 ph），输入框仍聚焦着就重新对一次
+      if (this.data.qa && this.data.qaFocus) this._qaKeepFocus();
+    },
+
     closeQa(keepDraft) {
       if (!this.data.qa && !this.data.qaFocus) return;
       // 编辑模式下不留草稿：那句话是「这一条的内容」，留着再点球就成了新建一条同样的
@@ -389,6 +420,10 @@ Component({
       if (!keepFocus) return;
       this._qaKeepFocus();
     },
+    /* 面板自己要滚（见 wxss 的 max-height）：滚它的时候别把背后的页面一起带着滚。
+       空实现即可——catchtouchmove 只要拦住冒泡，面板自身的滚动照常。 */
+    onQaScroll() {},
+
     /* 点 chips 后把焦点收回来：点 chip 会让输入框失焦，而键盘其实还在——
        不收回来键盘就闪断一下（见 onQaBlur 的守卫） */
     _qaKeepFocus() {

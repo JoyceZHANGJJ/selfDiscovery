@@ -22,6 +22,16 @@ const BASE_DATA = {
   brandTop: 0, brandLeft: 0, brandW: 0, brandH: 0, brandChars: [], brandPlay: false
 };
 
+/* 按字段名组一个 setData 的补丁对象（{ 'dimFade': true, ... }）。
+   字段名是变量，不能写成对象字面量——所以手工拼。
+   键里没有 '.'，setData 走的是顶层路径，行为与字面量一致。 */
+function patchObj(keys, r, l) {
+  const o = {};
+  o[keys.r] = r;
+  o[keys.l] = l;
+  return o;
+}
+
 function pageBase(extra) {
   extra = extra || {};
   return Object.assign({
@@ -51,6 +61,48 @@ function pageBase(extra) {
         brandTop: mb.top, brandLeft: mb.left, brandW: mb.width, brandH: mb.height,
         brandChars: String(inst.APP_NAME || this.data.appName || '').split('')
       });
+    },
+
+    /* 横向滚动条「还有内容」的渐变提示：记页的维度标签行与看页的维度筛选行共用这一份。
+       两处要做的事逐字相同（量内容宽度 → 两侧各自判定 → setData），抄一份的话
+       改了一边忘了另一边，症状是「一端有提示、另一端没有」——不报错，只是少个渐变。
+
+       两端**各自独立**地判：右边看「右边还有没露出来的」，左边看「已经往回滚过多少」。
+       只做右边那一侧的话，滚到中间时左边是一排被硬切掉一半的字，
+       看着像渲染坏了，而不是「还能往回滚」。
+
+       sel     scroll-view 的选择器（量它的可见宽度与滚动位置）
+       itemSel 里面条目的选择器（scrollWidth 拿不到时用它兜底推算内容宽度）
+       pair    this.data 里两个布尔字段的名字，如 { r: 'dimFade', l: 'dimFadeL' }
+                传字段名而不是写死：两页的字段名不同，写死就得在两处各判一次 */
+    measureScrollRow(sel, itemSel, pair) {
+      const q = wx.createSelectorQuery().in(this);
+      q.select(sel).boundingClientRect();
+      q.select(sel).scrollOffset();
+      q.selectAll(itemSel).boundingClientRect();
+      q.exec(res => {
+        const box = res[0], off = res[1], items = res[2] || [];
+        if (!box) return;
+        let content = (off && off.scrollWidth) || 0;
+        // 兜底：个别基础库上 scrollWidth 拿不到，用最后一个条目的右边界推算内容宽度
+        if (!content && items.length) {
+          const right = items.reduce((m, it) => Math.max(m, it.right), 0);
+          content = right - box.left;
+        }
+        this._scrollRow = { sel: sel, box: box.width, content: content };
+        this.applyScrollFade((off && off.scrollLeft) || 0, pair);
+      });
+    },
+
+    /* 按当前滚动位置更新两端提示。量一次缓存起来，滚动时只做比较（不再查节点） */
+    applyScrollFade(left, pair) {
+      const w = this._scrollRow;
+      if (!w) return;
+      const over = w.content > w.box + 1;
+      const r = over && left + w.box < w.content - 1;
+      const l = over && left > 1;
+      const d = this.data;
+      if (r !== d[pair.r] || l !== d[pair.l]) this.setData(patchObj(pair, r, l));
     },
 
     /* 名字露出来的这会儿，播一次逐字浮现（下拉刷新时调用） */
