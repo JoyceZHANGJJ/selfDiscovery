@@ -122,7 +122,7 @@ const GLABEL = {
   doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', todoPrio: '优先级', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
   todayItem: '能量说明', todayBat: '剩余能量', todayMood: '心情指数',
   divItem: '占卜的问题', divType: '类型', divSpan: '时间范围',
-  bookItem: '名称', bookKind: '类别', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度'
+  bookItem: '名称', bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
@@ -147,6 +147,14 @@ const OPTGROUPS = [
    写死的话，以后再加一条类似的 5 格条（比如专注度）就会又露出一个无效的管理入口。 */
 const GRAPH_GROUPS = { todayBat: 1, todayMood: 1, bookWow: 1, bookLove: 1 };
 function isGraphGroup(g) { return !!GRAPH_GROUPS[g]; }
+
+/* 固定选项组（写死，不可在「✎ 管理」里增删）：书·剧的「状态」（连载中 / 已完结）。
+   与 GRAPH_GROUPS 同理——没有可增删的条目，给管理入口只是送进空白页；
+   判据统一查 isFixedGroup，别在各处写死组名。和 GRAPH_GROUPS 的区别是它走普通 chips 渲染
+   （不是 5 格条），选项存在代码里的固定表，见 fixedGroupOpts */
+const FIXED_OPT_GROUPS = { bookStatus: ['连载中', '已完结'] };
+function isFixedGroup(g) { return !!FIXED_OPT_GROUPS[g]; }
+function fixedGroupOpts(g) { return FIXED_OPT_GROUPS[g] || []; }
 
 /* 「今日」电池：纯图示档位（一日一记，必选其一）。
    值存档位 v（'0'..'4'），渲染时用内嵌 SVG（base64 data URI）现画——不依赖任何外部图片文件，
@@ -763,6 +771,10 @@ const FIELDS = {
     { g: 'bookKind', single: true, noInput: true, required: true },
     { g: 'bookWow', single: true, noInput: true, below: true },
     { g: 'bookLove', single: true, noInput: true, below: true },
+    // 「状态」（连载中 / 已完结）：固定两档、不在「✎ 管理」里增删，默认「已完结」。
+    // 放在「进度」上面（存储顺序＝展示顺序，见下方说明）——它和进度一样是这条记录的状态，
+    // 记的时候顺手点一下；旧记录没这一格（不处理历史数据），显示时自然没有这一栏
+    { g: 'bookStatus', single: true, noInput: true, below: true },
     { g: 'bookProg', single: true, noInput: true, below: true },
     { free: 'bookWhy', label: '记入原因', ph: '为什么记它？可跳过', ta: true }
   ] }
@@ -864,7 +876,7 @@ const COLMAP = {
   // 「明天的计划」：必须给标签。它是自由文本，没有标签的话在导出 / 喂给 AI 的文本里
   // 就是一句光秃秃的话，和上面「今天发生了什么」那句混在一起分不清哪句是哪天的事
   'free:tomorrow': '明天的计划',
-  bookKind: '类别', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
+  bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
   'free:bookWhy': '记入原因'
 };
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
@@ -988,6 +1000,9 @@ function bookKindDefault() {
   const def = k.indexOf('小说') >= 0 ? '小说' : (k[0] || '小说');
   return [def];
 }
+// 书·剧默认状态：固定两档（连载中 / 已完结，见 FIXED_OPT_GROUPS），默认「已完结」——
+// 记一条多半是看完 / 看完一集想记一下，没填也按「看完了」理解最自然
+function bookStatusDefault() { return ['已完结']; }
 
 // 带单位的字段：回读时把单位补在值后面（存储里只存数字）。
 // 单位在编辑器里显示在输入框右侧（见 index.wxml 的 it.unit），但列表、导出、
@@ -2541,6 +2556,7 @@ module.exports = {
   // 5 格档位表总目录（SCALES）与其上的两个取值函数：页面按组取档位表画格子，
   // 回读展示统一走 scaleScore（「x/5」）。今日那两个仍用 bat*/mood*（它们另有更完整的写法）
   SCALES, WOWS, LOVES, scaleOf, scaleKind, scaleName, scaleScore, SCALE_NO_CSS,
+  FIXED_OPT_GROUPS, isFixedGroup, fixedGroupOpts, bookStatusDefault,
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,

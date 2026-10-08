@@ -502,9 +502,10 @@ Page(pageBase({
     const doneGroups = this.winGroups(doneDays, this.data.limD, this.data.doneDayAll);
     const abandGroups = this.winGroups(abandDays, this.data.limA, this.data.abandDayAll);
     const u = undoneRaw.length, dn = doneRecs.length, an = abandRecs.length;
+    // 「全部 N」放最后：三段加起来的总数，一眼看出这一类一共有多少条（清单页同款）
     const sum = u
-      ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : ''))
-      : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '')) : '');
+      ? (u + ' 项待完成' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '') + ' · 全部 ' + (u + dn + an))
+      : ((dn || an) ? ('全部处理完' + (dn ? ' · 已完成 ' + dn : '') + (an ? ' · 已放弃 ' + an : '') + ' · 全部 ' + (u + dn + an)) : '');
     const tit = this.data.kindFilter === 'all' ? '待办' : '待办 · ' + this.data.kindFilter;
     return {
       show: (u + dn + an) > 0, tit, sum, undone, undoneN: u,

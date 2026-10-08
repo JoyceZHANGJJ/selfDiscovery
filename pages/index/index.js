@@ -9,7 +9,7 @@ const app = getApp();
 // 「有默认值」的选项组：见 ensureModuleDefaults——这几个组进入对应维度时会自动补一个默认值，
 // 既然有默认值就不该被点空（再点已选中的那一个＝什么也没发生，保持必选）
 // 待办的「优先级」也在内：它与类别一样有默认值，不该被点空（参见 PRIO_DEFAULT）
-const REQUIRED_PICK = { wantKind: 1, todoKind: 1, todoPrio: 1, jotKind: 1, obsStart: 1, todayBat: 1, divType: 1, bookKind: 1 };
+const REQUIRED_PICK = { wantKind: 1, todoKind: 1, todoPrio: 1, jotKind: 1, obsStart: 1, todayBat: 1, divType: 1, bookKind: 1, bookStatus: 1 };
 
 // 只在「回顾」态出现的自由字段：占卜的「回顾」与「准确率」。
 // 两个都属于「过一段时间才有的东西」——占卜当下既没有实际发展，也没有准不准可言，
@@ -161,6 +161,10 @@ Page(pageBase({
       let cur = this.data.tag;
       if (!mods.some(m => m.k === cur)) { cur = def; this.setData({ tag: def }); }
       this.st.tag = cur;
+      // 「今日」一日一记：进页面（尤其重启 / 从后台回来）若今天已记过，要按库里记录
+      // 回显只读锁定态，不能停在空白新建——之前 todayLocked 只在切维度（onTag）时才算，
+      // 首屏停在 today 会错误地显示「未填写」。这里统一在进页时判定一次（与 onTag 同口径）
+      if (cur === 'today') this.st.todayLocked = this._todayLockedNow();
       // 进入 可做 / 待办 / 随记 时若还没选必选项，补上默认（分类 / 类别；以往靠 onTag 触发，这里兜底）
       this.ensureModuleDefaults(cur);
       // 回到记页且没有待编辑记录时，清掉可能残留的编辑态，避免所有操作一直被拦
@@ -176,7 +180,7 @@ Page(pageBase({
       this.rotateGreet();
       // 数据就绪后再渲染真实内容，避免首屏出现空卡片「闪一下」；
       // 必须在 recompute() 之前置 ready:true，否则流转聚焦时真实输入框尚未渲染，scroll/聚焦都失效
-      this.setData({ ready: true });
+      this.setData({ ready: true, todayLocked: this.st.todayLocked });
       this.recompute();
       this._measureBar();   // 量一下吸底操作行的实际高度（键盘弹出时输入框要给它让位）
     });
@@ -378,7 +382,7 @@ Page(pageBase({
       const O = store.getOPT(src);
       // 「沉浸 / 精力」是写死在代码里的固定选项组（fx:）：它们天然不在选项池里（ensureRecOpts 也特意跳过），
       // 所以不能按「池里有这个值 → 选中」来判断，否则这两行编辑时永远空着（值会被塞进 typed，而 fx 行不渲染 typed）
-      const isFixed = src.indexOf('fx:') === 0;
+      const isFixed = src.indexOf('fx:') === 0 || store.isFixedGroup(src);
       // 不在选项池里的历史值：还能手填的组放进输入框；已经不给手填的组（noInput）
       // 也放进选中态 —— 由 buildComposer 作为临时 chip 展示，否则会在保存时被悄悄丢掉
       if (isFixed || O.indexOf(val) >= 0 || store.isNoInput(src)) (this.st.pick[src] = this.st.pick[src] || []).push(val);
@@ -628,10 +632,10 @@ Page(pageBase({
     }
     const items = fitems.map((it, idx) => {
       if (it.g) {
-        // 是否给「✎ 管理」入口：纯图示档位组（剩余能量 / 心情指数）不给——
-        // 它们不是选项池，那一页只会是个空列表，加进去的词也永远不会出现在格子上。
-        // 判据统一查 store.isGraphGroup，别在这儿写死组名（见 store 的 GRAPH_GROUPS 注释）
-        const canManage = !store.isGraphGroup(it.g);
+        // 是否给「✎ 管理」入口：纯图示档位组（剩余能量 / 心情指数）与固定选项组（书·剧「状态」）都不给——
+        // 它们不是选项池、选项写死在代码里（见 store 的 GRAPH_GROUPS / FIXED_OPT_GROUPS），
+        // 那一页只会是个空列表，加进去的词也永远不会出现。判据统一查 store.isGraphGroup / isFixedGroup
+        const canManage = !store.isGraphGroup(it.g) && !store.isFixedGroup(it.g);
         // 5 格量（今日的剩余能量 / 心情指数，书·剧的精彩 / 喜爱程度）：同一套渲染，
         // 只是档位表与名字不同。判据统一查 store.scaleOf——它在 SCALES 里查得到就是 5 格量，
         // 不在这儿写死组名：写死的话新加一组要同时改三处（这里、wxml、wxss），漏一处不报错，
@@ -650,12 +654,18 @@ Page(pageBase({
           // 不在 wxml 里比对组名——那样每加一组 5 格量都要改模板一次，漏改就退化成普通 chip。
           return { type: 'g', first: idx === 0, group: it.g, label: store.GLABEL[it.g], single: true, noInput: true, canManage: false, opts, lv, cur, sub: false, hide: false, graph: true, kind: store.scaleKind(it.g), below: !!it.below };
         }
-        const opts = store.getOPT(it.g).map(v => ({ v, on: (this.st.pick[it.g] || []).indexOf(v) >= 0 }));
+        // 固定选项组（bookStatus 等）选项来自代码里的固定表（见 store.fixedGroupOpts），不走 OPT 池；
+        // 普通组才从 OPT 取
+        const isFixedGroup = store.isFixedGroup(it.g);
+        const optsSrc = isFixedGroup ? store.fixedGroupOpts(it.g) : store.getOPT(it.g);
+        const opts = optsSrc.map(v => ({ v, on: (this.st.pick[it.g] || []).indexOf(v) >= 0 }));
         // 历史手填值不在选项池里（这个组后来取消了手填）：作为临时 chip 排在最前，
-        // 保证看得见、点一下能取消，不会在保存时被悄悄丢掉
-        (this.st.pick[it.g] || []).forEach(v => {
-          if (store.getOPT(it.g).indexOf(v) < 0) opts.unshift({ v, on: true });
-        });
+        // 保证看得见、点一下能取消，不会在保存时被悄悄丢掉。固定组选项写死、不需要这步
+        if (!isFixedGroup) {
+          (this.st.pick[it.g] || []).forEach(v => {
+            if (optsSrc.indexOf(v) < 0) opts.unshift({ v, on: true });
+          });
+        }
         // 手填只记这一条，不进选项池（要复用同一句话，去「✎ 管理」里加）
         const ph = '也可以手填，和选项一起记下（不加入选项池）';
         // sub：情绪下面的档位副行——不显示标题、不给管理入口，chip 小一号，未选情绪时隐藏
@@ -1080,6 +1090,7 @@ Page(pageBase({
     if (t === 'obs' && store.obsStartDefault) d.obsStart = (store.obsStartDefault() || [])[0];
     if (t === 'div' && store.divTypeDefault) d.divType = (store.divTypeDefault() || [])[0];
     if (t === 'book' && store.bookKindDefault) d.bookKind = (store.bookKindDefault() || [])[0];
+    if (t === 'book' && store.bookStatusDefault) d.bookStatus = (store.bookStatusDefault() || [])[0];
     return d;
   },
   // 记卡里有内容时不切维度（切了整块内容就没了，且没有撤销），提示先处理掉
@@ -1315,6 +1326,8 @@ Page(pageBase({
     if (t === 'div' && !this.st.pick['divType']) this.st.pick['divType'] = store.divTypeDefault();
     // 书·剧：类别必选，进入就默认选好「小说」（想看漫剧随时点另一个）
     if (t === 'book' && !this.st.pick['bookKind']) this.st.pick['bookKind'] = store.bookKindDefault();
+    // 书·剧：状态默认「已完结」（固定组，不进选项池；见 store.FIXED_OPT_GROUPS）
+    if (t === 'book' && !this.st.pick['bookStatus']) this.st.pick['bookStatus'] = store.bookStatusDefault();
   },
 
   afterSave(rec) {
@@ -1803,7 +1816,7 @@ Page(pageBase({
     const g = e.currentTarget.dataset.g;
     // 纯图示档位组（剩余能量 / 心情指数）没有选项池，入口已在渲染层去掉（canManage=false）。
     // 这里再兜一层：万一有别条路径传了这两个组进来，也不能把人送进一个空白的管理页
-    if (store.isGraphGroup(g)) {
+    if (store.isGraphGroup(g) || store.isFixedGroup(g)) {
       console.warn('[manage] 纯图示档位组没有选项池，已拦下：', g);
       return;
     }
