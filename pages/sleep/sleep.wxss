@@ -76,6 +76,8 @@
 .slt { position: relative; padding: 4px 0 8px 24px; }
 /* 轴线画在每一行上（首行从圆点起、末行到圆点止、只有一行时不画），随行高自适应不会断 */
 .sli { position: relative; display: flex; align-items: center; gap: 9px; padding: 9px 0; }
+/* 晚睡原因：放在右侧时长胶囊左边；过长省略号，不抢时刻 / 夜标签的注意力 */
+.sli-note { flex: none; max-width: 42%; font-size: 12px; line-height: 1.2; color: var(--ink4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sli + .sli { border-top: 1px solid var(--line); }
 .sli::before { content: ''; position: absolute; left: -19px; top: 0; bottom: 0; width: 1px; background: var(--line); }
 .sli:first-child::before { top: 15px; }                 /* 首行：从圆点开始 */

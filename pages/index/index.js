@@ -46,7 +46,8 @@ Page(pageBase({
     ready: false,
     loadFail: false,     // 首次取数失败（云环境没开 / 网络问题）：撤掉骨架屏，给一个能点的重试
     modules: [],
-    tag: 'obs',
+    tag: 'today',
+    tagScrollId: '',   // 维度标签滚动条：当前选中维度滚入可视区（见 .tagrow-scroll 的 scroll-into-view）
     greet: { t: '', s: '' },
     composer: {},
     recent: [],
@@ -98,7 +99,7 @@ Page(pageBase({
   },
 
   st: {
-    tag: 'obs', main: '', mainPick: null, pick: {}, typed: {}, free: {},
+    tag: 'today', main: '', mainPick: null, pick: {}, typed: {}, free: {},
     // 待办的「计划完成」（记录顶层字段 dueTs，不在 ext 里）：0＝没计划，是常态。
     // 不点就一直是 0，绝不自动补日期；点「无」也能回到 0
     due: 0,
@@ -155,7 +156,7 @@ Page(pageBase({
       // 没拉到：撤掉骨架屏、显示可点的重试（以前这里什么都不做，页面会永远停在骨架屏）
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       const mods = this.modulesVM();
-      const def = mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k);
+      const def = mods.some(m => m.k === 'today') ? 'today' : (mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k));
       // 当前选中无效（如删掉了「观察」维度）时，回落到默认：有观察则观察，否则第一个维度
       let cur = this.data.tag;
       if (!mods.some(m => m.k === cur)) { cur = def; this.setData({ tag: def }); }
@@ -789,6 +790,7 @@ Page(pageBase({
     const patch = {
       modules: this.modulesVM(),
       tag: this.st.tag,
+      tagScrollId: 'tg-' + this.st.tag,
       composer,
       focusIdx: willFocus ? -1 : fi,
       recent: recs,
@@ -1000,7 +1002,7 @@ Page(pageBase({
   resetToInitial() {
     this.clearFloats();
     const mods = this.modulesVM();
-    const def = mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k);
+    const def = mods.some(m => m.k === 'today') ? 'today' : (mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k));
     this.st.edit = null;
     this.st.tag = def;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};

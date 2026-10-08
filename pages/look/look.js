@@ -48,6 +48,7 @@ Page(pageBase({
     // 维度行两端渐变提示（横向滚动时各自独立，见 pageBase.applyScrollFade）
     dimFade: false,
     dimFadeL: false,
+    dimScrollId: 'ft-all',   // 维度行滚动条：当前选中维度滚入可视区（见 .dimrow-scroll 的 scroll-into-view）
     recs: [],          // 已加载（装饰后）的记录，按 ts 倒序
     days: [],
     stats: {},
@@ -85,7 +86,7 @@ Page(pageBase({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 1, theme: store.curTheme() });
     this.setData({ sel: null, selRec: null, delUndo: null });
     // 兜底：若此前停留在已下架的「做了」维度，回到「全部」
-    if (this.data.filter === 'done') this.setData({ filter: 'all', stateFilter: 'all' });
+    if (this.data.filter === 'done') this.setData({ filter: 'all', stateFilter: 'all', dimScrollId: 'ft-all' });
     store.ensureAll().then(ok => {
       // 基础数据（记录 / 选项池）没拉到：不用再等分页了，直接给失败态
       if (!ok) { this.setData({ loadFail: true, ready: true, loading: false }); return; }
@@ -765,7 +766,7 @@ Page(pageBase({
     this.data.stateFilter = 'all';
     // 子筛选（可做的流转状态 / 觉察的喜恶）只属于各自的模块，切模块时归零
     this.data.kindFilter = 'all';
-    this.setData({ filter: this.data.filter, stateFilter: 'all', kindFilter: 'all', sel: null, selRec: null });
+    this.setData({ filter: this.data.filter, stateFilter: 'all', kindFilter: 'all', sel: null, selRec: null, dimScrollId: 'ft-' + this.data.filter });
     this.resetLoad();
     // 换维度后把这一页的标题对齐到屏幕顶部（像切 tab 那样主动滚一下）：
     // 各维度时间线长短差很多，不主动对齐就会被浏览器被动拉回，看着像整页在跳
@@ -851,7 +852,7 @@ Page(pageBase({
     this.clearFloats();
     if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
     this.data.filter = 'all'; this.data.stateFilter = 'all'; this.data.kindFilter = 'all'; this.data.q = '';
-    this.setData({ filter: 'all', stateFilter: 'all', kindFilter: 'all', q: '', sel: null, selRec: null });
+    this.setData({ filter: 'all', stateFilter: 'all', kindFilter: 'all', q: '', sel: null, selRec: null, dimScrollId: 'ft-all' });
     this.resetLoad();
     wx.pageScrollTo({ scrollTop: 0, duration: 0 });
   },

@@ -30,10 +30,10 @@
            渐变提示与记页维度标签行同一套（见 checkDimFade）——两侧各自独立，
            往回滚时左边那排字被硬切掉一半会看着像页面坏了 -->
       <view class="dimrow-wrap">
-        <scroll-view class="dimrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" bindscroll="onDimScroll">
+        <scroll-view class="dimrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" scroll-into-view="{{dimScrollId}}" scroll-with-animation bindscroll="onDimScroll">
           <view class="dimrow">
-            <view class="ft {{filter==='all'?'on':''}}" data-f="all" bindtap="onFilter">全部</view>
-            <view wx:for="{{modules}}" wx:key="k" class="ft {{filter===item.k?'on':''}}" data-f="{{item.k}}" bindtap="onFilter">
+            <view class="ft {{filter==='all'?'on':''}}" id="ft-all" data-f="all" bindtap="onFilter">全部</view>
+            <view wx:for="{{modules}}" wx:key="k" id="ft-{{item.k}}" class="ft {{filter===item.k?'on':''}}" data-f="{{item.k}}" bindtap="onFilter">
               <text class="fd" style="background:{{item.c}}"></text>{{item.n}}
             </view>
           </view>

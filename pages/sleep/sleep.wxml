@@ -203,6 +203,7 @@
                     bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
                 <text class="sli-t">{{item.t}}</text>
                 <text class="sli-d">{{item.d}}</text>
+                <text wx:if="{{item.note}}" class="sli-note">{{item.note}}</text>
                 <view class="sli-x"><text class="sl-tag {{item.after ? 'a' : ''}}">{{item.rel}}</text></view>
               </view>
             </view>

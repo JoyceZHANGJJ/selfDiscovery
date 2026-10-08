@@ -32,7 +32,7 @@ page, .app {
 .composer { background: radial-gradient(140% 140% at 50% 25%, var(--surface, #FFFFFF) 35%, var(--bg, #FFFFFF) 92%); border: 0; border-radius: var(--r-card); padding: 10px 16px 16px; margin: 0 0 22px; box-shadow: 0 14px 36px rgba(35,35,31,.08), 0 3px 10px rgba(35,35,31,.05); }
 .body-top .composer { padding-top: 10px; padding-left: 14px; padding-right: 14px; }
 .composer:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
-.tagrow { display: flex; gap: 14px; margin: 0 0 12px; padding-bottom: 4px; flex-wrap: nowrap; align-items: center; }
+.tagrow { display: flex; gap: 14px; margin: 0 0 8px; padding-bottom: 4px; flex-wrap: nowrap; align-items: center; }
 .tagrow-scroll { width: 100%; white-space: nowrap; }
 .tagrow .tg { flex-shrink: 0; }
 .tagrow-wrap { position: relative; }
@@ -47,17 +47,22 @@ page, .app {
 .tg.on .dot { background: currentColor; }
 .big-in { width: 100%; border: 0; outline: none; resize: none; font-size: 14px; font-family: inherit; color: var(--ink, #22252A); background: var(--soft, #F4F5F5); border-radius: 12px; padding: 8px 12px; line-height: 21px; min-height: 52px; caret-color: var(--accent, #2F8F7B); box-sizing: border-box; display: block; }
 .big-in::placeholder { font-size: 14px; color: var(--ink4); }
-.extra { margin-top: 14px; padding-top: 0; border-top: 0; }
+/* 组间距 16px：与「标题到本组选项」的距离（约 4px）拉开，
+   能看出「标题 + 它下面的选项」是一组、组与组之间是断开的，又不至于松散 */
+.extra { margin-top: 16px; padding-top: 0; border-top: 0; }
 .extra.first { margin-top: 7px; }
-/* 没有标题的细节项（如「感受」组里跟在选项后面的自由输入框）：收紧间距，读起来和上一组是一体 */
-.extra.nlab { margin-top: 8px; }
+/* 没有标题的细节项（如「感受」组里跟在选项后面的自由输入框）：收紧间距（4px），
+   读起来和上面的选项是一组；标题到本组选项另有 .qrow 的 4px，两处口径一致 */
+.extra.nlab { margin-top: 4px; }
+/* 「具体的描述」输入框（觉察「发生了什么？」等）：紧跟主项选项，是主项的一部分，不吃组间距 */
+.extra.descrow { margin-top: 4px; }
 /* 「感受」组下面的档位副行（觉察）：不显示标题、没有管理入口、chip 小一号，
    读起来是上面情绪的修饰而不是另一组（未选情绪时整行不渲染，见 index.wxml） */
 .extra.sub .chips .chip { font-size: 11.5px; }
 .extra-h { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink3); letter-spacing: .02em; }
 .ehead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2px; }
 .ehead .et { font-size: 11.5px; color: var(--ink3); letter-spacing: .04em; }
-.qrow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 11px 0 6px; }
+.qrow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 10px 0 4px; }
 .qrow:first-child { margin-top: 0; }
 .qrow .ql { font-size: 12px; color: var(--ink3); }
 /* 命中区补齐（N8）：小元素不好点，用一层**透明**的 ::after 把可点范围撑到 44px——
@@ -66,16 +71,24 @@ page, .app {
 .qrow .mg, .ehead .mg { font-size: 11.5px; color: var(--ink3); border: 1px solid var(--line2); border-radius: 99px; padding: 1px 9px; background: #fff; position: relative; }
 /* 「✎ 管理」实际只有约 19px 高 → 撑到约 43px */
 .qrow .mg::after, .ehead .mg::after { content: ''; position: absolute; left: -8px; right: -8px; top: -12px; bottom: -12px; }
+/* 5 格量（今日能量 / 心情、书·剧的精彩程度 / 喜爱程度）：标题与五格条同一行，
+   五格紧跟在标题后（不推到行末居右）。自身不带外边距——行距交给外层：
+   今日组内由 .extra.cattop.gextra 的 10px 提供，书·剧两组之间仍走 .extra 的 16px 组距 */
+.qrow.graph-row { align-items: center; justify-content: flex-start; margin: 0; }
+.qrow.graph-row .ql { flex: none; }
+.qrow.graph-row .tl-bar { flex: none; width: 160px; max-width: 160px; margin-left: 10px; }
 .q { font-size: 12px; color: var(--ink3); margin: 9px 0 6px; }
 .q:first-child { margin-top: 0; }
-/* 行间距 4px → 12px：给 chip 的可点区留出位置（见下面 .chip::after）。
-   chip 之间挨得太近（原来只有 4px），把命中区扩到 44px 会互相抢——
-   后面的 chip 绘制在前面之上，结果就是「点上一行 chip 的下半，命中的是下一行」。
-   所以这里让间距与扩展量对齐：各扩 6px、间距 12px，正好相接、不重叠 */
-.chips { display: flex; flex-wrap: wrap; gap: 12px 14px; align-items: baseline; }
-/* 命中区补齐：选项 chip 约 21px 高 → 撑到约 33px（上下各 6px，与 .chips 的行间距对齐） */
-.chip { font-size: 13.5px; padding: 2px 0; background: none; border: 0; color: var(--ink); position: relative; }
-.chip::after { content: ''; position: absolute; left: -4px; right: -4px; top: -6px; bottom: -6px; }
+/* 行距 8px / 列距 12px：同组选项换行时靠得近些（行距太大，两行会被读成两组）。
+   仍与 .chip::after 的命中扩展对齐：上下各扩 4px、左右各扩 4px——
+   行距 8px＝上 4＋下 4 正好相接不重叠；列距 12px＞左右 8px，也不会互相抢点击 */
+.chips { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+/* 命中区补齐：选项 chip 约 19px 高 → 撑到约 27px（上下各 4px，与 .chips 行间距对齐）。
+   line-height 收到 1.25：默认行高在文字下方留白太多，行与行、行与输入框之间显得空 */
+.chip { font-size: 13.5px; line-height: 1.25; padding: 2px 0; background: none; border: 0; color: var(--ink); position: relative; }
+.chip::after { content: ''; position: absolute; left: -4px; right: -4px; top: -4px; bottom: -4px; }
+/* 紧跟选项的手填输入框（如「此刻想做的事」下面的「也可以手填」）：贴住 chips，和选项读成一组 */
+.chips + .mini-in { margin-top: 2px; }
 .chip.on { color: var(--accent); font-weight: 700; }
 .mini-in { width: 100%; resize: none; border: 1px solid transparent; border-radius: 11px; padding: 0 11px; height: 34px; line-height: 34px; font-size: 13.5px; font-family: inherit; outline: none; background: var(--soft, #F4F5F5); color: var(--ink, #22252A); caret-color: var(--accent, #2F8F7B); box-sizing: border-box; display: block; }
 textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-height: 20px; }

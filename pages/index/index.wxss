@@ -22,11 +22,22 @@
 /* 最近列表的手势提示：点一下出操作条 / 左滑直接改 / 长按复制（与清单页同一套小字） */
 .qhint { font-size: 11.5px; color: var(--ink3); margin: -5px 0 9px; }
 .composer .big-in { margin-top: 10px; }
-.composer .extra:first-child { margin-top: 14px; }
-/* 待办 / 随记：输入框上方的「类别」行。它紧跟维度标签行，要和非纯输入型模块的
-   「什么事 / 归类」那一行一样紧（间距全部来自 .tagrow 的 12px + 4px），
-   所以去掉 .extra 默认的 margin-top:14px，否则会比「什么事」多出一截 */
-.composer .extra.cattop { margin-top: 0; }
+.composer .extra:first-child { margin-top: 6px; }
+/* 待办 / 随记：「类别 / 优先级 / 计划完成」各组的组距与其他维度统一（.extra 的 16px）；
+   只有紧跟维度标签行的第一组保持贴紧（间距全部来自 .tagrow 的 12px + 4px，
+   和非纯输入型模块的「什么事 / 归类」那一行同款紧），所以仅 first-child 去掉组距 */
+.composer .extra.cattop { margin-top: 16px; }
+/* 第一组（类别 / 维度首行）紧贴维度条：.composer 里 .extra 从不是 :first-child
+   （前面恒有问候行 greet-row 与维度条 tagrow-wrap），所以 first-child 规则在这里命不中。
+   改用相邻选择器，让 plain 模块（待办 / 随记 / 占卜 / 书·剧）的首组与维度条的距离，
+   和 non-plain 模块（觉察 / 此刻）主项紧贴维度条一致（间距只来自 .tagrow 的 8px） */
+.tagrow-wrap + .extra.cattop { margin-top: 0; }
+/* 今日的三件套——剩余能量 / 心情指数 / 能量说明输入框——是一个组：
+   组内三段间距（维度条→能量行、能量行→心情行、心情行→输入框）统一 10px
+   （输入框那段的 10px 来自 .composer .big-in，正好同口径）。
+   这两行是 graph 量，用 .gextra 与待办等模块「类别→优先级」的 16px 组距区分开：
+   它们不是两组，是同组里挨着的三行 */
+.composer .extra.cattop.gextra { margin-top: 10px; }
 /* 记卡底部：按钮行（.sbbtns）+ 「已记入 …」确认条（.sbline，就在按钮下方）。
    确认条属于记卡的一部分（不再浮在屏幕底部），所以它出现时记卡撑开、消失后收回；
    吸底块整体高度跟着变，但底边始终吸在 bottom:barBottom 处，所以按钮会往上让出这一行 */

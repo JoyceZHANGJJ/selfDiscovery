@@ -14,7 +14,7 @@ const datePrefix = date.datePrefix;
 const MODULES = [
   // 「今日」：一日一记，**主项是当天剩余能量**（5 格能量条，1 很低 … 5 满），
   // 「能量说明」的那句话是**附属内容**（可不写）——记录行里能量格在上、那句话在下；
-  // 放在第一个（用户一进记页最先看到），但默认选中维度仍是「觉察」（见 index 的 resetToInitial）；
+  // 放在第一个（用户一进记页最先看到），默认选中维度也是「今日」（见 index 的 onShow / resetToInitial）；
   // 不进时间线行——内容显示在所在日期行的旁边（见 look 的 groupByDay / grp.today）
   { k: 'today', n: '今日', c: '#B08968' },
   { k: 'obs', n: '觉察', c: '#7C9A86' },
@@ -479,6 +479,7 @@ function sleepStats(recs, opts) {
       t: minTxt(off),
       after: off >= EDGE,                // 基准点之后（含正好那一分）
       d: sleepNightLabel(k),
+      note: r.sleepNote || '',           // 晚睡原因（点「睡」晚于基准点时记的，可不填）
       rel: df === 0 ? '正好' + atSp(AT) + AT : AT + atSp(AT) + (df > 0 ? '后 ' : '前 ') + gapTxt(Math.abs(df))
     };
   });
@@ -1173,7 +1174,7 @@ const TIME_FIELDS = [
   'calTs'    // 最后一次「推到手机日历」（0＝没推过）：只作回显，小程序读不回系统日历
 ];
 // 文本类：字符串，'' ＝没填
-const TEXT_FIELDS = ['status', 'ref', 'refTxt'];
+const TEXT_FIELDS = ['status', 'ref', 'refTxt', 'sleepNote'];
 const EXTRA_FIELDS = TEXT_FIELDS.concat(TIME_FIELDS);   // 写云时按同一份清单带上
 
 // 给一条记录补上 ago / day

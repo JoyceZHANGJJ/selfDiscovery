@@ -41,9 +41,9 @@
 
         <!-- 模块标签（横向滚动，维度多也不挤） -->
         <view class="tagrow-wrap">
-          <scroll-view class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" bindscroll="onTagScroll" bindtouchstart="onTagTouch">
+          <scroll-view class="tagrow-scroll" scroll-x enable-flex enhanced show-scrollbar="{{false}}" scroll-into-view="{{tagScrollId}}" scroll-with-animation bindscroll="onTagScroll" bindtouchstart="onTagTouch">
             <view class="tagrow">
-              <view wx:for="{{modules}}" wx:key="k" class="tg {{tag===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTag">
+              <view wx:for="{{modules}}" wx:key="k" id="tg-{{item.k}}" class="tg {{tag===item.k?'on':''}}" data-k="{{item.k}}" bindtap="onTag">
                 <view class="dot" style="background:{{item.c}}"></view>{{item.n}}
               </view>
             </view>
@@ -95,29 +95,32 @@
         <block wx:if="{{composer.plain && !(tag==='today' && todayLocked && !editing)}}">
           <!-- 「✎ 管理」只给真正的选项池：纯图示档位组（剩余能量 / 心情指数）的 canManage 是 false，
                这两栏的 5 格写死在代码里，没有可增删的选项——给个入口只是送用户进一个空白页 -->
-          <view wx:for="{{composer.catItems}}" wx:key="index" wx:for-item="it" class="extra cattop">
-            <view class="qrow"><view class="ql">{{it.label}}</view><view wx:if="{{it.canManage}}" class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
-            <view class="chips">
-              <!-- 5 格量（今日的能量 / 心情，书·剧的精彩 / 喜爱）：同一套画法，只是这里可点。
-                 点第 N 格＝选 N 格。未选时（新建）一格都不亮，必须自己点一下才算选过。
+          <view wx:for="{{composer.catItems}}" wx:key="index" wx:for-item="it" class="extra cattop {{it.graph?'gextra':''}}">
+            <!-- 5 格量（今日的能量 / 心情）：标签与格子同一行（见 wxss 的 .graph-row）。
+                 点第 N 格＝选 N 格；未选时（新建）一格都不亮，必须自己点一下才算选过。
                  cur==当前档位，用 .cur 标出来，方便看清落在哪一格。
-                 it.graph 由 store.scaleOf 判定（见 index 的 buildComposer），it.kind 决定颜色
-                 （见 wxss 的 .ebar-mood / .ebar-wow / .ebar-love），
-                 并排的两条量才不会看成同一个。 -->
-              <block wx:if="{{it.graph}}">
+                 it.graph 由 store.scaleOf 判定，it.kind 决定颜色（.ebar-mood 等），
+                 并排两条量才不会看成同一个 -->
+            <block wx:if="{{it.graph}}">
+              <view class="qrow graph-row">
+                <view class="ql">{{it.label}}</view>
                 <view class="tl-bar ebar ebar-{{it.kind}}">
                   <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this"
                         class="tl-cell ebar-cell {{index<it.lv?'on':''}} {{it.cur===o.v?'cur':''}}"
                         data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip"
                         hover-class="ebar-cell-hover" hover-stay-time="80"></view>
                 </view>
-              </block>
-              <block wx:else>
+              </view>
+            </block>
+            <!-- 普通类别 chips（待办 / 随记的类别）：标签一行、chips 在其下，保持原样 -->
+            <block wx:else>
+              <view class="qrow"><view class="ql">{{it.label}}</view><view wx:if="{{it.canManage}}" class="mg" data-g="{{it.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
+              <view class="chips">
                 <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">
                   <text>{{o.v}}</text>
                 </view>
-              </block>
-            </view>
+              </view>
+            </block>
           </view>
           <!-- 待办的「计划完成」：与上面类别 / 优先级同一个位置——先定是什么、多紧要、打算哪天做完，
                再写内容。dueTs 是记录的**顶层字段**（不在 ext 那两条对齐数组里），
@@ -151,20 +154,25 @@
                    不补一段 g 的话，这三行在页面上根本不出现（看着像「评不了」）。
                    5 格量与普通 chips 各走各的分支，判据与上面 catItems 里那套一致。 -->
               <block wx:if="{{it.type==='g'}}">
-                <view wx:if="{{it.label}}" class="qrow"><view class="ql">{{it.label}}</view></view>
-                <view class="chips">
-                  <block wx:if="{{it.graph}}">
+                <!-- 5 格量（书·剧的精彩程度 / 喜爱程度）：与今日的能量 / 心情同一套 graph-row——
+                     标签与五格条同一行；两组之间的组距仍由 .extra 的 16px 提供，不变 -->
+                <block wx:if="{{it.graph}}">
+                  <view class="qrow graph-row">
+                    <view class="ql">{{it.label}}</view>
                     <view class="tl-bar ebar ebar-{{it.kind}}">
                       <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this"
                             class="tl-cell ebar-cell {{index<it.lv?'on':''}} {{it.cur===o.v?'cur':''}}"
                             data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip"
                             hover-class="ebar-cell-hover" hover-stay-time="80"></view>
                     </view>
-                  </block>
-                  <block wx:else>
+                  </view>
+                </block>
+                <block wx:else>
+                  <view wx:if="{{it.label}}" class="qrow"><view class="ql">{{it.label}}</view></view>
+                  <view class="chips">
                     <view wx:for="{{it.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{it.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
-                  </block>
-                </view>
+                  </view>
+                </block>
               </block>
               <block wx:else>
                 <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>

@@ -27,7 +27,11 @@ Component({
     sleepOn: false,
     wakeOn: false,
     slUndo: null,
-    slBusy: false   // 写入中：连点两次不重复写
+    slBusy: false,  // 写入中：连点两次不重复写
+    // 「睡原因」弹层：只在「睡晚于基准点」时弹出，可不填；已填过则回显
+    reasonOpen: false,
+    reasonVal: '',
+    reasonAnchor: ''
   },
   lifetimes: {
     attached() {
@@ -112,6 +116,15 @@ Component({
         this.syncRec();
         this._startSlUndo();
         this._notifyRec();
+        // 记的是「睡」且晚于基准点（超出睡的基准点）→ 弹「睡原因」，可不填；已填过则回显
+        if (!isW && store.sleepMin(res.rec.ts) > store.sleepAnchor()) {
+          this._reasonRec = res.rec;
+          this.setData({
+            reasonOpen: true,
+            reasonVal: res.rec.sleepNote || '',
+            reasonAnchor: store.anchorTxt(store.getAnchor('sleep'))
+          });
+        }
       }).catch(() => {
         this.setData({ slBusy: false });
         wx.showToast({ title: '没记上，再试一次', icon: 'none' });
@@ -136,6 +149,19 @@ Component({
       wx.showToast({ title: res.kind === 'new' ? '已撤销' : '已改回 ' + back, icon: 'none' });
     },
     onSlNoop() {},
+    // 「睡原因」弹层：输入、保存（写回记录并持久化）、跳过（关闭，不动已有值）
+    onReasonInput(e) { this.setData({ reasonVal: e.detail.value }); },
+    onReasonSave() {
+      const rec = this._reasonRec;
+      const val = (this.data.reasonVal || '').slice(0, 200);
+      if (rec) {
+        rec.sleepNote = val;          // 内存里同一份对象，sleep 页回来即见
+        store.updateRecord(rec);      // 落到云端（sleepNote 已在 TEXT_FIELDS 里）
+      }
+      this.closeReason();
+    },
+    onReasonSkip() { this.closeReason(); },
+    closeReason() { this._reasonRec = null; this.setData({ reasonOpen: false, reasonVal: '', reasonAnchor: '' }); },
     _startSlUndo() {
       this._stopSlUndo();
       this._slTimer = setTimeout(() => { this._slTimer = null; this.setData({ slUndo: null }); }, 3200);

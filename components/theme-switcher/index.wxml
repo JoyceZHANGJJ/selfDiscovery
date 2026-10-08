@@ -26,4 +26,19 @@
     <view class="tx">{{slUndo.msg}}</view>
     <view class="tb" catchtap="onSlUndo">撤销</view>
   </view>
+
+  <!-- 「睡原因」弹层：睡着晚于基准点时由 onSleep 触发；可不填（点「跳过」），已填过则回显。
+       catchtap 拦住，别让这一下冒泡到圆点去切主题 -->
+  <view wx:if="{{reasonOpen}}" class="rs-mask" catchtap="onReasonSkip">
+    <view class="rs-card" catchtap="onSlNoop">
+      <view class="rs-title">晚睡原因是？</view>
+      <view class="rs-sub">入睡晚于基准点 {{reasonAnchor}}（可不填）</view>
+      <input class="rs-input" value="{{reasonVal}}" bindinput="onReasonInput"
+             placeholder="比如 加班 / 刷手机 / 睡不着…" maxlength="200" confirm-type="done" focus="{{true}}" />
+      <view class="rs-actions">
+        <view class="rs-btn ghost" catchtap="onReasonSkip">跳过</view>
+        <view class="rs-btn solid" catchtap="onReasonSave">保存</view>
+      </view>
+    </view>
+  </view>
 </view>
