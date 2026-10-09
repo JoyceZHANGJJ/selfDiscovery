@@ -16,6 +16,7 @@ const pageBase = require('../../utils/pageBase.js');
 
 const TYPES = [
   { k: 'profile', n: '深度报告' },
+  { k: 'profilePro', n: '高级版' },
   { k: 'persona', n: '画像' },
   { k: 'day', n: '日' },
   { k: 'week', n: '周' },
@@ -27,6 +28,7 @@ const TYPES = [
 // 必须与云函数 PROMPT_BUILTIN 的槽位名、以及云函数 promptAdopt 里的映射完全一致。
 const TYPE_SLOT = {
   profile: 'report.core',
+  profilePro: 'report.corePro',
   persona: 'persona.full',
   day: 'review.dayWeek',
   week: 'review.dayWeek',
@@ -41,6 +43,7 @@ const SLOT_NAME = {
   'review.dayWeek': '周期复盘 · 简版（日 / 周）',
   'review.monthYear': '周期复盘 · 完整版（月 / 年）',
   'report.core': '人物深度报告 · 核心规则',
+  'report.corePro': '深度分析·高级版 · 核心规则',
   'persona.full': '个人画像 · 完整版',
   'persona.lite': '个人画像 · 轻量版',
   'preset.focusBody': '附加 · 聚焦身心',

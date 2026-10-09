@@ -36,7 +36,9 @@
 | `ptestGet` | 小程序（试跑页） | 是 | 否 | 否 | 读一条试跑的完整结果 |
 | `ptestDel` | 小程序（试跑页） | 是 | 否 | 是（删一条） | 删掉一条试跑记录 |
 | `profileGet` | 小程序（进页先调） | 是 | 否 | 否 | 读已存画像（秒回，不花额度） |
+| `profileProGet` | 小程序（进页先调） | 是 | 否 | 否 | 读已存「深度分析·高级版」（秒回，不花额度） |
 | `profile` | 小程序（生成按钮）+ 控制台 | 是 | **是** | 是 | 按**全部历史记录**生成/ 覆盖个人画像（七章报告） |
+| `profilePro` | 小程序（生成按钮）+ 控制台 | 是 | **是** | 是 | 按**全部历史记录**生成/ 覆盖「深度分析·高级版」（独立提示词 report.corePro + 独立模型 glm-4-plus + 独立集合 profilePro） |
 | `personaGet` | 小程序（进页先调）+ 控制台 | 是 | 否 | 否 | 读**增量画像**（③）最新版 + 历史版本摘要 |
 | `persona` | 小程序（生成按钮）+ 控制台 | 是 | **是** | 是（只写 `persona`） | 增量更新画像（③）：带上一版做增量，不设冷却 |
 | `personaVer` | 小程序（看历史版本） | 是 | 否 | 否 | 读某个历史版本的完整画像 |
@@ -50,7 +52,7 @@
 | `promptRevert` | 小程序（提示词管理页） | 是 | 否 | 否 | 切回某个历史版本（走一次正常保存，新 rev 恒 +1） |
 | `promptAdopt` | 小程序（试跑页） | 是 | 否 | 否 | **把某次试跑用的正文设为线上生效**——试跑→线上的桥 |
 
-> `list` / `profileGet` / `ptestList` / `ptestGet` / `promptPreview` 不花大模型额度，可以随便点。
+> `list` / `profileGet` / `profileProGet` / `ptestList` / `ptestGet` / `promptPreview` 不花大模型额度，可以随便点。
 > `gen` / `backfill` / `profile` / `promptTest` 每次真正调用大模型都算一次额度，见「额度与幂等」。
 > `promptTest` 是唯一「调模型但**不写正式文档**」的 action——试跑错多少次都不影响线上回看与画像。
 >
@@ -111,7 +113,7 @@
 { "action": "promptPreview", "type": "profile", "openid": "你的openid" }
 ```
 
-`type` 可选：`persona` / `profile`（默认）/ `day` / `week` / `month` / `year`。
+`type` 可选：`persona` / `profile` / `profilePro`（默认 `profile`）/ `day` / `week` / `month` / `year`。
 `persona` 时额外返回 `fromRev`，**用它确认这次是「基于第几版迭代」**——
 `fromRev:0` 说明是首次建立，带上数字才是真正的增量。
 
@@ -326,6 +328,28 @@
 > **不设冷却锁**是有意的：`profile` 全量重算、贵，所以每周限一次；`persona` 是增量的、成本低，
 > 合集明确建议周跑轻量版 / 月年跑完整版。硬锁只会挡住正常节奏，所以改成前端提示「本次已生成过」
 > 而不是硬拦。重复点击的防护靠前端按钮置灰 + 云函数的 rev 查重。
+
+---
+
+### 7c. `profilePro` / `profileProGet` —— **④-高级版 深度分析·高级版**
+
+⚠️ **这一组和上面的 `profile` / `profileGet`（④ 人物深度报告）是两件事，不是同一功能的两个版本**：
+
+| | `profile`（④ 人物深度报告） | `profilePro`（④-高级版 深度分析） |
+|---|---|---|
+| 提示词 | `report.core`（出厂 ④） | `report.corePro`（独立 SYSTEM：跨记录模式联结 + 增量洞察 + 事实/推断分离 + 误判规避） |
+| 模型 | `glm-4-flash` | `PRO_LLM_MODEL`（默认 `glm-4-plus`，**复用同一 `LLM_API_KEY`**） |
+| 输出结构 | 七章报告（summary / basic / core / …） | summary / top_conclusions / energy_system / meta_patterns / blind_spots / strengths / weaknesses / relationship / next_observations / limitations / risk_alert |
+| 脱敏 | 不额外脱敏 | 喂给模型的记录文本经 `desensitize()` 打码手机号 / 邮箱 / 身份证（记录属高度私密内心数据，经云端处理） |
+| 冷却 | 每自然周一次 | 每自然周一次（同 ④，贵） |
+| 存储 | `profile`（每 openid 一份最新） | `profilePro`（每 openid 一份最新，**独立集合**，结构不同） |
+
+**为什么要分开**：高级版是「深度体检」的另一档——换更强模型 + 更激进的提示词（强制增量洞察、盲点、误判规避），输出结构也不同（带 `evidence` 证据链、区分 `fact`/`inference`）。揉进 `profile` 会破坏已稳定的七章报告，所以独立成一套：独立提示词槽位、独立模型档位、独立集合、独立页面（`pages/profilePro`）、独立入口（设置页 / 回看页顶部的「深度分析·高级版」）。两者互不干扰，各算各的每周冷却。
+
+生成：`{ "action": "profilePro", "openid": "你的openid" }` —— 返回与 `profile` 同款（`ok` / `cooling` / `empty` / `error`），`cooling` 同样用 `force:true` 可绕过。
+读取：`{ "action": "profileProGet", "openid": "你的openid" }` → `{ "profilePro": { … } }`；没生成过为 `null`。
+试跑：`promptTest` 的 `type` 支持 `profilePro`（温度 0.6，只喂原始记录、不混回看）。
+`report.corePro` 槽位可在提示词管理页编辑、在试跑页试跑、用 `promptAdopt` 切到线上——改高级版提示词不用动代码。
 
 ---
 
@@ -565,6 +589,7 @@ common.review（人设与共同原则）
 | `LLM_API_KEY` | ✅ **必填** | — | 大模型密钥。**只能在控制台配**（云函数 → 配置 → 环境变量），绝不写进代码 |
 | `LLM_BASE_URL` | 否 | `https://open.bigmodel.cn/api/paas/v4`（智谱） | 接口 **base**，不含 `/chat/completions`，代码自动拼。换厂商改这里 |
 | `LLM_MODEL` | 否 | `glm-4-flash` | 模型名。默认智谱 GLM-4-Flash（免费、中文强、OpenAI 兼容） |
+| `PRO_LLM_MODEL` | 否 | `glm-4-plus` | **高级版专用**模型档位（深度分析·高级版 / `report.corePro` 这一档）。复用同一份 `LLM_API_KEY`，只在代码里切模型名；想换更强模型（账号当前最强的长上下文档）在控制台配这个变量即可，不必改代码 |
 
 换厂商示例：
 
@@ -586,6 +611,7 @@ common.review（人设与共同原则）
 | `records` | 仅创建者可读写 | 原始记录，云函数按 `_openid` 读取 |
 | `analysis` | 仅创建者可读写 | 回看文档（day / week / month / year） |
 | `profile` | 仅创建者可读写 | 人物深度报告（④），**每 openid 只保留最新一份** |
+| `profilePro` | 仅创建者可读写 | 深度分析·高级版（④-高级版），**每 openid 只保留最新一份**（结构与 `profile` 不同） |
 | `persona` | 仅创建者可读写 | 个人画像（③ · 增量），**按版本追加留档** |
 | `promptlog` | 仅创建者可读写 | **提示词试跑结果**（`promptTest` 写入）。只增不删，供对比不同提示词版本；正式文档一个字都不碰 |
 | `promptset` | **仅云函数读写** | 提示词注册表，**每个槽位一条**（`_id` 就是槽位名）。小程序不直读，全走云函数 |
@@ -593,6 +619,7 @@ common.review（人设与共同原则）
 
 `profile` 不存在会报 `-502005`；云函数首次用到时会自动创建，所以**手动建或不管都行**。
 `persona` 同理，**自动创建**。
+`profilePro` 同理，**自动创建**（首次生成高级版时建）。
 `promptlog` 同理，**云函数也会自动创建**，不用手动建（缺了试跑仍可用，只是 `saved:false`）。
 `promptset` / `promptsetver` 也自动创建；**而且就算它们完全不存在，AI 回看和画像照常工作**
 （`loadPrompt` 会静默退回代码里的出厂值），见「五、提示词注册表」。
@@ -753,6 +780,7 @@ common.review（人设与共同原则）
 
 | 日期 | 变更 |
 | --- | --- |
+| 2026-10-09 | **新增「深度分析·高级版」（`profilePro` / `profileProGet`）。** 独立一套：提示词槽位 `report.corePro`（跨记录模式联结 + 增量洞察 + 事实/推断分离 + 误判规避）、模型档位 `PRO_LLM_MODEL`（默认 `glm-4-plus`，复用同一 `LLM_API_KEY`）、独立集合 `profilePro`、独立页面 `pages/profilePro`、独立入口（设置页 / 回看页顶部）。输出结构不同于普通深度报告（summary / top_conclusions / energy_system / meta_patterns / blind_spots / strengths / weaknesses / relationship / next_observations / limitations / risk_alert），带 `evidence` 证据链、区分 `fact`/`inference`。记录文本经 `desensitize()` 脱敏（手机号/邮箱/身份证打码）。与「人物深度报告」完全并行、各算各的每周冷却。试跑页 `type` 支持 `profilePro`。 |
 | 2026-10-07 | **喂给模型的记录文本与小程序的「可读导出」对齐（新增 `recText.js`）。** 此前喂给模型的记录是三处**各写一遍**的内联格式：`[觉察] 内容 （obsDeg：有点，free:desc：…） 09:12`——① 用的是**机器键名**（`free:desc` / `fx:nrg` / `todayBat`）而不是中文标签，模型得自己猜那是什么意思；② **完全没有记录状态**（`status` / `doneAt` / `dueTs` 一个都没进去），于是分析「行动力 / 拖延」时只能从原话里猜那条「可做」后来做了没有，而这是这类报告最该依据的东西；③ 没有优先级、计划完成、逾期；④ 能量只给 `'3'` 而不是「一般（3/5 格）」；⑤ 没有跨记录汇总。新增 `recText.js` 作为**唯一入口**，三处 build 函数都改调它，格式与 `utils/exporter.js` 的可读导出**逐行一致**（含末尾汇总）。不能直接 require `exporter.js` 是因为它依赖 `store.js`，而 `store.js` 到处用 `wx.*`，云函数里没有 wx，所以是纯逻辑复刻，并用 `tools/check-syntax.py` 的第7 条检查（`check_rec_labels` 机械比对 COLMAP / 维度名 / BATTERIES 三份常量，`check_no_inline_rectext` 禁止再出现内联副本）守住不漂移。**顺带发现并修掉可读导出自己的三个 bug**：① 「做了（10月06**日**起）」——「起」只该跟在进行中后面，「做了」说的是完成那天，写成「起」语义反了；② 待办的「类别」与「优先级」在维度名和细节区各出现一次；③ 觉察的「喜恶」同样出现两次（`buildExt` 合成的喜恶项**不带 src**，只能按标签识别后跳过）。**token 反而降了 14~21%**（469 条实测：日 6267→5369、周月年 25032→19884、画像 29278→23150）——中文标签比英文机器键短（`free:desc：` 8 字符 → `描述：` 3 字符），旧格式每行还带括号与重复键名。旧维度 `m='done'` 的兼容分支也补上了。 |
 | 2026-10-06 | **阶段三：补上真正的「③ 个人画像」，并与「④ 人物深度报告」彻底分开。** 之前页面叫「个人画像」的那个功能，实际跑的是文档里的 ④ 深度报告（七章，含推演），而 ③（只沉淀跨周期稳定特质、增量迭代、带变更日志）**完全没实现**——于是「长期沉淀」这层缺位，低频的深度诊断会不断冲掉高频积累的稳定特质。新增：`persona` 集合（**按版本追加留档**，不像 `profile` 只留最新——画像的价值恰恰在于能看到它怎么长出来）、`persona` / `personaGet` / `personaVer` 三个 action、`buildPersonaMessages`（五大板块 + `changelog`）、`pages/persona` 页面。**实现上最关键的一点：`generatePersona` 必须把上一版画像当素材喂进去**，模型才能做「新增 / 修正 / 淘汰」；不传就退化成从零生成，那和 ④ 没区别、违背 ③ 的本意。所以 `promptPreview` 的 `type:"persona"` 专门返回 `fromRev` 用来核对这一点，试跑 `persona` 时也会带上现有画像（否则试跑看到的不是真实效果）。**不设每周冷却锁**（与 profile 相反）：它是增量的、成本低，合集明确建议周跑轻量版 / 月年跑完整版，硬锁只会挡正常节奏；改为前端提示 +云端按 rev 查重防重复写入。原 `pages/profile` 标题改为「人物深度报告」，回看页顶部与设置页都改成两个独立入口（徽标「像」=琥珀色画像 / 「深」=紫色深度报告）。`persona.*` 两个提示词槽位从「未接入」转为已生效，试跑页也支持画像类型。 |
 | 2026-10-06 | **阶段一：提示词从代码搬进数据库（提示词注册表）。** 新增 `promptset`（每槽位一条当前值）+ `promptsetver`（每次保存留快照），以及 8 个只读写提示词、**不调大模型不碰业务集合**的 action：`promptList` / `promptGet` / `promptSave` / `promptReset` / `promptVersions` / `promptVersionGet` / `promptRevert` / `promptAdopt`。`buildMessages` / `buildProfileMessages` 改为从库里取提示词——**换提示词不用再「改代码 + 上传部署」，保存即生效**。三条硬约束：①**出厂值兜底绝不报错**（集合不存在 / 读失败 / 正文为空，一律静默退回 `PROMPT_BUILTIN` 里的出厂值，桩测确认集合完全不存在时 system 仍有完整内容，AI 回看照常工作——提示词是增强项，不能成为单点故障）；②**输出字段契约锁死**（`fieldsSpec` / `profileFieldsSpec` 只在 `promptGet` 里只读展示、不给编辑：字段名与云函数解析、页面渲染一一对应，改了会让页面白屏且极难自查）；③`rev` **恒 +1 不复用旧号**，让「rev=N」唯一对应一份内容、回滚后历史不漂移。留快照前先查该 rev 是否已有快照——并发保存会写出同 rev 的两条快照，「切回 rev=N」用 `where().limit(1)` 命中哪条不确定，这类不一致是**静默的**，多一次极轻的查询即可堵住。`promptAdopt` 是「试跑→线上」的桥：把某次试跑用的正文设为线上生效（此前试跑只能看、改不了线上）。两个 build 函数改成 async，**6 处调用点全部补 `await`**（漏 await 不报错，只会静默拿到 Promise）。本阶段行为与改动前完全一致，是纯重构。 |

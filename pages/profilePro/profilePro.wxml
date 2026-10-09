@@ -1,0 +1,172 @@
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
+  <view class="statusbar-mask"></view>
+  <view class="screen">
+    <view class="body">
+      <view class="a-hd">
+        <view class="bk" bindtap="onClose">‹ 返回</view>
+        <view class="a-tt">深度分析 · 高级版</view>
+      </view>
+      <view class="hint-row">
+        <view class="hint">基于你的全部记录，做一份「高级版深度分析」：跨记录模式联结、增量洞察、事实/推断分离、误判规避——力求看见你自己没点破的模式与盲点。跑在 GLM-4-Plus 上（比普通深度报告更深一档）。记录经云端时默认脱敏（手机号/邮箱/身份证打码）。下拉可刷新；重新生成每周一次（周一0点后可再来）。</view>
+        <view wx:if="{{p}}" class="a-regen {{cooling||pending?'off':''}}" bindtap="onGenerate">{{cooling?'本周已生成':(pending?'生成中…':'↻ 重新生成')}}</view>
+      </view>
+
+      <!-- 生成中：后台跑着，不让用户干等 -->
+      <view wx:if="{{pending}}" class="pending">
+        <view class="pend-t">正在生成，请稍后查看</view>
+        <view class="pend-s">高级版在 GLM-4-Plus 上做深度归因，需要更长时间（通常几十秒到一分钟左右）。可以先离开这个页面，生成好之后回来就能看到；这里也会自动为你刷新。</view>
+        <view wx:if="{{!p}}" class="pend-sk">
+          <view class="sk-line sk-w40 sk-sm"></view>
+          <view class="sk-box"></view>
+          <view class="sk-box"></view>
+        </view>
+      </view>
+
+      <!-- 生成失败 -->
+      <view wx:if="{{genFail}}" class="loadfail">
+        <view class="lft">生成失败</view>
+        <view class="lfr" bindtap="onGenerate">重试</view>
+      </view>
+
+      <!-- 骨架屏：首屏未就绪 -->
+      <view wx:elif="{{!ready}}" class="sk skpage">
+        <view class="sk-line sk-w40 sk-sm"></view>
+        <view class="sk-box"></view>
+        <view class="sk-box"></view>
+      </view>
+
+      <block wx:else>
+        <!-- 还没生成过 -->
+        <view wx:if="{{empty && !pending}}" class="empty">
+          <view class="empty-t">还没有高级版深度分析</view>
+          <view class="empty-s">先去「记」里留下一些觉察，再回来生成这份更接近人工深度的自我认知报告。生成需要一点时间，提交后可以先去做别的。</view>
+          <view wx:if="{{!pending}}" class="empty-btn" bindtap="onGenerate">生成高级版</view>
+        </view>
+
+        <block wx:elif="{{p}}">
+          <!-- 整份报告一个可用字段都没剩下 -->
+          <view wx:if="{{p.broken}}" class="empty">
+            <view class="empty-t">这份报告没有内容</view>
+            <view class="empty-s">分析跑完了，但没能从现有记录里提炼出任何东西。可能是记录还太少 —— 先去「记」里多留几条，再回来重新生成一份。</view>
+            <view wx:if="{{!cooling && !pending}}" class="empty-btn" bindtap="onGenerate">重新生成高级版</view>
+          </view>
+
+          <block wx:else>
+          <!-- 一句话整体画像 -->
+          <view wx:if="{{p.summary}}" class="pcard sum">
+            <view class="pc-sum">{{p.summary}}</view>
+            <view wx:if="{{p.updatedAtLabel}}" class="pc-upd">更新于 {{p.updatedAtLabel}} · 基于 {{p.n || ''}} 条记录 · {{p.model || 'GLM-4-Plus'}}</view>
+          </view>
+
+          <!-- 核心结论 -->
+          <view wx:if="{{p.top.length}}" class="chap">
+            <view class="chap-h"><text class="chap-no">一</text>核心结论</view>
+            <view class="sub-list"><view wx:for="{{p.top}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+          </view>
+
+          <!-- 能量系统 -->
+          <view wx:if="{{p.energy.charging.length || p.energy.draining.length}}" class="chap">
+            <view class="chap-h"><text class="chap-no">二</text>能量系统</view>
+            <view wx:if="{{p.energy.charging.length}}" class="sub">
+              <view class="sub-l good">充电项（事实）</view>
+              <view class="sub-list"><view wx:for="{{p.energy.charging}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+            <view wx:if="{{p.energy.draining.length}}" class="sub">
+              <view class="sub-l warn">耗电项（事实）</view>
+              <view class="sub-list"><view wx:for="{{p.energy.draining}}" wx:key="*this" wx:for-item="it" class="sub-li">· {{it}}</view></view>
+            </view>
+          </view>
+
+          <!-- 元模式 -->
+          <view wx:if="{{p.meta.length}}" class="chap">
+            <view class="chap-h"><text class="chap-no">三</text>元模式（跨记录归纳）</view>
+            <view wx:for="{{p.meta}}" wx:key="title" wx:for-item="it" class="pi">
+              <view class="pi-h"><text class="pi-t">{{it.title}}</text><text wx:if="{{it.type}}" class="badge-type">{{it.type}}</text></view>
+              <view wx:if="{{it.note}}" class="pi-note">{{it.note}}</view>
+              <view wx:if="{{it.evidence.length}}" class="ev">
+                <view wx:for="{{it.evidence}}" wx:key="quote" wx:for-item="ev" class="ev-li">
+                  <text wx:if="{{ev.date}}" class="ev-date">{{ev.date}}</text><text class="ev-q">「{{ev.quote}}」</text>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 盲点 -->
+          <view wx:if="{{p.blind.length}}" class="chap">
+            <view class="chap-h"><text class="chap-no">四</text>盲点（你未点破的）</view>
+            <view wx:for="{{p.blind}}" wx:key="title" wx:for-item="it" class="pi">
+              <view class="pi-h"><text class="pi-t">{{it.title}}</text><text wx:if="{{it.type}}" class="badge-type">{{it.type}}</text></view>
+              <view wx:if="{{it.note}}" class="pi-note">{{it.note}}</view>
+              <view wx:if="{{it.evidence.length}}" class="ev">
+                <view wx:for="{{it.evidence}}" wx:key="quote" wx:for-item="ev" class="ev-li">
+                  <text wx:if="{{ev.date}}" class="ev-date">{{ev.date}}</text><text class="ev-q">「{{ev.quote}}」</text>
+                </view>
+              </view>
+              <view wx:if="{{it.check}}" class="pi-check">自我验证：{{it.check}}</view>
+            </view>
+          </view>
+
+          <!-- 擅长 / 薄弱 -->
+          <view wx:if="{{p.strengths.length || p.weaknesses.length}}" class="chap">
+            <view class="chap-h"><text class="chap-no">五</text>擅长与薄弱</view>
+            <view wx:if="{{p.strengths.length}}" class="sub">
+              <view class="sub-l good">擅长点</view>
+              <view wx:for="{{p.strengths}}" wx:key="title" wx:for-item="it" class="pi">
+                <view class="pi-h"><text class="pi-t">{{it.title}}</text><text wx:if="{{it.type}}" class="badge-type">{{it.type}}</text></view>
+                <view wx:if="{{it.note}}" class="pi-note">{{it.note}}</view>
+                <view wx:if="{{it.evidence.length}}" class="ev">
+                  <view wx:for="{{it.evidence}}" wx:key="quote" wx:for-item="ev" class="ev-li">
+                    <text wx:if="{{ev.date}}" class="ev-date">{{ev.date}}</text><text class="ev-q">「{{ev.quote}}」</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+            <view wx:if="{{p.weaknesses.length}}" class="sub">
+              <view class="sub-l bad">薄弱 / 不擅长</view>
+              <view wx:for="{{p.weaknesses}}" wx:key="title" wx:for-item="it" class="pi">
+                <view class="pi-h"><text class="pi-t">{{it.title}}</text><text wx:if="{{it.type}}" class="badge-type">{{it.type}}</text></view>
+                <view wx:if="{{it.note}}" class="pi-note">{{it.note}}</view>
+                <view wx:if="{{it.evidence.length}}" class="ev">
+                  <view wx:for="{{it.evidence}}" wx:key="quote" wx:for-item="ev" class="ev-li">
+                    <text wx:if="{{ev.date}}" class="ev-date">{{ev.date}}</text><text class="ev-q">「{{ev.quote}}」</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 关系与边界 -->
+          <view wx:if="{{p.relationship}}" class="chap">
+            <view class="chap-h"><text class="chap-no">六</text>关系与边界</view>
+            <view class="sub-p">{{p.relationship}}</view>
+          </view>
+
+          <!-- 下一步观察 -->
+          <view wx:if="{{p.next.length}}" class="chap">
+            <view class="chap-h"><text class="chap-no">七</text>下一步观察</view>
+            <view class="sub-list"><view wx:for="{{p.next}}" wx:key="*this" wx:for-item="it" class="sub-li act">· {{it}}</view></view>
+          </view>
+
+          <!-- 局限说明 -->
+          <view wx:if="{{p.limitations}}" class="chap">
+            <view class="chap-h sm">样本局限</view>
+            <view class="sub-p">{{p.limitations}}</view>
+          </view>
+
+          <!-- 风险提示 -->
+          <view wx:if="{{p.risk}}" class="risk-box">
+            <view class="rb-t">风险提示</view>
+            <view class="rb-p">{{p.risk}}</view>
+          </view>
+          </block>
+        </block>
+      </block>
+    </view>
+  </view>
+
+  <view wx:if="{{brandH}}" class="brand {{brandPlay?'play':''}}" style="position:fixed;top:{{brandTop}}px;left:{{brandLeft}}px;width:{{brandW}}px;height:{{brandH}}px;">
+    <text wx:for="{{brandChars}}" wx:key="*this" class="bc">{{item}}</text>
+  </view>
+
+  <theme-switcher />
+</view>

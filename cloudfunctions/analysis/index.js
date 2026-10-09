@@ -75,6 +75,7 @@ const _ = db.command;
 const recCol = () => db.collection('records');
 const analysisCol = () => db.collection('analysis');
 const profileCol = () => db.collection('profile');   // 个人画像（每 openid 一份最新）
+const profileProCol = () => db.collection('profilePro'); // 深度分析·高级版（独立集合，结构与 profile 不同）
 // 提示词试跑结果（action:'promptTest' 写入）。只增不覆盖，用来对比不同提示词版本；
 // 正式的回看 / 画像永远不写这里，所以试跑不会污染线上内容，也不会被幂等跳过。
 const ptestCol = () => db.collection('promptlog');
@@ -87,6 +88,10 @@ const personaCol = () => db.collection('persona');
 // LLM_BASE_URL 是「接口 base」，/chat/completions 由代码自动拼上，避免各家路径不一致写错。
 const LLM_BASE_URL = process.env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4';
 const LLM_MODEL = process.env.LLM_MODEL || 'glm-4-flash';
+// 深度分析·高级版用的模型档位：文档明确要求「不要用 glm-4-flash，建议 glm-4-plus」
+// （或账号当前最强的长上下文档）。复用同一份 LLM_API_KEY，只在代码里切模型名；
+// 想换档位在控制台配环境变量 PRO_LLM_MODEL 即可，不必改代码。
+const PRO_LLM_MODEL = process.env.PRO_LLM_MODEL || 'glm-4-plus';
 
 // 记录 → 可读文本。**唯一入口**：buildMessages / buildProfileMessages /
 // buildPersonaMessages 三处都用它，不许再各自内联拼一遍。
@@ -302,6 +307,69 @@ const promptsetverCol = () => db.collection('promptsetver');
 
 // 各槽位的出厂默认值。**这一份同时是「恢复默认」的还原目标**，所以改它等于改出厂设定。
 // state:'active' = 已接入生成路径；'reserved' = 文案已就位，功能在后续阶段接入。
+// 深度分析·高级版（report.corePro）专用提示词——来自「高级版深度分析.md」（智谱 API 版）。
+// 与 ④ report.core 的区别：强制「跨记录模式联结 + 增量洞察 + 事实/推断分离 + 误判规避」，
+// 输出结构也不同（summary / top_conclusions / meta_patterns / blind_spots …），
+// 跑在 glm-4-plus 上（见 PRO_LLM_MODEL）。SYSTEM 整段即文档「一、SYSTEM 提示词」。
+const PROFILE_PRO_RULES = `你是一位温和、敏锐、不带评判的自我觉察引导者，兼具心理学素养与系统思维。
+你的任务不是复述用户的自我描述，而是像一位资深分析师那样，从大量记录中
+"看见"用户自己反复经历却习以为常、没有点破的模式、卡点与天赋。
+
+【记录格式】
+用户会提供一段按日期排列的自我觉察记录，每天一节，每条形如：
+  [时间] 维度 内容 | 状态 | 标签：值
+常见维度：觉察/此刻/随记/可做·想做/待办/今日/睡/起/书·剧/占卜。
+文末通常有一段"汇总"统计。请先理解这些字段，再分析。
+
+【分析动作（必须按顺序执行，不可跳过）】
+1. 事实提取：通读全部记录，提取可观察的事实（情绪、能量标注、行为、状态），只取记录中直接出现的。
+2. 跨记录模式联结：寻找"跨日期、跨条目重复出现的行为链/情绪链"。例如：
+   - 某类事件总带来相同结果（如"做完一个项目→感到空→立即开新项目"）；
+   - 某情境与某情绪稳定相关（如"白天在公司→能量低；深夜独处→不肯睡"）。
+   这种模式必须基于≥2条记录才成立，禁止凭单条臆断。
+3. 增量洞察（最重要的要求）：产出至少 3 条用户记录中【没有直接陈述过】、
+   但其行为/语言被多条记录共同支撑的推断。这才是"看见用户看不见的自己"。
+   每条必须附 2 条以上原文证据（含日期与摘录）。
+4. 盲点识别：区分"用户已写明的自我觉察"与"用户未点破的盲点"。
+   报告重点放在后者（盲点），前者只需确认、不必展开。
+5. 元模式提炼：识别更高层的模式，如"以觉察代替行动""以造工具代替用工具"
+   "用完成换取价值感""把自主权缺失误判为懒惰/拖延"等，并给出支撑证据。
+
+【输出纪律】
+- 区分 fact（记录直接出现）与 inference（你的跨条解读）；inference 必须基于≥2条记录且附证据。
+- 严禁：只复述用户已写明的结论；给泛泛的性格标签（如"内向""拖延症"）而不解释机制；
+  把"未做的想做清单"简单判为"拖延"（需分析动机类型：缺陷厌恶驱动 vs 向往驱动）；
+  做医学/心理诊断。
+- 卡点/盲点要温柔但诚实，每条给"self_check"自我验证信号（用户回生活里如何佐证）。
+- 这不是心理诊断；若出现高风险内容，停止分析并在 risk_alert 给温和提示。
+- 必须输出严格 JSON（不要包裹 markdown 代码块），结构如下。
+
+【JSON 结构】
+{
+  "summary": "一句话整体画像",
+  "top_conclusions": ["最重要的结论1","结论2","结论3"],
+  "energy_system": {
+    "charging": ["充电项（事实）","..."],
+    "draining": ["耗电项（事实）","..."]
+  },
+  "meta_patterns": [
+    {"pattern":"元模式名","evidence":["原文摘录1","原文摘录2"],"interpretation":"你的解读","type":"inference"}
+  ],
+  "blind_spots": [
+    {"point":"用户未点破的盲点","evidence":[{"date":"MM-DD","quote":"原文摘录"}],"type":"inference","self_check":"自我验证信号"}
+  ],
+  "strengths": [
+    {"point":"擅长点","evidence":[{"date":"MM-DD","quote":"原文摘录"}],"type":"fact|inference"}
+  ],
+  "weaknesses": [
+    {"point":"不擅长/薄弱","evidence":[{"date":"MM-DD","quote":"原文摘录"}],"type":"fact|inference"}
+  ],
+  "relationship": "关系与边界模式简述（基于事实）",
+  "next_observations": ["具体可执行的观察动作1","动作2","动作3"],
+  "limitations": "样本/时间跨度局限说明，无则空字符串",
+  "risk_alert": "高风险内容提示，无则空字符串"
+}`;
+
 const PROMPT_BUILTIN = {
   'common.review': {
     slot: 'common.review', group: 'common', state: 'active',
@@ -326,6 +394,12 @@ const PROMPT_BUILTIN = {
     name: '人物深度报告 · 核心规则',
     desc: '「人物深度报告」的全部硬性要求：只用原始资料、标注【推论】、禁止空话、七章固定结构。',
     body: PROFILE_RULES
+  },
+  'report.corePro': {
+    slot: 'report.corePro', group: 'report', state: 'active',
+    name: '深度分析·高级版 · 核心规则',
+    desc: '「深度分析·高级版」专用：跨记录模式联结 + 增量洞察 + 事实/推断分离 + 误判规避。跑在 glm-4-plus 上，输出结构独立于普通深度报告。',
+    body: PROFILE_PRO_RULES
   },
   'persona.full': {
     slot: 'persona.full', group: 'persona', state: 'active',
@@ -570,6 +644,7 @@ function contractOf(slot) {
     return '【月复盘的输出字段】\n' + fieldsSpec('month') + '\n\n【年复盘的输出字段】\n' + fieldsSpec('year');
   }
   if (slot === 'report.core') return '【人物深度报告的输出字段】\n' + profileFieldsSpec();
+  if (slot === 'report.corePro') return '【深度分析·高级版的输出字段】\n' + profileProFieldsSpec();
   if (slot === 'persona.full') return '【增量个人画像 · 完整版的输出字段】\n' + personaFieldsSpec(false);
   if (slot === 'persona.lite') return '【增量个人画像 · 轻量版的输出字段】\n' + personaFieldsSpec(true);
   if (slot === 'common.review') {
@@ -663,13 +738,13 @@ function parseContent(content) {
 }
 
 // 调大模型（用内置 https，不引第三方依赖）
-function chatCompletion(messages, temperature) {
+function chatCompletion(messages, temperature, model) {
   return new Promise((resolve, reject) => {
     const key = process.env.LLM_API_KEY;
     if (!key) return reject(new Error('LLM_API_KEY 未配置（在云函数环境变量里设置）'));
     const temp = (typeof temperature === 'number') ? temperature : 0.8;
     const body = JSON.stringify({
-      model: LLM_MODEL,
+      model: model || LLM_MODEL,
       messages,
       response_format: { type: 'json_object' },
       temperature: temp
@@ -762,6 +837,24 @@ function profileFieldsSpec() {
   ].join('\n');
 }
 
+// 深度分析·高级版的输出字段（只读契约，与页面 profilePro 渲染一一对应；contract 不开放编辑）。
+function profileProFieldsSpec() {
+  return [
+    '严格 JSON，字段如下（evidence 里可附 date/quote，type 标 fact/inference）：',
+    'summary（字符串）',
+    'top_conclusions（字符串数组，≤3 条核心结论）',
+    'energy_system（对象：含 charging / draining，均为字符串数组）',
+    'meta_patterns（对象数组：pattern 元模式名 / evidence 证据 / interpretation 解读 / type）',
+    'blind_spots（对象数组：point 盲点 / evidence 证据 / type / self_check 自我验证信号）',
+    'strengths（对象数组：point / evidence / type）',
+    'weaknesses（对象数组：point / evidence / type）',
+    'relationship（字符串）',
+    'next_observations（字符串数组，可执行的观察动作）',
+    'limitations（字符串，样本/跨度局限）',
+    'risk_alert（字符串，高风险提示，无则空）'
+  ].join('\n');
+}
+
 // 人物深度报告（页面名「人物深度报告」）。规则段现在从 promptset 的report.core 读，
 // 读不到自动退回出厂值 PROFILE_RULES。opt.prompts 由调用方预取（同 buildMessages）。
 async function buildProfileMessages(rows, reviews, opt) {
@@ -817,6 +910,32 @@ async function buildProfileMessages(rows, reviews, opt) {
     user += '\n\n以下是从TA 历次日/周/月/年回看中提炼出的稳定模式（可作为画像素材）：\n' + rvLines.join('\n');
   }
   user += '\n\n请基于这些资料给出人物深度分析报告。';
+  return [{ role: 'system', content: sys }, { role: 'user', content: user }];
+}
+
+// 高级版要求「默认脱敏」：记录含高度私密内心数据，经智谱云端处理。
+// 这里对喂给模型的记录文本做轻量脱敏——手机号 / 邮箱 / 身份证正则打码。
+// 不处理自定义敏感词（避免把正常中文误伤）；更强脱敏可在环境变量里扩展。
+function desensitize(t) {
+  if (!t || typeof t !== 'string') return t;
+  return t
+    .replace(/1[3-9]\d{9}/g, m => m.slice(0, 3) + '****' + m.slice(7))
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '***@***')
+    .replace(/\b\d{17}[\dXx]\b/g, m => m.slice(0, 6) + '********' + m.slice(14));
+}
+
+// 深度分析·高级版（report.corePro）：独立提示词 + 独立输出结构，跑在 glm-4-plus 上。
+// 与 buildProfileMessages 的区别：system 用 report.corePro（自带 JSON 结构与输出纪律），
+// 额外拼 RECORD_GUIDE 帮助模型正确解读状态/能量等附注；记录文本经 desensitize 脱敏；
+// user 用文档给的模板（只喂原始记录，不混回看，让模型自己做跨记录联结）。
+async function buildProfileProMessages(rows) {
+  const prompts = await loadPrompts(['report.corePro']);
+  const list = recText(rows, { cap: 500 });
+  const sys = ((prompts['report.corePro'] && prompts['report.corePro'].body) || PROFILE_PRO_RULES)
+    + '\n\n' + RECORD_GUIDE;
+  const user = '以下是某用户的自我觉察记录（已按日期排序，含文末汇总），请严格按你的分析动作输出 JSON 深度报告：\n\n'
+    + desensitize(list)
+    + '\n\n请基于这些资料给出深度分析。';
   return [{ role: 'system', content: sys }, { role: 'user', content: user }];
 }
 
@@ -994,6 +1113,35 @@ function objOf(v, keys) {
   return o;
 }
 
+// ============ 高级版带证据的对象（meta_patterns / blind_spots / strengths / weaknesses）============
+// 模型返回的是 {pattern/point, evidence:[{date,quote}|字符串], interpretation, type, self_check} 这类结构，
+// 与 ④ 的扁平字符串数组不同。这里只做保守清洗、不破坏结构：叶子压平（防 [object Object]），
+// evidence 统一成 {date, quote}；页面靠这个结构渲染证据。模型偶尔把 evidence 写成纯字符串或漏字段，这里都兜住。
+function proItem(v) {
+  if (v == null) return null;
+  if (typeof v === 'string') return { title: flatText(v), note: '', type: '', check: '', evidence: [] };
+  const o = (typeof v === 'object') ? v : {};
+  const ev = (o.evidence != null) ? o.evidence : (o.evidences != null ? o.evidences : null);
+  const evidence = Array.isArray(ev) ? ev.map(e => {
+    if (typeof e === 'string') return { date: '', quote: flatText(e) };
+    const eo = (e && typeof e === 'object') ? e : {};
+    return { date: flatText(eo.date), quote: flatText(eo.quote || eo.text || eo.content) };
+  }).filter(x => x.quote || x.date) : [];
+  return {
+    title: flatText(o.pattern || o.point || o.name || o.topic),
+    note: flatText(o.interpretation || o.desc || o.description),
+    type: flatText(o.type),
+    check: flatText(o.self_check || o.selfCheck),
+    evidence
+  };
+}
+function safeItems(arr, cap) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(proItem)
+    .filter(x => x && (x.title || x.note || x.evidence.length))
+    .slice(0, cap || 8);
+}
+
 // ============ 跨板块去重 ============
 // 为什么要它：模型常把同一句话说两遍——最典型是**卡片头的 summary 和 facts 第一条一模一样**
 // （用户看到的是：折叠时一句、展开第一行又是同一句）；还爱给同一句套两个标签各说一次，
@@ -1043,6 +1191,14 @@ async function ensureProfileCol() {
   if (profileColEnsured) return;
   try { await db.createCollection('profile'); } catch (e) { /* 已存在或并发冲突，忽略 */ }
   profileColEnsured = true;
+}
+
+// 深度分析·高级版集合：首次用到自动创建，权限「仅创建者可读写」（与其他业务集合一致）。
+let profileProColEnsured = false;
+async function ensureProfileProCol() {
+  if (profileProColEnsured) return;
+  try { await db.createCollection('profilePro'); } catch (e) { /* 已存在或并发冲突，忽略 */ }
+  profileProColEnsured = true;
 }
 
 // promptlog 同理：不用手动建。第一次试跑时自动创建，省掉「建了但存不进去」的折腾。
@@ -1152,6 +1308,76 @@ async function getProfile(openid) {
   await ensureProfileCol();
   const ex = await profileCol().where({ openid }).orderBy('updatedAt', 'desc').limit(1).get();
   return (ex.data && ex.data.length) ? ex.data[0] : null;
+}
+
+// ============ ④-高级版 深度分析·高级版 ============
+// 与「④ 人物深度报告」并行的一套：独立提示词（report.corePro）+ 独立模型（glm-4-plus）+
+// 独立输出结构（summary / top_conclusions / meta_patterns / blind_spots …）+ 独立集合（profilePro）。
+// 同样每周冷却一次（贵，且属于「定期深度体检」性质，不该天天刷）。
+async function getProfilePro(openid) {
+  await ensureProfileProCol();
+  const ex = await profileProCol().where({ openid }).orderBy('updatedAt', 'desc').limit(1).get();
+  return (ex.data && ex.data.length) ? ex.data[0] : null;
+}
+
+// 生成（或重新生成）当前用户的深度分析·高级版：取全部记录 → 脱敏 → 调 glm-4-plus → upsert 到 profilePro
+async function generateProfilePro(openid, force) {
+  await ensureProfileProCol();
+  if (genBudget <= 0) return { error: '本次调用额度已用完，请稍后或加大 maxGen 再试' };
+
+  // 同一 openid 只保留一份最新（先查出来：既用于冷却判断，也用于覆盖更新）
+  const ex = await profileProCol().where({ openid }).limit(1).get();
+  const old = (ex.data && ex.data[0]) || null;
+  if (old && !force && old.updatedAt) {
+    let cooling = false, retryAfter = 0;
+    if (REGEN_WEEK) {
+      const wk = cnWeekStart(Date.now());
+      if (old.updatedAt >= wk) { cooling = true; retryAfter = wk + 7 * 24 * 3600 * 1000; }
+    } else {
+      const left = 7 * 24 * 3600 * 1000 - (Date.now() - old.updatedAt);
+      if (left > 0) { cooling = true; retryAfter = old.updatedAt + 7 * 24 * 3600 * 1000; }
+    }
+    if (cooling) return { cooling: true, retryAfter, updatedAt: old.updatedAt };
+  }
+
+  const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
+  const rows = (recs.data || []).map(d => ({
+    m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
+  }));
+  if (!rows.length) return { empty: true, summary: '还没有记录，先去「记」里留下一点觉察，再回来生成深度分析。' };
+
+  // 高级版：温度 0.6（深度归因要一定发散以捕捉微妙模式，但不宜过高以免臆断），模型 glm-4-plus
+  const parsed = await chatCompletion(await buildProfileProMessages(rows), 0.6, PRO_LLM_MODEL);
+  genBudget--;
+
+  // 嵌套带证据的结构用 safeItems 清洗（不破坏结构），其余叶子用 flatText 兜底防 [object Object]
+  const doc = {
+    openid,
+    summary: flatText(parsed.summary).slice(0, 200),
+    top_conclusions: arrOf(parsed.top_conclusions, 5),
+    energy_system: {
+      charging: arrOf(parsed.energy_system && parsed.energy_system.charging, 8),
+      draining: arrOf(parsed.energy_system && parsed.energy_system.draining, 8)
+    },
+    meta_patterns: safeItems(parsed.meta_patterns, 8),
+    blind_spots: safeItems(parsed.blind_spots, 8),
+    strengths: safeItems(parsed.strengths, 8),
+    weaknesses: safeItems(parsed.weaknesses, 8),
+    relationship: flatText(parsed.relationship).slice(0, 600),
+    next_observations: arrOf(parsed.next_observations, 5),
+    limitations: flatText(parsed.limitations).slice(0, 300),
+    risk_alert: flatText(parsed.risk_alert).slice(0, 300),
+    model: PRO_LLM_MODEL,
+    n: rows.length,
+    updatedAt: Date.now()
+  };
+  // 同一 openid 只保留一份最新（update 优先，没有才 add）
+  if (old) {
+    await profileProCol().doc(old._id).update({ data: doc });
+    return Object.assign({ _id: old._id, ok: true }, doc);
+  }
+  const add = await profileProCol().add({ data: doc });
+  return Object.assign({ _id: add._id, ok: true }, doc);
 }
 
 // ============ ③ 增量个人画像 ============
@@ -1432,6 +1658,22 @@ async function previewProfileMessages(openid) {
   };
 }
 
+// 预览高级版喂给模型的内容（只读、不调模型），与 previewProfileMessages 平行。
+async function previewProfileProMessages(openid) {
+  const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
+  const rows = (recs.data || []).map(d => ({
+    m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
+  }));
+  const msgs = await buildProfileProMessages(rows);
+  return {
+    records: rows.length,
+    reviewsUsed: 0,
+    userHead: msgs[1].content.slice(0, 4000),
+    userChars: msgs[1].content.length,
+    systemChars: msgs[0].content.length
+  };
+}
+
 // 预览增量画像喂给模型的内容。要特意返回 fromRev——让人看出这次是「基于第几版迭代」，
 // 这一点决定了他看到的是增量结果还是从零生成，两者的效果完全不同。
 async function previewPersonaMessages(openid) {
@@ -1495,18 +1737,19 @@ async function runPromptTest(openid, event) {
   const t = event.type || 'profile';
   const isProfile = t === 'profile';
   const isPersona = t === 'persona';          // ③ 增量画像，与 ④ 深度报告分开
-  if (!isProfile && !isPersona && ['day', 'week', 'month', 'year'].indexOf(t) < 0) {
-    return { error: 'type 只能是 persona / profile / day / week / month / year' };
+  const isPro = t === 'profilePro';           // ④-高级版 深度分析，独立提示词 + glm-4-plus
+  if (!isProfile && !isPersona && !isPro && ['day', 'week', 'month', 'year'].indexOf(t) < 0) {
+    return { error: 'type 只能是 persona / profile / profilePro / day / week / month / year' };
   }
   // 温度：画像 0.7（报告要稳），回看沿用线上默认 0.8；允许 event.temperature 覆盖
-  const temp = typeof event.temperature === 'number' ? event.temperature : (isProfile || isPersona ? 0.7 : 0.8);
+  const temp = typeof event.temperature === 'number' ? event.temperature : (isPro ? 0.6 : (isProfile || isPersona ? 0.7 : 0.8));
   const opt = {
     extraRules: (typeof event.rules === 'string' ? event.rules.trim() : ''),
     overrideRules: !!event.overrideRules
   };
 
   let msgs, meta = {};
-  if (isProfile || isPersona) {
+  if (isProfile || isPersona || isPro) {
     const recs = await recCol().where({ _openid: openid }).orderBy('ts', 'asc').limit(500).get();
     const rows = (recs.data || []).map(d => ({
       m: d.m, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [], ts: d.ts, t: hm(d.ts)
@@ -1528,6 +1771,10 @@ async function runPromptTest(openid, event) {
       } catch (e) { prev = null; }
       msgs = await buildPersonaMessages(rows, reviews, prev, opt);
       meta = { records: rows.length, reviewsUsed: reviews.length, fromRev: prev ? prev.rev : 0 };
+    } else if (isPro) {
+      // 高级版：只喂原始记录，不混回看；忽略 extraRules/overrideRules（系统自带输出纪律）
+      msgs = await buildProfileProMessages(rows);
+      meta = { records: rows.length };
     } else {
       msgs = await buildProfileMessages(rows, reviews, opt);
       meta = { records: rows.length, reviewsUsed: reviews.length };
@@ -1554,7 +1801,7 @@ async function runPromptTest(openid, event) {
   const started = Date.now();
   let parsed;
   try {
-    parsed = await chatCompletion(msgs, temp);
+    parsed = await chatCompletion(msgs, temp, isPro ? PRO_LLM_MODEL : undefined);
   } catch (e) {
     return { error: '模型调用失败：' + (e && e.message ? e.message : String(e)), systemChars: msgs[0].content.length, userChars: msgs[1].content.length };
   }
@@ -1677,6 +1924,7 @@ exports.main = async (event) => {
     const t = event.type || 'profile';
     if (t === 'persona') return previewPersonaMessages(openid);
     if (t === 'profile') return previewProfileMessages(openid);
+    if (t === 'profilePro') return previewProfileProMessages(openid);
     return previewReviewMessages(openid, t);
   }
 
@@ -1883,6 +2131,7 @@ exports.main = async (event) => {
     // 会把提示词写进错误的槽位（很隐蔽：能采纳成功，但以后回看用的还是旧规则）。
     const slot = t === 'persona' ? 'persona.full'
       : t === 'profile' ? 'report.core'
+      : t === 'profilePro' ? 'report.corePro'
       : (t === 'day' || t === 'week') ? 'review.dayWeek' : 'review.monthYear';
     const body = (typeof hit.rules === 'string' ? hit.rules : '').trim();
     if (!body) {
@@ -1931,6 +2180,17 @@ exports.main = async (event) => {
   if (event && event.action === 'profile') {
     if (!openid) return { error: 'no openid' };
     return generateProfile(openid, !!event.force);
+  }
+
+  // 深度分析·高级版：独立提示词（report.corePro）+ glm-4-plus + 独立集合 profilePro，
+  // 每周冷却逻辑同 ④（贵，属定期深度体检）。与「人物深度报告」完全并行、互不影响。
+  if (event && event.action === 'profilePro') {
+    if (!openid) return { error: 'no openid' };
+    return generateProfilePro(openid, !!event.force);
+  }
+  if (event && event.action === 'profileProGet') {
+    if (!openid) return { error: 'no openid' };
+    return { profilePro: await getProfilePro(openid) };
   }
 
   // 有用户上下文但没带可识别的 action（比如用测试模板直接跑）：不干活，

@@ -126,6 +126,7 @@
       <view class="sect-t" style="margin-top:18px">AI 分析</view>
       <view class="srow" bindtap="onPersona"><view class="sl">个人画像</view><view class="sv">长期沉淀 · 增量更新 ▸</view></view>
       <view class="srow" bindtap="onProfile"><view class="sl">人物深度报告</view><view class="sv">定期重算 · 含推演与行动方案 ▸</view></view>
+      <view class="srow" bindtap="onProfilePro"><view class="sl">深度分析 · 高级版</view><view class="sv">GLM-4-Plus · 跨记录洞察 ▸</view></view>
 
       <view class="sect-t" style="margin-top:18px">关于</view>
       <view class="srow"><view class="sl">选项池</view><view class="sv">{{optGroups}} 组 · {{optCount}} 个</view></view>

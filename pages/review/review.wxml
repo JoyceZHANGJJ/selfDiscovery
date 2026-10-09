@@ -59,6 +59,16 @@
         <view class="ai-e-go">›</view>
       </view>
 
+      <!-- 深度分析·高级版（独立入口，常驻显示；与「人物深度报告」并行） -->
+      <view class="ai-entry" bindtap="goProfilePro">
+        <view class="ai-e-badge pro">Pro</view>
+        <view class="ai-e-l">
+          <view class="ai-e-t">深度分析 · 高级版</view>
+          <view class="ai-e-s">GLM-4-Plus · 跨记录模式联结 · 增量洞察 · 盲点识别</view>
+        </view>
+        <view class="ai-e-go">›</view>
+      </view>
+
       <!-- 周 / 月复盘，以及最后的「全部」（主题档案，全历史） -->
       <view class="filters">
         <view class="ft {{view==='week'?'on':''}}" data-v="week" bindtap="onView">周</view>

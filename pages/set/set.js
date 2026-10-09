@@ -300,6 +300,8 @@ Page(pageBase({
   // 所以给两个独立入口——它们跑的频率、期待的结果、看的方式都不一样。
   onPersona() { wx.navigateTo({ url: '/pages/persona/persona' }); },
   onProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+  // 深度分析·高级版：独立页面（action:profilePro），与「人物深度报告」平行，互不干扰
+  onProfilePro() { wx.navigateTo({ url: '/pages/profilePro/profilePro' }); },
   /* 更新日志 */
   openLog() { this.setData({ logOverlay: true }); this.setTabHidden(true); },
   closeLog() { this.setData({ logOverlay: false }); this.setTabHidden(false); },

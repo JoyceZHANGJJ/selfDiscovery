@@ -139,6 +139,8 @@ Page(pageBase({
 
   goAnalysis() { wx.navigateTo({ url: '/pages/analysis/analysis' }); },
   goProfile() { wx.navigateTo({ url: '/pages/profile/profile' }); },
+  // 深度分析·高级版：独立页面（action:profilePro），与「人物深度报告」平行
+  goProfilePro() { wx.navigateTo({ url: '/pages/profilePro/profilePro' }); },
   goPersona() { wx.navigateTo({ url: '/pages/persona/persona' }); },
 
   // 拉已存的个人画像，填到顶部入口。失败 / 还没生成过都静默隐藏入口。

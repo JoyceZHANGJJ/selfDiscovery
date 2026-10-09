@@ -44,6 +44,7 @@
 .ai-e-badge { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 .ai-e-badge.prof { background: #B0853A; }   /* 个人画像（③·长期沉淀）：琥珀色 */
 .ai-e-badge.deep { background: #7A6BA8; }   /* 人物深度报告（④·定期重算）：紫色，与琥珀区分开 */
+.ai-e-badge.pro { background: #5B7CC9; }    /* 深度分析·高级版：蓝，区别于琥珀（画像）与紫（深度报告） */
 .ai-e-v { font-size: 10.5px; font-weight: 400; color: var(--ink3); margin-left: 4px; }
 .ai-e-l { flex: 1; min-width: 0; }
 .ai-e-t { font-size: 12.5px; font-weight: 700; color: var(--ink); }
