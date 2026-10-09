@@ -41,7 +41,7 @@ const COLMAP = {
   divType: '类型', divSpan: '时间范围',
   'free:divCard': '抽到的牌', 'free:divRead': '解读', 'free:review': '回顾',
   'free:divAcc': '准确率',
-  bookKind: '类别', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
+  bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
   'free:bookWhy': '记入原因'
 };
 // 带单位的字段（与 utils/store.js 的 UNIT_SUFFIX 同源，check_rec_labels 守着两边一致）。

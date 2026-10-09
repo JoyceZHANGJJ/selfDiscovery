@@ -5,6 +5,7 @@
     "pages/review/review",
     "pages/analysis/analysis",
     "pages/profile/profile",
+    "pages/profilePro/profilePro",
     "pages/persona/persona",
     "pages/prompt/prompt",
     "pages/sleep/sleep",

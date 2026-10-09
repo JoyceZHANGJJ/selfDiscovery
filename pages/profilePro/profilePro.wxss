@@ -1,0 +1,26 @@
+/* pages/profilePro/profilePro.wxss —— 深度分析·高级版
+   基础布局与报告区块沿用 profile.wxss（人物深度报告页）的同一套视觉语言，
+   这里只补高级版特有的「带证据的对象」展示（.pi / .ev / .badge-type）与风险提示框。 */
+@import "../profile/profile.wxss";
+
+/* 一条带证据的对象（元模式 / 盲点 / 擅长 / 薄弱）：标题 + 类型徽标 + 解读 + 证据链 */
+.pi { margin: 11px 0 13px; padding-top: 11px; border-top: 1px solid var(--line); }
+.pi:first-child { margin-top: 2px; padding-top: 0; border-top: 0; }
+.pi-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pi-t { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.6; }
+.pi-note { font-size: 13px; color: var(--ink2); line-height: 1.7; margin-top: 4px; word-break: break-word; }
+.pi-check { font-size: 12px; color: var(--accent); margin-top: 5px; line-height: 1.6; }
+
+/* fact / inference 类型徽标 */
+.badge-type { flex-shrink: 0; font-size: 10.5px; font-weight: 600; color: #7A6BA8; background: rgba(122, 107, 168, .12); border-radius: 99px; padding: 1px 8px; }
+
+/* 证据链：每条「日期 · 「原文摘录」」 */
+.ev { margin-top: 7px; display: flex; flex-direction: column; gap: 5px; }
+.ev-li { font-size: 12.5px; color: var(--ink3); line-height: 1.7; word-break: break-word; }
+.ev-date { color: var(--ink2); font-weight: 600; margin-right: 6px; }
+.ev-q { color: var(--ink3); }
+
+/* 风险提示框：与 risk-li 同一套警示色 */
+.risk-box { background: rgba(176, 85, 110, .07); border: 1px solid #B0556E; border-radius: var(--r-card); padding: 13px 14px; margin-bottom: 10px; }
+.rb-t { font-size: 13px; font-weight: 700; color: #B0556E; margin-bottom: 5px; }
+.rb-p { font-size: 13px; color: var(--ink2); line-height: 1.75; word-break: break-word; }

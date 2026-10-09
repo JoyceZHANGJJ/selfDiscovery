@@ -301,6 +301,7 @@ KEY_RE = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:")
 CONTRACT_PAIRS = [
     ('generateFor', 'fieldsSpec'),
     ('generateProfile', 'profileFieldsSpec'),
+    ('generateProfilePro', 'profileProFieldsSpec'),
     ('generatePersona', 'personaFieldsSpec'),
 ]
 
@@ -474,7 +475,7 @@ def check_prompt_slots(path):
 
 #喂给模型的记录文本由 recText.js 生成，格式说明（RECORD_GUIDE）必须**每个生成路径都拼上**。
 # 与 check_prompt_slots 是同一类病：漏掉不报错、不白屏，只是某条路径的模型默默退化。
-RECORD_GUIDE_USERS = ('buildMessages', 'buildProfileMessages', 'buildPersonaMessages')
+RECORD_GUIDE_USERS = ('buildMessages', 'buildProfileMessages', 'buildProfileProMessages', 'buildPersonaMessages')
 
 
 def check_record_guide(path):
