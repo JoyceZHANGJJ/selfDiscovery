@@ -1616,7 +1616,7 @@ function decorateDoc(d) {
 // extTags: 细节值（如觉察的「喜恶」= 喜欢 / 感兴趣 / 无感 / 讨厌）——ext 是数组，
 //          单个值直接等值命中（数组包含即算中），多个值要求同时都包含
 // mNot: 要排除的模块（看页「全部」不看待办：备忘 / 购物不进时间线，取回来只是白占一页的位置）
-function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null } = {}) {
+function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null, notIds = null } = {}) {
   const _ = db().command;
   const w = {};
   if (m && m !== 'all') w.m = m;
@@ -1638,16 +1638,21 @@ function recWhere({ m = null, mNot = null, startTs = null, before = null, state 
   if (before != null) ts.push(_.lte(before));
   if (ts.length === 1) w.ts = ts[0];
   else if (ts.length === 2) w.ts = _.and(ts);
+  // notIds：服务器端排除这批 _id。只在「同毫秒扎堆 + 客户端过滤会永远拿回同样 20 条」时用
+  // （见 loadRestSerial），平时不走这条——省一次服务器端的字段计算
+  if (notIds && notIds.length) w._id = _.nin(notIds);
   return w;
 }
 // 单页：before 为上一页最后一条的 ts（取更旧）。
 // 重要：小程序端 limit 默认与上限都是 20（官方限制），请求超过 20 会被静默截断，
 // 所以这里最多取 20 条，并用「是否满页」判断可能还有更旧的记录（下一页返回空即结束）。
-// excludeIds 用于去掉已加载的文档（配合 lte 游标，避免同毫秒记录重复或遗漏）。
-function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, startTs = null, state = null, extTags = null, excludeIds = null } = {}) {
+// excludeIds 在**客户端**过滤（省流量，绝大多数情况够用）；
+// notIds 走服务器端 _.nin，只在「满页但全是已看过的」（同毫秒扎堆）时用——
+// 那种情况下客户端过滤会永远拿回同样 20 条，翻不动也停不下来。
+function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, startTs = null, state = null, extTags = null, excludeIds = null, notIds = null } = {}) {
   const take = Math.min(limit || 20, 20);
   return new Promise((resolve) => {
-    recCol().where(recWhere({ m, mNot, startTs, before, state, extTags })).orderBy('ts', 'desc').limit(take).get().then(res => {
+    recCol().where(recWhere({ m, mNot, startTs, before, state, extTags, notIds })).orderBy('ts', 'desc').limit(take).get().then(res => {
       const raw = res.data || [];
       let data = raw;
       if (excludeIds && excludeIds.length) {
@@ -1658,34 +1663,100 @@ function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, sta
       const list = data.map(decorateDoc);
       const hasMore = raw.length >= take;   // 满页 → 可能还有更旧的
       const nextCursor = list.length ? list[list.length - 1].ts : null;
-      resolve({ list, hasMore, nextCursor });
-    }).catch(e => { log.warn('records.page', e); resolve({ list: [], hasMore: false, nextCursor: null }); });
+      resolve({
+        list, hasMore, nextCursor,
+        rawN: raw.length,                                    // 服务器实际返回几条（过滤前）
+        rawIds: raw.map(d => d._id),
+        allSeen: raw.length > 0 && data.length === 0         // 满页但全是已看过的 → 同毫秒还有货
+      });
+    }).catch(e => { log.warn('records.page', e); resolve({ list: [], hasMore: false, nextCursor: null, rawN: 0, rawIds: [], allSeen: false }); });
   });
 }
-// 全量拉取（导出 / 搜索 / 记页数据源）：按小程序端上限 20 自动翻页直到取完
-// onFirstPage 是「渐进加载」的钩子：第一页（20 条）拿到就立刻回调一次，
-// 剩余页继续在后台串行拉。下拉刷新用它先渲染、先收起下拉，不必等全部页拉完
-// （串行分页要 N/20 次网络往返，全量等完才会让人等好几秒）。
+
+// 全量拉取（导出 / 搜索 / 记页数据源）。
+// 小程序端单次只能取 20 条，「全量」必然要翻页；而**串行**翻 N/20 次往返就是
+// 「每次打开加载好久」的主因（300 条 ≈ 15 次往返，一次 200ms 就是 3 秒起，记录越多越慢）。
+// 现在：第一页照旧先出（首屏 / 「最近」尽早有内容，onFirstPage 语义不变），
+// 同时并行要一个 count；剩下的按**页序号**并行抓（第 j 页 = skip(20*j)，一页一个请求），
+// 用并发池控制在飞的请求数（数据库有「同时连接数」上限，一次全甩出去会被拒），
+// 最后用 count 校验条数——对得上才算完，对不上回落到串行翻页。
+// 宁可慢，不能漏：漏记录在页面上的表现是「记录数不对」，而且不报错，最难查。
 function loadAllRecords({ m = null, mNot = null, startTs = null, onFirstPage = null } = {}) {
-  const PAGE = 20;
-  let cursor = null;
-  let first = true;
-  const out = [];
-  const seen = {};
-  function step() {
-    return loadRecordsPage({ before: cursor, limit: PAGE, m, mNot, startTs, excludeIds: Object.keys(seen) }).then(({ list, hasMore, nextCursor }) => {
-      list.forEach(r => { if (!seen[r._rid]) { seen[r._rid] = 1; out.push(r); } });
-      if (first) {
-        first = false;
-        if (typeof onFirstPage === 'function') { try { onFirstPage(out.slice()); } catch (e) { log.warn('loadAll.first', e); } }
+  const W = { m, mNot, startTs };
+  // count 与第一页同时要：它只决定「剩下的要分几页并行抓」，晚一步就多一个往返
+  const cntP = recCol().where(recWhere(W)).count().then(r => (r && r.total) || 0).catch(() => null);
+  return loadRecordsPage(Object.assign({ limit: 20 }, W)).then(first => {
+    return cntP.then(total => {
+      if (typeof onFirstPage === 'function') {
+        try { onFirstPage(first.list.slice()); } catch (e) { log.warn('loadAll.first', e); }
       }
-      // 本页没有新增（全是已加载的同毫秒记录或已取完）→ 结束，防止死循环
-      if (!list.length) return out;
-      if (hasMore && nextCursor != null) { cursor = nextCursor; return step(); }
+      const head = first.list;
+      if (!head.length || !first.hasMore) return head;      // 一共不超过一页：没有「剩下的」
+      if (total == null) return loadRestSerial(W, head);    // count 没问到：不敢并行，按老办法翻
+      const rest = total - head.length;
+      if (rest <= 0) return head;                           // count 说不超过一页（第一页刚满 20 的边界）
+      // 剩下的不多也照样并行：串行在同毫秒扎堆时要靠 _.nin 一页页试，反而多出好几个来回
+      return loadRestFast(W, head, rest).then(fresh => head.concat(fresh))
+        .catch(e => { log.warn('records.fast', e); return loadRestSerial(W, head); });
+    });
+  });
+}
+
+// 剩下的（比第一页更旧的）记录：按页并行抓。小程序端单次 20 条，第 j 页就是 skip(20*j)。
+// 同一时刻只放 POOL 条在飞——数据库「同时连接数」上限 20（基础版），还要给别的查询留量。
+// 任何一步对不上就 reject，由调用方回落到串行翻页。
+const POOL = 8;
+function loadRestFast(W, head, rest) {
+  const pages = Math.ceil(rest / 20);
+  // skip 太大不稳（偏移越大越慢，且各家对上限的口径不一）：数据量特别大时直接走串行
+  if (pages > 40) return Promise.reject(new Error('页数过多 ' + pages));
+  const pageRows = new Array(pages);                        // 按下标存，合并时保持全局顺序
+  let i = 0;
+  function next() {
+    if (i >= pages) return Promise.resolve();
+    const j = ++i;                                          // 第 j 页 = 全局第 20*j 条起（第 0 页是 head）
+    return recCol().where(recWhere(W)).orderBy('ts', 'desc').skip(20 * j).limit(20).get()
+      .then(res => { pageRows[j - 1] = res.data || []; })
+      .then(next);
+  }
+  const jobs = [];
+  for (let k = 0; k < Math.min(POOL, pages); k++) jobs.push(next());
+  return Promise.all(jobs).then(() => {
+    const seen = {};
+    head.forEach(r => { seen[r._rid] = 1; });
+    const fresh = [];
+    for (let j = 0; j < pages; j++) {
+      (pageRows[j] || []).forEach(d => { if (!seen[d._id]) { seen[d._id] = 1; fresh.push(d); } });
+    }
+    // 同毫秒扎堆时，两页对「谁前谁后」的理解可能不一致（排序只按 ts，同 ts 的先后不保证）——
+    // 那种情况下会同时出现重复和缺口，按 _id 去重后条数必然变少。对不上就整体回落串行
+    if (fresh.length !== rest) throw new Error('条数对不上 ' + fresh.length + '/' + rest);
+    return fresh.map(decorateDoc);
+  });
+}
+
+// 串行翻页（兜底路径）：一页 20 条往回翻。与旧实现一致，只补了两处：
+// ① 「满页但全是已看过的」时改用服务器端 _.nin 继续翻（否则会永远拿回同样 20 条，
+//    旧实现在这里直接收尾，同毫秒多于 20 条时后面的记录就静默丢了）；
+// ② 只有服务器真的返回空页才结束。
+function loadRestSerial(W, head) {
+  const seen = {};
+  head.forEach(r => { seen[r._rid] = 1; });
+  const out = head.slice();
+  let cursor = head.length ? head[head.length - 1].ts : null;
+  function step(excl) {
+    return loadRecordsPage(Object.assign({}, W, { before: cursor, limit: 20, excludeIds: Object.keys(seen), notIds: excl })).then(p => {
+      p.list.forEach(r => { if (!seen[r._rid]) { seen[r._rid] = 1; out.push(r); } });
+      if (!p.rawN) return out;                                   // 服务器说没有了 → 结束
+      if (p.allSeen) {                                           // 满页但全是已看过的：同亳秒还有货
+        if ((excl || []).length + p.rawIds.length > 400) return out;
+        return step((excl || []).concat(p.rawIds));
+      }
+      if (p.hasMore && p.nextCursor != null) { cursor = p.nextCursor; return step(null); }
       return out;
     });
   }
-  return step();
+  return step(null);
 }
 // 记录总数（按 模块 / 时间范围 / 流转状态 / 细节标签 过滤），用于「共 X 条」准确统计。
 // 走 count 接口，不受列表分页影响。
