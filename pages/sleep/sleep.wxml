@@ -116,6 +116,8 @@
                       bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
                   <text class="sli-t">{{item.t}}</text>
                   <text class="sli-d">{{item.d}}</text>
+                  <!-- 起床感受：点顶部「起」记下时那一输入框写的，与入睡时间线的「晚睡原因」同一行位置 -->
+                  <text wx:if="{{item.note}}" class="sli-note">{{item.note}}</text>
                   <view class="sli-x"><text class="sl-tag {{item.after ? 'a' : ''}}">{{item.rel}}</text></view>
                 </view>
               </view>

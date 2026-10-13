@@ -7,6 +7,8 @@
 //
 // 记录的规则（与「作息」tab、store 的 sleep* / wake* 同一套口径）：
 // · 记的就是**点下去的那一刻**，只存 ts，不填任何东西；
+// · 记下后紧接着弹一句「当时的感受」（起：每次都问；睡：只在晚于基准点时问为什么晚），
+//   写进各自的字段（wakeNote / sleepNote），**可以不填**；已填过再记就回显原值；
 // · 一夜一条，分界用**一天的分割点**（设置 · 作息里可改，默认中午 12:00）——所以 23:47 点过、
 //   次日 00:20 又点，是同一夜，**覆盖**成 00:20（不新增第二条）；「起」同 night 键，正好配对；
 // · 撤销分两种：刚新建的那条＝删掉；覆盖掉的那次＝把时间改回去。
@@ -28,10 +30,14 @@ Component({
     wakeOn: false,
     slUndo: null,
     slBusy: false,  // 写入中：连点两次不重复写
-    // 「睡原因」弹层：只在「睡晚于基准点」时弹出，可不填；已填过则回显
-    reasonOpen: false,
-    reasonVal: '',
-    reasonAnchor: ''
+    // 「感受」弹层：睡（晚于基准点时）/ 起（每次）记下后弹出，可不填；已填过则回显。
+    // 两处共用同一套交互（输入 → 跳过 / 保存），差别只在文案与落到哪个字段
+    noteOpen: false,
+    noteVal: '',
+    noteTitle: '',
+    noteSub: '',
+    notePh: '',
+    noteKind: ''      // 'sleep' | 'wake'：保存时决定写 sleepNote 还是 wakeNote
   },
   lifetimes: {
     attached() {
@@ -115,16 +121,10 @@ Component({
         this.setData({ slBusy: false, slUndo: { msg: (res.kind === 'new' ? '已记 ' : '已改成 ') + res.rec.txt + label } });
         this.syncRec();
         this._startSlUndo();
-        this._notifyRec();
-        // 记的是「睡」且晚于基准点（超出睡的基准点）→ 弹「睡原因」，可不填；已填过则回显
-        if (!isW && store.sleepMin(res.rec.ts) > store.sleepAnchor()) {
-          this._reasonRec = res.rec;
-          this.setData({
-            reasonOpen: true,
-            reasonVal: res.rec.sleepNote || '',
-            reasonAnchor: store.anchorTxt(store.getAnchor('sleep'))
-          });
-        }
+        this._notifyRec(kind);
+        // 「睡」晚于基准点（超出睡的基准点）→ 弹「晚睡原因是？」；「起」每次记下都弹「起床感受？」。
+        // 都不必填（可跳过），已填过则回显原值——保存写回各自字段（sleepNote / wakeNote）
+        if (isW || store.sleepMin(res.rec.ts) > store.sleepAnchor()) this._openNote(kind, res.rec);
       }).catch(() => {
         this.setData({ slBusy: false });
         wx.showToast({ title: '没记上，再试一次', icon: 'none' });
@@ -132,6 +132,23 @@ Component({
     },
     onWake() { return this._recNow('wake'); },
     onSleep() { return this._recNow('sleep'); },
+    /* 打开「感受」弹层：kind 决定标题 / 占位提示 / 落到哪个字段。
+       起：每次记下都问一句（起床感受是给自己回看用的，不是异常诊断，所以不像「睡」那样设条件）；
+       睡：只在晚于基准点时问（那是为了解释「为什么晚」，正常点睡不必多此一举）。 */
+    _openNote(kind, rec) {
+      const isW = kind === 'wake';
+      this._noteRec = rec;
+      this.setData({
+        noteOpen: true,
+        noteKind: kind,
+        noteVal: (isW ? rec.wakeNote : rec.sleepNote) || '',
+        noteTitle: isW ? '起床感受？' : '晚睡原因是？',
+        noteSub: isW
+          ? '刚记下 ' + (rec.txt || '') + ' 起床（可不填）'
+          : '入睡晚于基准点 ' + store.anchorTxt(store.getAnchor('sleep')) + '（可不填）',
+        notePh: isW ? '比如 睡够了 / 还是困 / 头有点沉…' : '比如 加班 / 刷手机 / 睡不着…'
+      });
+    },
     /* 撤销：新建的那条删掉；覆盖过的那次把时间改回去——两种都用一次「撤销」交代清楚。
        撤销条起睡共用（后一次操作盖前一次），按刚才记的是哪一边分派到 wakeUndo / sleepUndo */
     onSlUndo() {
@@ -145,35 +162,39 @@ Component({
       const back = (res.back || {}).t || '';
       if (kind === 'wake') store.wakeUndo(res); else store.sleepUndo(res);
       this.syncRec();
-      this._notifyRec();
+      this._notifyRec(kind);
       wx.showToast({ title: res.kind === 'new' ? '已撤销' : '已改回 ' + back, icon: 'none' });
     },
     onSlNoop() {},
-    // 「睡原因」弹层：输入、保存（写回记录并持久化）、跳过（关闭，不动已有值）
-    onReasonInput(e) { this.setData({ reasonVal: e.detail.value }); },
-    onReasonSave() {
-      const rec = this._reasonRec;
-      const val = (this.data.reasonVal || '').slice(0, 200);
+    // 「感受」弹层：输入、保存（写回记录并持久化）、跳过（关闭，不动已有值）
+    onNoteInput(e) { this.setData({ noteVal: e.detail.value }); },
+    onNoteSave() {
+      const rec = this._noteRec;
+      const val = (this.data.noteVal || '').slice(0, 200);
       if (rec) {
-        rec.sleepNote = val;          // 内存里同一份对象，sleep 页回来即见
-        store.updateRecord(rec);      // 落到云端（sleepNote 已在 TEXT_FIELDS 里）
+        if (this.data.noteKind === 'wake') rec.wakeNote = val;   // 内存里同一份对象，作息页回来即见
+        else rec.sleepNote = val;
+        store.updateRecord(rec);      // 落到云端（两个字段都已在 TEXT_FIELDS 里）
+        // 感受写完了：让当前页立刻跟上（「作息」页的时间线要当场多出这一句，
+        // 不然要等下一次 onShow 才出现——那是「记了却看不到」）
+        this._notifyRec(this.data.noteKind);
       }
-      this.closeReason();
+      this.closeNote();
     },
-    onReasonSkip() { this.closeReason(); },
-    closeReason() { this._reasonRec = null; this.setData({ reasonOpen: false, reasonVal: '', reasonAnchor: '' }); },
+    onNoteSkip() { this.closeNote(); },
+    closeNote() { this._noteRec = null; this.setData({ noteOpen: false, noteVal: '', noteTitle: '', noteSub: '', noteKind: '' }); },
     _startSlUndo() {
       this._stopSlUndo();
       this._slTimer = setTimeout(() => { this._slTimer = null; this.setData({ slUndo: null }); }, 3200);
     },
     _stopSlUndo() { if (this._slTimer) { clearTimeout(this._slTimer); this._slTimer = null; } },
-    // 记完让当前页跟上（「作息」页实现 onSleepChange / onWakeChange；其它页没实现就等下次 onShow）
-    _notifyRec() {
+    // 记完让当前页跟上（「作息」页实现 onSleepChange / onWakeChange；其它页没实现就等下次 onShow）。
+    // kind 只回调对应的那一个：起睡都回调会让作息页连着重算两遍
+    _notifyRec(kind) {
       const pages = getCurrentPages();
       const page = pages[pages.length - 1];
-      ['onSleepChange', 'onWakeChange'].forEach(fn => {
-        if (page && typeof page[fn] === 'function') page[fn]();
-      });
+      const fn = kind === 'wake' ? 'onWakeChange' : 'onSleepChange';
+      if (page && typeof page[fn] === 'function') page[fn]();
     }
   }
 });

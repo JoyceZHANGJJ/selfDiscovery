@@ -612,6 +612,7 @@ function wakeStats(recs, opts) {
       t: minTxt(off),
       after: off >= EDGE,                                  // 基准点之后（含正好那一分）
       d: wakeDayLabel(r.ts),
+      note: r.wakeNote || '',                              // 起床感受（点「起」记下时弹的那一输入框，可不填）
       rel: df === 0 ? '正好' + atSp(AT) + AT : AT + atSp(AT) + (df > 0 ? '后 ' : '前 ') + gapTxt(Math.abs(df))
     };
   });
@@ -1189,7 +1190,7 @@ const TIME_FIELDS = [
   'calTs'    // 最后一次「推到手机日历」（0＝没推过）：只作回显，小程序读不回系统日历
 ];
 // 文本类：字符串，'' ＝没填
-const TEXT_FIELDS = ['status', 'ref', 'refTxt', 'sleepNote'];
+const TEXT_FIELDS = ['status', 'ref', 'refTxt', 'sleepNote', 'wakeNote'];
 const EXTRA_FIELDS = TEXT_FIELDS.concat(TIME_FIELDS);   // 写云时按同一份清单带上
 
 // 给一条记录补上 ago / day
