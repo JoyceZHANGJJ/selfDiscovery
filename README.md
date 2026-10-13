@@ -135,7 +135,8 @@ AI 回看页（`pages/analysis`）顶部按 日 / 周 / 月 / 年 切换，卡�
 
 1. 控制台新建集合 `analysis`，权限同样「仅创建者可读写」。
 2. 去大模型厂商拿 API Key。**默认用智谱 GLM-4-Flash（[open.bigmodel.cn](https://open.bigmodel.cn)，官方承诺永久免费、中文强、OpenAI 兼容），注册后在「API 密钥管理」创建密钥即可**，不用花钱。想用别的也行：硅基流动 `cloud.siliconflow.cn`（9B 以下模型如 `Qwen/Qwen2.5-7B-Instruct` 也永久免费）、DeepSeek（百万免费额度）、通义 / 智谱付费模型等。
-3. 微信开发者工具里右键 `cloudfunctions/analysis` → **上传并部署（云端安装依赖）**。上传时 `config.json` 里的 `triggers` 会在云端建好定时器，env 里已写好默认 `LLM_BASE_URL`（智谱 base）/ `LLM_MODEL`（`glm-4-flash`）。
+3. 微信开发者工具里右键 `cloudfunctions/analysis` → **上传并部署（云端安装依赖）**。env 里已写好默认 `LLM_BASE_URL`（智谱 base）/ `LLM_MODEL`（`glm-4-flash`）。
+   ⚠️ **定时器不跟着代码一起生效**：改过 `config.json`（cron）之后，右键 `config.json` →「云函数增量上传：更新文件」→ 再右键 →「上传触发器」，然后去「云函数 → analysis → **触发器**」页签确认能看到 `dailyAnalysis`。只上传代码、没上传触发器，是「定时执行未生效」最常见的原因（排查清单见 [`cloudfunctions/analysis/README.md`](cloudfunctions/analysis/README.md) 第十节）。
 4. **配置密钥（关键，不写进代码）**：云函数上传后，在「云开发 → 云函数 → analysis → 配置 → 环境变量」里加一条 `LLM_API_KEY = 你的key`。换厂商就改 `LLM_BASE_URL` / `LLM_MODEL`（这里填的是「接口 base」，不含 `/chat/completions`，代码会自动拼）。
 5. 在云端「日志」里手动触发一次 `analysis` 验证能跑通；之后每天自动跑。
 
@@ -143,7 +144,7 @@ AI 回看页（`pages/analysis`）顶部按 日 / 周 / 月 / 年 切换，卡�
 
 - 定时器触发**没有用户上下文**，所以云函数先用 `aggregate().group({_id:'$_openid'})` 捞出所有有记录的用户，再逐人生成；每条 `analysis` 都带上真实 `openid`，小程序端用 `action:'list'` 调同一云函数读回（云函数有管理员权限，能跨过「仅创建者可读写」读到对应用户的那份）。
 - 生成按 `openid + type + start` 幂等（旧日回看文档沿用 `openid + date`）：已生成过就跳过，定时器偶尔重跑不会叠两份；期间没有记录就不生成，不留空卡。
-- 时间按**中国时区**算（`cnToday0` 把当前时刻 +8h 再取日期），定时器 `0 0 17 * * * *` 是 UTC 17:00 ＝ 中国 01:00。周回看按自然周（周一~周日）；周 / 月 / 年不再依赖「昨天恰是边界日」，每晚自动往回扫补齐历史。还没结束的周期（未来 / 进行中）一律不生成。
+- 时间按**中国时区**算（`cnToday0` 把当前时刻 +8h 再取日期），但**定时器的 cron 是 UTC**：`0 0 17 * * * *` ＝ UTC 17:00 ＝ 中国 01:00。周回看按自然周（周一~周日）；周 / 月 / 年不再依赖「昨天恰是边界日」，每晚自动往回扫补齐历史。还没结束的周期（未来 / 进行中）一律不生成。单次调用有 45s 时间预算与 15 次生成额度，跑不完的下次定时接着补（幂等，不会重、不会漏）。
 - 记录上限：日回看取 100 条，周 / 月 / 年取 500 条（prompt 截前 400 条），控制 token；输出要求大模型严格返回 JSON。
 - 新六板字段与旧的 `themes/mood/highlight/insight/detail` **并存**：历史回看文档按旧字段照常显示，新生成的才有六板结构；`detail` 为空时会用六板内容兜底拼一段，保证任何文档都有可读正文。
 - 换了提示词想看新效果，要先删掉对应周期的旧 `analysis` 文档（幂等会跳过已存在的），再用 `gen` / `backfill` 重跑。

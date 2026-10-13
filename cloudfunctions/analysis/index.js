@@ -111,6 +111,11 @@ const TYPE_LABEL = { day: '日', week: '周', month: '月', year: '年' };
 const BACKFILL_DEPTH = { week: 12, month: 12, year: 5 };
 const MAX_GEN_PER_RUN = 15;
 let genBudget = 0;   // 本次调用的剩余生成额度，main 入口重置
+// 单次调用的时间预算：60s 是云函数的硬上限，被强杀时这一轮的结果什么都看不到
+// （日志里只有一句超时，done/skipped 全丢）。所以留 15s 余量，到点就停止开新的生成，
+// 正常返回一轮结果；剩下的周期由下一次定时接着补（幂等，不会重、不会漏）。
+const RUN_BUDGET_MS = 45000;
+let runStartedAt = 0;   // 本次调用开始时刻，main 入口重置
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 
@@ -1630,6 +1635,12 @@ async function generateAllFor(openid, out) {
   // 2) 周 / 月 / 年：从最近的完整周期往回扫，没生成过且有记录的补出来
   for (const t of ['week', 'month', 'year']) {
     for (const p of pastPeriodList(t, BACKFILL_DEPTH[t])) {
+      // 快到 60s 硬上限就收手：不再开新的生成（一次要好几秒），
+      // 这一轮正常返回，剩下的下次定时接着补。见 RUN_BUDGET_MS 的说明。
+      if (runStartedAt && Date.now() - runStartedAt > RUN_BUDGET_MS) {
+        out.deferred = true;
+        return;
+      }
       await tally(openid, t, p, out);
     }
   }
@@ -1861,6 +1872,7 @@ exports.main = async (event) => {
   const openid = ctx.OPENID || (event && event.openid);
   // 生成额度：每次调用重置（实例热复用时也不能把上一次的余额带过来）
   genBudget = (event && typeof event.maxGen === 'number') ? event.maxGen : MAX_GEN_PER_RUN;
+  runStartedAt = Date.now();
 
   // 客户端：取历史列表（带 type，按起始日期倒序）
   if (event && event.action === 'list') {
@@ -2198,9 +2210,33 @@ exports.main = async (event) => {
   if (openid) return { ok: false, hint: '无 action；生成用 action:gen / backfill，列表用 action:list' };
 
   // 定时任务（无用户上下文）：先给所有用户出昨天的日回看，再逐人补齐历史周 / 月 / 年
-  const agg = await recCol().aggregate().group({ _id: '$_openid' }).limit(1000).end();
+  // 走到这里只有两种情况：定时触发器，或控制台故意用「无 openid 的模板」测批量分支。
+  const day = cnStr(cnToday0() - 86400000);
+  let agg;
+  try {
+    agg = await recCol().aggregate().group({ _id: '$_openid' }).limit(1000).end();
+  } catch (e) {
+    // 取用户列表就失败（最常见：records 集合不存在 / 权限不对）——
+    // 必须显式报出来，否则日志里只有一句「超时」或干脆什么都没有，看不出是没跑还是跑挂了
+    console.error('[analysis] 定时任务：读不到用户列表 —— ' + (e && e.message));
+    return { trigger: true, day, users: 0, done: 0, skipped: 0, err: 1, error: '读不到用户列表：' + (e && e.message) };
+  }
   const ids = (agg.list || []).map(x => x._id).filter(Boolean);
   const out = { done: 0, skipped: 0, err: 0 };
-  for (const oid of ids) await generateAllFor(oid, out);
-  return { trigger: true, day: cnStr(cnToday0() - 86400000), users: ids.length, done: out.done, skipped: out.skipped, err: out.err };
+  if (!ids.length) {
+    return { trigger: true, day, users: 0, done: 0, skipped: 0, err: 0, note: '没有任何用户有记录' };
+  }
+  try {
+    for (const oid of ids) await generateAllFor(oid, out);
+  } catch (e) {
+    // tally 内部已逐条 catch，正常到不了这里；兜住是为了让「跑到一半整体炸了」
+    // 也能留下一份 done/skipped 现场，而不是整个调用变成一个无信息的 Error
+    out.err++;
+    console.error('[analysis] 定时任务异常：' + (e && e.message));
+    return { trigger: true, day, users: ids.length, done: out.done, skipped: out.skipped, err: out.err, error: e && e.message };
+  }
+  const res = { trigger: true, day, users: ids.length, done: out.done, skipped: out.skipped, err: out.err };
+  // 时间预算用尽 → 这一轮没跑完，告诉调用方「下次定时接着补」，别被误读成漏生成
+  if (out.deferred) res.deferred = true;
+  return res;
 };
