@@ -49,7 +49,9 @@ Page(pageBase({
     wlist: [],           // 起床时间线（日倒序）
     moreN: 0, wmoreN: 0,
     show: WIN, wshow: WIN,
-    // 行尾左滑「改」弹出的编辑面板：null＝没开。{ id, m, title, date, time, oldT, max, hint }
+    // 行尾左滑「改」弹出的编辑面板：null＝没开。
+    // { id, m, title, date, time, oldT, max, hint, note, notePh }——note 是这一条的备注
+    // （起＝起床感受 / 睡＝晚睡原因），进来时回显，可改也可清空
     ed: null
   },
 
@@ -219,18 +221,23 @@ Page(pageBase({
     }
   },
 
-  /* 打开「改时刻」面板：日期 + 时间两个原生选择器（年月日时分都能改）。
-     进来时把当前值填好，日期上限给到今天（未来时段不该出现在作息里） */
+  /* 打开「改」面板：日期 + 时间两个原生选择器（年月日时分都能改）+ 一行备注。
+     进来时把当前值都填好：日期上限给到今天（未来时段不该出现在作息里），
+     备注回显点「起 / 睡」时顺手写的那一句（没有就是空，占位句给个例子） */
   openEd(r) {
     const d = new Date(r.ts || Date.now());
+    const isW = r.m === 'wake';
     this.setData({
       ed: {
         id: r.id, m: r.m,
-        title: (r.m === 'wake' ? '改起床时间' : '改入睡时间'),
+        title: isW ? '改起床记录' : '改入睡记录',
         date: dayStr(d), time: store.minTxt(d.getHours() * 60 + d.getMinutes()),
         oldT: r.txt || store.minTxt(d.getHours() * 60 + d.getMinutes()),
         max: dayStr(new Date()),
-        hint: '可以改到过去的任何一天；那一天 / 那一夜已经有记录时不会被覆盖。'
+        hint: '可以改到过去的任何一天；那一天 / 那一夜已经有记录时不会被覆盖。备注（'
+          + (isW ? '起床感受' : '晚睡原因') + '）可以改，也可以清空。',
+        note: (isW ? r.wakeNote : r.sleepNote) || '',
+        notePh: isW ? '比如 睡够了 / 还是困 / 头有点沉…' : '比如 加班 / 刷手机 / 睡不着…'
       }
     });
     this.setTabHidden(true);
@@ -238,8 +245,11 @@ Page(pageBase({
   closeEd() { this.setData({ ed: null }); this.setTabHidden(false); },
   onEdDate(e) { this.setData({ 'ed.date': e.detail.value }); },
   onEdTime(e) { this.setData({ 'ed.time': e.detail.value }); },
-  /* 保存：只有两条规则——不能改到将来；目标时段不能已经有同类记录（校验在 store.slotTaken，
-     只有一份）。通过就改时刻（主项跟着改成新的 HH:MM），然后整页重算 */
+  onEdNote(e) { this.setData({ 'ed.note': e.detail.value }); },
+  /* 保存：三条规则——不能改到将来；目标时段不能已经有同类记录（校验在 store.slotTaken，
+     只有一份）；备注（起＝起床感受 / 睡＝晚睡原因）可改可清空。时刻和备注都没动就直接走。
+     通过就改：改时刻时主项跟着写成新的 HH:MM；备注先落到内存这份对象上，
+      moveRec 里的 updateRecord 会把它一起写走（两个字段都已在 TEXT_FIELDS 里），不会写丢 */
   onEdSave() {
     const ed = this.data.ed;
     if (!ed) return;
@@ -248,17 +258,27 @@ Page(pageBase({
     const ts = tsFrom(ed.date, ed.time);
     if (ts == null) { wx.showToast({ title: '这个时间认不出来', icon: 'none' }); return; }
     if (ts > Date.now()) { wx.showToast({ title: '不能改到将来', icon: 'none' }); return; }
-    if (ts === rec.ts) { this.closeEd(); return; }
-    const hit = store.slotTaken(rec, ts);
-    if (hit) {
-      const d = rec.m === 'wake' ? store.wakeDayLabel(hit.ts) : store.sleepNightLabel(store.sleepNightKey(hit.ts));
-      wx.showToast({ title: d + '已经记过 ' + (hit.txt || '') + '，先改或删掉它', icon: 'none', duration: 2200 });
-      return;
+    const isW = rec.m === 'wake';
+    const note = (ed.note || '').slice(0, 200);
+    const oldNote = (isW ? rec.wakeNote : rec.sleepNote) || '';
+    const moved = ts !== rec.ts, noted = note !== oldNote;
+    if (!moved && !noted) { this.closeEd(); return; }
+    if (moved) {
+      const hit = store.slotTaken(rec, ts);
+      if (hit) {
+        const d = isW ? store.wakeDayLabel(hit.ts) : store.sleepNightLabel(store.sleepNightKey(hit.ts));
+        wx.showToast({ title: d + '已经记过 ' + (hit.txt || '') + '，先改或删掉它', icon: 'none', duration: 2200 });
+        return;
+      }
     }
-    store.moveRec(rec, ts);
+    if (noted) { if (isW) rec.wakeNote = note; else rec.sleepNote = note; }
+    // 只改备注就不挪时刻：直接 updateRecord；改时刻走 moveRec（它内部同样落一次库）
+    const done = moved ? store.moveRec(rec, ts) : store.updateRecord(rec);
     this.closeEd();
     this.refresh();
-    wx.showToast({ title: '已改成 ' + rec.txt, icon: 'none' });
+    // updateRecord 失败时它自己会提示「没保存上」，这里别再把 rejection 抛成未捕获
+    Promise.resolve(done).catch(() => {});
+    wx.showToast({ title: moved ? '已改成 ' + rec.txt : '备注已保存', icon: 'none' });
   },
 
   onRange(e) {
