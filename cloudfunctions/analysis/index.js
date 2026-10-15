@@ -7,8 +7,9 @@
 //   python3 tools/check-syntax.py      ← 会检查「新增/改名的 action 有没有写进文档」
 //
 // 入口：
-//   1) 定时触发（每天北京时间 01:00；cron 时区固定为 UTC+8，故 config.json 用 "0 0 1 * * * *"，
-//      不是 0 0 17 —— 那个是 17:00 北京时间，会在白天才出「昨日」回看）：遍历所有有记录的用户——
+//   1) 定时触发（每天北京时间 01:00；cron 按 **UTC** 解释，故 config.json 用 "0 0 17 * * * *"，
+//      不是 0 0 1 —— 那个是中国 09:00，白天才出「昨日」回看；这个坑 10-13 踩过一次，
+//      改 cron 后必须重新「上传触发器」才生效，见 cloudfunctions/analysis/README.md 第 10 节）：遍历所有有记录的用户——
 //      · 先给每人生成「昨天」的日回看；
 //      · 再补齐历史周 / 月 / 年：往回扫最近 12 周 / 12 月 / 5 年，没生成过且期间有记录的
 //        会补出来（按 openid + type + start 幂等，重复跑不会叠加；期间没记录就不生成、
@@ -209,9 +210,13 @@ function pastPeriodList(type, n) {
   return out;
 }
 
+// 时刻一律按**中国时区**取：云函数容器的系统时区是 UTC，直接 getHours() 会把
+// 「01:56 睡」显示成「17:56 睡」——存储里的 txt 是本地时刻字符串，行首的 t 却是
+// UTC，同一行两个时间对不上（用户在 AI 回看里发现的「记录时间不对」就是这个）。
+// 与 cnToday0 / cnStr 同一套办法：+8h 平移，再取 UTC 分量。
 function hm(ts) {
-  const d = new Date(ts || 0);
-  return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const d = new Date((ts || 0) + 8 * 3600 * 1000);
+  return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
 }
 
 // ============ 提示词 ============

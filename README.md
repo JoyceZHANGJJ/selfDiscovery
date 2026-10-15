@@ -54,6 +54,10 @@ tools/check-syntax.py   改完自查：js 括号 / wxml 标签配对 / 云函数
 - `extSrc[i]` 说明 `ext[i]` 来自哪：选项组 key（如 `obsKind`）、`free:xxx`（自由填写）、`fx:xxx`（写死的固定组，如沉浸 / 精力）；
 - 任何改字段的动作都要两条一起改（`buildExt` / `mapExtSrc` / `decorate`）；导出格式也是按这个顺序排的。
 
+**新增字段先查导出**：`ext` 里的项会经 `buildExt` 自动进导出，但**顶层字段没有任何默认通道**——漏了就是一次静默的数据丢失（起睡备注 `sleepNote` / `wakeNote`、觉察的结束时间 `endTs` 都这样丢过，用户是拿着导出文本对比页面才发现）。新增顶层字段时，按 [`utils/exporter.js`](utils/exporter.js) 顶部的「顶层字段覆盖表」同步更新四处——`readLine`（可读）/ `backupLine`（备份）/ `readStateTags` 与 `pages/set/set.js` 的 `parseImport`（导入还原）——并跑 `python3 tools/test-export-fields.py` 做防回归断言。
+
+**可读导出的新内容，云函数侧必须同步**：喂给 AI 的记录文本在 `cloudfunctions/analysis/recText.js`，它是 `exporter.js` 的**纯逻辑复刻**（云函数上传时只带自己的目录，搬不了依赖 `wx.*` 的 `store.js`）。常量（`COLMAP` / 维度名 / 汇总口径）由 `tools/check-syntax.py` 的 `check_rec_labels()` 机械比对，但**顶层字段（起睡备注、觉察结束时间这类）不在常量里，比对守不到**——起睡备注就是先在可读导出落了地、云函数忘了同步，AI 眼里根本没有。所以改 `readLine` 的任何输出（不止新字段，**新标签 / 新句式都算**）都必须同步 `recText.js` 的 `readLine`，两处逐字一致；`check-syntax.py` 判据四（顶层字段两边都在）与 `tools/test-export-fields.py` 的逐字比对（每条记录两边输出一字不差）守着这条，漏改直接测试失败。
+
 `usercfg` 按 `type` 存配置：`dims`（自定义维度）/ `greets`（问候语）/ `delDef` / `optCustom` / `optOrder`。
 
 ## 如何运行

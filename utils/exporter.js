@@ -22,7 +22,39 @@
 // 改一个字段就可能让老备份导不回来（所以那边一个字都不能动，验证要靠逐字节 diff）；
 // read 只是一份给人看的文本，可以随需求增补 —— 这也是为什么 read 里那套
 // 「补充展示态字段」的逻辑只加在 read 这一侧。
+// 【顶层字段覆盖表】——新增顶层字段 / 改动 readLine 输出时，必须同步更新这张表与下面**四个**
+// 去处，少改一处就是一次静默的数据不一致：
+//   ① readLine（可读导出，人读 / 喂 AI 的那份文本的样板）
+//   ② backupLine（备份）+ ③ readStateTags / set.js parseImport（导入还原）
+//   ④ cloudfunctions/analysis/recText.js 的 readLine（云函数喂给模型的入参）
+// 起睡备注就是这样连丢两次的：先是导出整个丢了它；补上导出后，又忘了云函数——
+// AI 眼里还是没有（用户是拿导出文本对账才发现）。见文末变更记录。
+//
+// ext / extSrc 里的项不用管：readLine 走 buildExt 全量输出（刻意排掉的都在 SKIP_IN_DETAIL 有交代），
+// backupLine 原样拼 ext。真正的风险全在**顶层字段**——它们不在 ext 里，没有任何默认通道：
+//
+//   字段           ①可读导出              ②备份                 ③导入还原        ④AI 入参(recText.js)
+//   status         wantState/taskState     状态标签(✓✗进行中)      readStateTags ✓  逐字同 ①
+//   doneAt         状态日期（10月6日）      完成于 YYYY-MM-DD       readStateTags ✓  逐字同 ①
+//   startedAt      同上（在做…起）         开始于 YYYY-MM-DD       readStateTags ✓  逐字同 ①
+//   abandonedAt    同上（已放弃）          放弃于 YYYY-MM-DD       readStateTags ✓  逐字同 ①
+//   dueTs          「计划完成：…逾期 N 天」 计划完成 YYYY-MM-DD     readStateTags ✓  逐字同 ①
+//   sleepNote      「晚睡原因：…」          备注 …（状态段末位）     readStateTags ✓  逐字同 ①
+//   wakeNote       「起床感受：…」          备注 …（状态段末位）     readStateTags ✓  逐字同 ①
+//   endTs          obs「历时：…」           结束于 YYYY-MM-DD HH:MM readStateTags ✓  逐字同 ①
+//   calTs          不导出（纯回显：只说明推没推过手机日历，不是记录内容）
+//   ref/refTxt/refTs  不导出（README 已注明：老「做了」模块遗留引用，无新数据产生）
+//
+// ④ 为什么单独强调：recText.js 是本文件的**纯逻辑复刻**（云函数上传时只带自己的目录，
+// 搬不了依赖 wx.* 的 store.js），它既没有 buildExt 那条默认通道，也不在 check_rec_labels
+// 的常量比对范围内——**可读导出的任何新内容（不止新字段，新标签 / 新句式都算）都必须同步
+// recText.js 的 readLine，两处逐字一致**。守着它的两条：
+//   check-syntax.py 判据四（顶层字段两边都在，缺一边直接报错）
+//   tools/test-export-fields.py 逐字比对（每条记录两边输出一字不差）
+//
+// 改完请跑 tools/test-export-fields.py（对本表做静态断言 + node 冒烟）。
 const store = require('./store.js');
+const date = require('./date.js');
 
 const DAY = 24 * 3600 * 1000;
 const CN = 8 * 3600 * 1000;
@@ -213,21 +245,34 @@ function readLine(r) {
       + (over ? (late > 0 ? '（已逾期 ' + late + ' 天）' : '（已逾期）') : ''));
   }
 
-// 主项为空的记录（今日只有能量条没写说明）会拼出「22:00 今日 | 剩余能量：很低（1/5 格）」，
-// 读起来像丢了内容 —— 补一句说明它本来是什么
-if (!main && r.m === 'today') parts.push('（当天没写说明）');
+  // 主项为空的记录（今日只有能量条没写说明）会拼出「22:00 今日 | 剩余能量：很低（1/5 格）」，
+  // 读起来像丢了内容 —— 补一句说明它本来是什么
+  if (!main && r.m === 'today') parts.push('（当天没写说明）');
 
   // 睡眠记录：txt 存的就是'HH:MM'（见 store 的写入规则——留着是为了导入时主项不为空），
-// 直接当主项输出就成了「23:30 睡 | 23:30」，同一件事写两遍。
-// 改成把主项换成一句说明：「23:30 睡 | 记的是入睡时刻23:30」。
-// 注意用**过滤**而不是切片——切片会漏掉后面追加的状态 / 细节（parts 是逐步 push 的，
-// 睡眠那条也有状态与细节，切片极易漏）。
-if ((r.m === 'sleep' || r.m === 'wake') && main) {
-  const verb = r.m === 'sleep' ? '入睡' : '起床';
-  parts[1] = '记的是' + verb + '时刻' + main;
-}
+  // 直接当主项输出就成了「23:30 睡 | 23:30」，同一件事写两遍。
+  // 改成把主项换成一句说明：「23:30 睡 | 记的是入睡时刻23:30」。
+  // 注意用**过滤**而不是切片——切片会漏掉后面追加的状态 / 细节（parts 是逐步 push 的，
+  // 睡眠那条也有状态与细节，切片极易漏）。
+  if ((r.m === 'sleep' || r.m === 'wake') && main) {
+    const verb = r.m === 'sleep' ? '入睡' : '起床';
+    parts[1] = '记的是' + verb + '时刻' + main;
+  }
 
-return parts.join(' | ');
+  // 起睡备注（顶层字段 sleepNote / wakeNote，不在 ext 里，buildExt 碰不到）：
+  // 起＝起床感受、睡＝晚睡原因，是记的时候顺手写的一句，页面时间线上就显示在那行旁边，
+  // 导出漏了它，「为什么那天晚睡 / 醒来什么状态」整段故事就没了。标签跟页面同款用语。
+  const wnote = (r.m === 'wake') ? (r.wakeNote || '') : (r.m === 'sleep' ? (r.sleepNote || '') : '');
+  if (wnote) parts.push((r.m === 'wake' ? '起床感受' : '晚睡原因') + '：' + wnote);
+
+  // 觉察的结束时间（顶层 endTs，点「结束」那一刻记的）：看页显示「历时 X」，
+  // 导出不写就等于丢了「这次觉察持续了多久」。句式与看页同口径（date.fmtDur）。
+  if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+    const ds = date.fmtDur(r.endTs - r.ts);
+    if (ds) parts.push('历时：' + ds);
+  }
+
+  return parts.join(' | ');
 }
 
 // 维度名：带上分类 / 喜恶，跟列表的 recMname 同口径。
@@ -410,6 +455,15 @@ function backupLine(r) {
     const p = store.taskPrio(r);
     if (p) tags.push('优先级 ' + p);
   }
+  // 觉察的结束时间（顶层 endTs）：带时分——它是「那一刻」，不是「那一天」。
+  // 完成于 / 放弃于那几个只带日期是既有口径（那边按日记），结束于不能跟着省时分。
+  if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+    tags.push('结束于 ' + ymd(r.endTs) + ' ' + hhmm(r.endTs));
+  }
+  // 起睡备注**必须最后 push**：它是自由文本，可能含逗号，导入端按「备注取到段尾」整体还原
+  // （见 readStateTags）。老备份没有这些标签，导入端解析不到就忽略，行为完全不变。
+  const wnote = (r.m === 'wake') ? (r.wakeNote || '') : (r.m === 'sleep' ? (r.sleepNote || '') : '');
+  if (wnote) tags.push('备注 ' + wnote);
   // 状态段必须带「状态：」前缀：否则「没有细节」的行里，最后一段到底是细节还是状态分不清
   // （细节用顿号、状态用逗号，可末段仍可能两者皆像）。有这个前缀，导入端按前缀取末段即可。
   return tags.length ? head + ' | 状态：' + tags.join('，') : head;
@@ -435,15 +489,26 @@ const TAG_F = {
 };
 function readStateTags(seg) {
   const out = {};
-  String(seg || '').split(/[，,]/).forEach(t => {
+  let s = String(seg || '');
+  // 「备注」是自由文本（可能含逗号 / 顿号），按逗号拆会碎——导出端约定它永远在状态段末位，
+  // 这里遇到「备注 」就把到段尾的内容整体取走，剩下的才按逗号逐条拆。
+  // 老备份没有这一段，ni < 0，走原路径，行为完全不变。
+  const ni = s.indexOf('备注 ');
+  if (ni >= 0) {
+    out.note = s.slice(ni + 3).trim();
+    s = s.slice(0, ni).replace(/[，,]\s*$/, '');   // 摘走后段尾可能剩一个逗号，清掉
+  }
+  s.split(/[，,]/).forEach(t => {
     t = t.trim();
     if (!t) return;
-    const mt = t.match(/^(完成于|放弃于|开始于|计划完成)\s+(\d{4}-\d{2}-\d{2})/);
+    // 结束于带可选时分（它是「那一刻」）；其余按原口径只带日期（T12:00:00 是既有行为，不动）
+    const mt = t.match(/^(完成于|放弃于|开始于|结束于|计划完成)\s+(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?/);
     if (mt) {
-      const ts = new Date(mt[2] + 'T12:00:00').getTime();
+      const ts = new Date(mt[2] + 'T' + (mt[3] ? (mt[3].length === 4 ? '0' + mt[3] : mt[3]) : '12:00') + ':00').getTime();
       if (mt[1] === '计划完成') out.dueTs = ts;
       else if (mt[1] === '完成于') { out.doneAt = ts; if (!out.done) out.done = 1; }
       else if (mt[1] === '开始于') { out.startedAt = ts; if (!out.status) out.status = 'doing'; }
+      else if (mt[1] === '结束于') out.endTs = ts;
       else out.abandonedAt = ts;
       return;
     }

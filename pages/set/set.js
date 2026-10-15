@@ -414,6 +414,13 @@ Page(pageBase({
       if (st.done) { rec.done = 1; rec.doneAt = st.doneAt || 0; }
       if (st.status) { rec.status = st.status; }
       if (st.abandonedAt) { rec.abandonedAt = st.abandonedAt; }
+      if (st.endTs) rec.endTs = st.endTs;                       // 觉察的结束时间（备份「结束于 日期 时分」）
+      // 起睡备注（备份「备注 …」）：按维度落到 sleepNote / wakeNote（addRecord 会按 TEXT_FIELDS 写云）。
+      // 老备份没有这一段，st.note 为 undefined，行为完全不变
+      if (st.note != null) {
+        if (k === 'wake') rec.wakeNote = st.note;
+        else if (k === 'sleep') rec.sleepNote = st.note;
+      }
       if (st.dueTs) { rec.dueTs = st.dueTs; rec.calTs = 0; }   // 计划时间与「已推日历」联动，带过来就得清掉旧标记
       out.push(rec);
     });
