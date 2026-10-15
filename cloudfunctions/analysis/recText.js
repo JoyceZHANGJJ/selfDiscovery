@@ -14,6 +14,9 @@
 //   两边不一致时，同一条记录在人读的导出里和在 AI 眼里会长得不一样，
 //   对账时极难看出是哪边错了。tools/check-syntax.py 的 check_rec_labels()
 //   会机械比对这三份常量，不一致直接报错——**改了一边必须改另一边**。
+// ★ 顶层字段也要逐字对齐：sleepNote / wakeNote / endTs（起睡备注 / 觉察结束时间）
+//   是顶层字段，不在 COLMAP 里，常量比对守不到——改 exporter 的 readLine 时
+//   必须同步这里的 readLine。tools/test-export-fields.py 的运行时逐字比对是最后防线。
 //
 // 口径（与 utils/exporter.js 的 readable() 完全一致）：
 //   「时间 维度·分类 | 主项 | 状态（日期） | 标签：值 | 细节」+末尾汇总。
@@ -88,9 +91,13 @@ function ymd(ts) {
   return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
 }
 function md(ts) { const s = ymd(ts); return s.slice(5, 7) + '月' + s.slice(8, 10) + '日'; }
+// 时刻一律按**中国时区**取：云函数容器的系统时区是 UTC，直接 getHours() 会把
+// 「01:56 睡」显示成「17:56 睡」——txt 里存的是本地时刻字符串，行首却是 UTC，
+// 同一行两个时间对不上（用户在 AI 回看里发现的「记录时间不对」就是这个）。
+// 与下面的 ymd / weekOf 同一套办法：+CN 平移，再取 UTC 分量。
 function hhmm(ts) {
-  const d = new Date(ts || 0);
-  return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const d = new Date((ts || 0) + CN);
+  return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
 }
 // 周一到周日。**下标 0 必须是周一**——用'日一二三四五六' 再把周日映成 7 会越界，
 // 索引 7不存在，标题会打成「周undefined」（这个 bug 出过一次）。
@@ -171,19 +178,21 @@ function taskPrio(r) {
 function dueOver(ts) { return !!ts && ts < Date.now(); }
 function dueLabel(ts) {
   if (!ts) return '';
-  const d = new Date(ts), n = new Date();
-  const dd = Math.round((dayStart(ts) - dayStart(n.getTime())) / DAY);
+  // 容器时区是 UTC：d / n 都 +CN 平移，分量一律取 UTC（与 hhmm / ymd 同一套办法）。
+  // 漏了这一步，「档位 23:59」会被当成自定义时刻多带一个时分，跨月/跨年的日期也会差一天
+  const d = new Date(ts + CN), n = new Date(Date.now() + CN);
+  const dd = Math.round((dayStart(ts) - dayStart(Date.now())) / DAY);
   let day;
   if (dd === 0) day = '今天';
   else if (dd === 1) day = '明天';
   else if (dd === 2) day = '后天';
   else if (dd === -1) day = '昨天';
   else {
-    const m2 = (d.getMonth() + 1) + '月' + d.getDate() + '日';
-    day = d.getFullYear() === n.getFullYear() ? m2 : (d.getFullYear() + '年' + m2);
+    const m2 = (d.getUTCMonth() + 1) + '月' + d.getUTCDate() + '日';
+    day = d.getUTCFullYear() === n.getUTCFullYear() ? m2 : (d.getUTCFullYear() + '年' + m2);
   }
   // 只有自定义的具体时刻才带时分；档位的 23:59 说了反而吵
-  if (d.getHours() !== DUE_END_H || d.getMinutes() !== DUE_END_M) day += ' ' + hhmm(ts);
+  if (d.getUTCHours() !== DUE_END_H || d.getUTCMinutes() !== DUE_END_M) day += ' ' + hhmm(ts);
   return day;
 }
 
@@ -259,6 +268,23 @@ function buildExt(m, ext, extSrc) {
 }
 
 // ---------------- 一行 ----------------
+// 用时格式化（复刻自 utils/date.js 的 fmtDur，逐字一致——obs 的「历时」两边必须一个写法）。
+// 为什么复刻而不 require：云函数上传时只带 cloudfunctions/analysis 目录，跨目录 require
+// 小程序端的 utils/ 会连 wx 依赖树一起拖进来（见本文件顶部说明）。
+const DUR_DAY = 24 * 3600 * 1000;
+function fmtDur(ms) {
+  if (ms <= 0) return '';
+  const HOUR = 3600000, MIN = 60000;
+  if (ms < DUR_DAY) {
+    const h = Math.floor(ms / HOUR);
+    if (h > 0) return h + ' 小时';
+    const m = Math.floor(ms / MIN);
+    if (m > 0) return m + ' 分钟';
+    return '片刻';
+  }
+  const d = ms / DUR_DAY;
+  return (Math.round(d * 10) / 10) + ' 天';
+}
 function moduleLabel(r) {
   const n = MODULE_N[r.m] || r.m || '记录';
   if (r.m === 'want') { const k = extOf(r, 'wantKind'); return k ? n + '·' + k : n; }
@@ -351,6 +377,19 @@ function readLine(r) {
   // 改写parts[1]，**不用切片**——parts 是逐步 push 的，切片会漏掉后面追加的状态与细节。
   if ((r.m === 'sleep' || r.m === 'wake') && main) {
     parts[1] = '记的是' + (r.m === 'sleep' ? '入睡' : '起床') + '时刻' + main;
+  }
+
+  // 起睡备注（顶层字段 sleepNote / wakeNote，不在 ext 里，buildExt 碰不到）：
+  // 起＝起床感受、睡＝晚睡原因。与 utils/exporter.js 的 readLine 逐字同口径——
+  // 顶层字段没有 buildExt 那条默认通道，check_rec_labels 的常量比对也守不到它们，
+  // 漏一次就是「导出里有、AI 眼里没有」（tools/test-export-fields.py 的运行时逐字比对守着这段）。
+  const wnote = (r.m === 'wake') ? (r.wakeNote || '') : (r.m === 'sleep' ? (r.sleepNote || '') : '');
+  if (wnote) parts.push((r.m === 'wake' ? '起床感受' : '晚睡原因') + '：' + wnote);
+
+  // 觉察的结束时间（顶层 endTs）：历时。同样与 exporter 的 readLine 逐字同口径。
+  if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+    const ds = fmtDur(r.endTs - r.ts);
+    if (ds) parts.push('历时：' + ds);
   }
   return parts.join(' | ');
 }

@@ -219,8 +219,9 @@
     </view>
   </view>
 
-  <!-- 改时刻浮层（时间线里行尾左滑「改」进来）：年月日 + 时分两个原生选择器。
-       可以改到过去的任何一天；那一天 / 那一夜已经有同类记录时不会被覆盖（保存时拦下并提示） -->
+  <!-- 改浮层（时间线里行尾左滑「改」进来）：年月日 + 时分两个原生选择器，外加一行备注。
+       可以改到过去的任何一天；那一天 / 那一夜已经有同类记录时不会被覆盖（保存时拦下并提示）。
+       备注（起＝起床感受 / 睡＝晚睡原因）回显已写的那句，可改也可清空，随「保存」一起落库 -->
   <view wx:if="{{ed}}" class="sheet">
     <view class="sh-h"><view class="st">{{ed.title}}</view><view class="sx" bindtap="closeEd" aria-label="关闭">✕</view></view>
     <view class="sh-sub">原来是 {{ed.oldT}} · 改成下面这一天、这个时刻</view>
@@ -232,6 +233,13 @@
         <picker class="ed-pk" mode="time" value="{{ed.time}}" bindchange="onEdTime">
           <view class="ed-pick"><text class="ed-k">时间</text><text class="ed-v">{{ed.time}}</text><text class="ed-c">▸</text></view>
         </picker>
+      </view>
+      <!-- 备注：与记下时那一输入框同一个字段（起 wakeNote / 睡 sleepNote），上限 200 字 -->
+      <view class="ed-note-row">
+        <text class="ed-k">备注</text>
+        <input class="ed-note" value="{{ed.note}}" bindinput="onEdNote" placeholder="{{ed.notePh}}"
+               placeholder-class="ed-note-ph" maxlength="200" confirm-type="done"
+               adjust-position="{{false}}" cursor-spacing="20" />
       </view>
       <view class="ed-hint">{{ed.hint}}</view>
     </view>

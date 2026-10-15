@@ -1134,6 +1134,10 @@ def check_exporter_rectext_alignment(root):
     判据一：两边的 SKIP_IN_DETAIL 键集必须一致。漏一个＝那一项在一边被原样再写一遍。
     判据二：两边对「今日」的 5 格量（todayBat / todayMood）都要做「名字（N/5 格）」的补写。
     判据三：末尾汇总里也要有这两个量（平均几格 / 几天偏低），同样不许只在一边加。
+    判据四：顶层字段（起睡备注 sleepNote / wakeNote、觉察结束时间 endTs）两边的
+            readLine 都要显式处理。它们不在 COLMAP 里（判据一守不到），也没有
+            buildExt 那条默认通道——起睡备注就是这样只在 exporter 落了地、
+            AI 眼里完全没有的，用户拿导出文本对账才发现。
     """
     out = []
     ex_p = os.path.join(root, 'utils', 'exporter.js')
@@ -1200,6 +1204,15 @@ def check_exporter_rectext_alignment(root):
                            '和 AI 看到的结论对不上。' % (rx, name))
             if k not in rt_s:
                 out.append('%s  汇总里没有 %s：AI 看不到这个量的平均与低谷。' % (rt_rel, name))
+
+    # 判据四：顶层字段两边的 readLine 都必须显式处理（不在 COLMAP 里，判据一守不到）
+    for k, name in (('sleepNote', '晚睡原因'), ('wakeNote', '起床感受'), ('endTs', '觉察结束时间')):
+        if k not in ex_src:
+            out.append('%s  readLine 没处理顶层字段 %s（%s）：可读导出会丢它。' % (rx, k, name))
+        if k not in rt_src:
+            out.append('%s  readLine 没处理顶层字段 %s（%s）：AI 看不到它，'
+                       '而人读的导出里有——又是「导出有、AI 没有」（起睡备注就这样丢过一次）。'
+                       % (rt_rel, k, name))
     return out
 
 
@@ -1225,6 +1238,32 @@ def check_no_inline_rectext(root):
                 out.append('%s  %s() 里又在内联拼记录文本（直接遍历 extSrc 生成标签片段）。'
                            '三处各拼一份，改一处忘另两处就对不上了。改成调 recText.recText()。'
                            % (rel, fn))
+    return out
+
+
+def check_cloudfn_local_tz(root):
+    """云函数里不许用本地时区的 Date getter（getHours / getMinutes / getDate …）。
+
+    为什么要有这条：云函数容器的系统时区是 **UTC**，而记录里的时刻全是按中国时区
+    存的（txt 就是 'HH:MM' 本地字符串）。用 getHours() 取时刻会整体差 8 小时——
+    用户在 AI 回看里看到的「17:56 睡 | 记的是入睡时刻01:56」就是这么来的：
+    行首的 t 走了 hm()（UTC），主项 txt 是本地时刻，同一行两个时间对不上。
+    时刻必须 [+8h 平移再取 getUTC* 分量]，与 cnToday0 / cnStr 同一套办法。
+    只拦云函数目录；小程序端跟随设备时区，getHours() 是对的，不拦。
+    """
+    out = []
+    # getUTC* / getTime / getDay(仅 index.js 未用) 不拦；本地 getter 一个都不放过
+    bad = re.compile(r'\.get(Hours|Minutes|Seconds|Milliseconds|Date|Month|FullYear)\(\)')
+    for p in walk_cloudfn(root):
+        src = read(p)
+        rel = os.path.relpath(p, os.path.dirname(os.path.dirname(p)))
+        for i, ln in enumerate(src.split('\n'), 1):
+            m = bad.search(ln)
+            if m:
+                out.append('%s:%d  云函数里用了本地时区 getter %s——容器时区是 UTC，'
+                           '时刻会差 8 小时。改成 [+8h 平移后取 getUTC* 分量]'
+                           '（参考 recText.js 的 hhmm / index.js 的 hm）。'
+                           % (rel, i, m.group(0)))
     return out
 
 
@@ -1546,6 +1585,7 @@ def main():
         problems += check_optpool_filtering(root)
         problems += check_scroll_hints(root)
         problems += check_no_inline_rectext(root)
+        problems += check_cloudfn_local_tz(root)
 
     for line in problems:
         sys.stdout.write(line + '\n')
