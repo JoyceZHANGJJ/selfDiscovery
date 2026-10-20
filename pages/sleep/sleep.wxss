@@ -116,3 +116,59 @@
 .ed-note-row { display: flex; align-items: center; gap: 8px; background: var(--surface, #FFFFFF); border: 1px solid var(--line); border-radius: 12px; padding: 12px 13px; margin-top: 10px; }
 .ed-note { flex: 1; min-width: 0; font-size: 15px; color: var(--ink); }
 .ed-note-ph { font-size: 13px; color: var(--ink4); }
+
+/* ================= 顶部「今日」卡（全局每日锚点） =================
+   结构照 shiji 的今日卡：抬头（今日 + 「全局锚点 · 不随项目」）→ 天气六选一 → 剩余能量 5 格
+   → 心情 5 张脸 → 「今天怎么样」/「明天的计划」两个框（编辑态）或那两句话（只读态）。
+   几个取舍：
+   · 天气 / 心情一律**线性 SVG**（utils/today-icons.js），不用 emoji——emoji 各机型字形不一致，
+     灰度滤镜也压不住它的彩色，在浅色主题上会是一块块深浅不一的色斑；
+   · 选中态靠**容器**的底色 + 描边表达（accent-soft + accent 描边），图标本身不变色——
+     这样切主题不必重新生成图标，也不会出现「图标换了主题不变色」的割裂；
+   · 只读态下这三个控件是**展示**不是开关（.ro 去掉按压反馈），点它们不生效，要改先点「修改」。 */
+.tc { padding: 15px 16px 14px; border-radius: var(--r-card); background: var(--surface, #FFFFFF); border: 1px solid var(--line); }
+.tc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tc-t { font-size: 15px; font-weight: 800; color: var(--ink); letter-spacing: .04em; }
+.tc-note { font-size: 11px; color: var(--ink4); }
+.tc-lab { font-size: 11.5px; color: var(--ink4); letter-spacing: .04em; font-weight: 600; margin: 14px 0 8px; }
+.tc-lab-i { margin: 0; }             /* 与格子同一行时（剩余能量）不占上下间距 */
+.tc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+
+/* 天气：六选一，一行排开（6 个刚好铺满一屏宽） */
+.tc-wrow { display: flex; gap: 6px; }
+.tc-wi { flex: 1; height: 52px; border-radius: 13px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: var(--soft); border: 1px solid transparent; box-sizing: border-box; }
+.tc-wi:not(.ro):active { opacity: .72; }
+.tc-wi.on { background: var(--accent-soft); border-color: var(--accent); }
+.tc-wimg { width: 25px; height: 25px; }
+.tc-wn { font-size: 10px; line-height: 1; color: var(--ink3); }
+.tc-wi.on .tc-wn { color: var(--accent); font-weight: 700; }
+
+/* 剩余能量：5 个方块（与记页只读摘要 / 看页今日卡同一套「点第 N 格＝N 格」的读法） */
+.tc-erow { display: flex; gap: 6px; }
+.tc-ed { width: 15px; height: 15px; border-radius: 5px; background: var(--soft); border: 1px solid var(--line); box-sizing: border-box; }
+.tc-ed:not(.ro):active { opacity: .72; }
+.tc-ed.on { background: var(--accent); border-color: var(--accent); }
+
+/* 心情：5 张脸。与能量同样是「图示档位」，但用脸而不是格子——
+   格子要数，脸一眼就看出好坏，这一行是给自己看的，读的速度比精确重要 */
+.tc-mrow { display: flex; gap: 6px; flex: 1; min-width: 0; }
+.tc-mf { flex: 1; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--soft); border: 1px solid transparent; box-sizing: border-box; }
+.tc-mf:not(.ro):active { opacity: .72; }
+.tc-mf.on { background: var(--accent-soft); border-color: var(--accent); }
+.tc-mimg { width: 26px; height: 26px; }
+.tc-mn { flex: none; font-size: 12px; color: var(--ink3); font-weight: 600; padding-left: 4px; }
+
+/* 两个输入框（编辑态）：与设置页那几个输入框同一套轻样式 */
+.tc-in { margin-top: 14px; background: var(--surface, #FFFFFF); border: 1px solid var(--line); border-radius: var(--r-in); padding: 11px 12px; font-size: 14px; color: var(--ink); }
+.tc-ta { min-height: 58px; }
+/* 这两句话**没有上方标题**，placeholder 就是它唯一的标签 → 按正文对待、必须够对比度（--ink4 只 3.2:1，不够） */
+.tc-in-ph { color: var(--ink3); }
+.tc-foot { display: flex; gap: 10px; margin-top: 12px; }
+
+/* 只读态的那两句话 + 修改入口 */
+.tc-line { display: block; margin-top: 12px; font-size: 14px; color: var(--ink); line-height: 1.65; }
+.tc-line.none { color: var(--ink4); }
+.tc-line.tmr .k { display: inline-block; margin-right: 6px; font-size: 11px; color: var(--ink4); font-weight: 600; }
+.tc-act { margin-top: 12px; font-size: 12.5px; font-weight: 700; color: var(--accent); text-align: right; }
+.tc-act:active { opacity: .62; }
+.tc-when { margin-top: 6px; font-size: 11px; color: var(--ink4); text-align: right; }

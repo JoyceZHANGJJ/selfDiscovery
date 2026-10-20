@@ -177,10 +177,19 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 .tl-bar { display: flex; gap: 4px; flex: 1; max-width: 160px; }
 .tl-cell { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
 .tl-cell.on { background: var(--accent); }
+/* 「今日」剩余能量：与作息页今日卡同一套短块（等比缩小到 13px 适配行内小字号）。
+   记页最近列表 / 看页今日卡片共用；on＝亮成主题色。accent 选中、墨色描边，切主题不用换色。
+   align-self:center：最近行的 .tvw 是 baseline 对齐，块行没有文字基线会被顶高，这里改回垂直居中 */
+.tl-blkrow { display: flex; gap: 6px; align-self: center; }
+.tl-blk { width: 13px; height: 13px; border-radius: 4px; background: var(--soft); border: 1px solid var(--line); box-sizing: border-box; }
+.tl-blk.on { background: var(--accent); border-color: var(--accent); }
 /* 「今日」心情指数：与能量同一套 5 格，只换颜色（--mood，见 utils/themes.js）。
    两条条上下并排，颜色必须一眼分得开——否则会被读成「同一条画了两遍」。
    未点亮的格子仍是 --line（与能量一样），变的只是点亮色。 */
 .tl-bar-mood .tl-cell.mood.on, .tl-cell.mood.on { background: var(--mood, var(--accent)); }
+/* 「今日」心情的线性脸谱图标（记页最近列表 / 看页今日卡片，SVG 同作息页今日卡）：
+   图标自带墨色，不用换色；flex:none 防止在 flex 行里被拉伸变形 */
+.mood-ic { width: 20px; height: 20px; flex: none; align-self: center; }
 /* 书·剧的两条 5 格量（精彩 / 喜爱）：再各换一个专色（--wow / --love）。
    这是第三、第四种按颜色区分的量——同一个列表里最多四条 5 格条并排（全亮时四条），
    全靠颜色才分得清谁是谁；四个色在 themes.js 里都避开了 accent 与 mood，

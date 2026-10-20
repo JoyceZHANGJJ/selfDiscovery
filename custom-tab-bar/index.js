@@ -504,7 +504,9 @@ _restoreQaFocus() {
         if (prio) { ext.push(prio); src.push('todoPrio'); }
       }
       // 计划完成：只有待办写（随记没有这一格）；没点过就是 0＝不写这个字段
-      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext, extSrc: src, done: false, doneAt: 0, status: '', dueTs: a.m === 'todo' ? (this.data.qaDueTs || 0) : 0 };
+      // 项目归属：快捷记下的这条记进**当前项目**（与记卡同一口径），
+      // 不带的话它会落到全局，切到某个项目后就看不见了
+      const rec = { m: a.m, txt, ts, t: date.hhmm(ts), ext, extSrc: src, done: false, doneAt: 0, status: '', dueTs: a.m === 'todo' ? (this.data.qaDueTs || 0) : 0, projectId: store.curProject() };
       this._qaSaving = true;
       this.setData({ qaSaving: true });
       // 兜底解锁：云端卡住不回调时不能让「记下」永远变成死按钮（见 pages/index 的同名兜底）

@@ -78,7 +78,10 @@ Page(pageBase({
     this._gen = 0;              // 取数代次：切维度 / 换筛选 / 搜索都会 +1，用来丢掉过期响应（见 resetLoad）
     this._searchTimer = null;
     this._everLoaded = false;   // 骨架屏只在「还没成功加载过一次」时出场（见 resetLoad）
+    // 项目维度：切项目后整页重新取数（resetLoad 会按当前 projectId 重拉列表 + 统计 + 待办/今日内存视图）
+    this._offProj = store.onProjectChange(() => { if (!this._dead) this.resetLoad(); });
   },
+  onUnload() { this._dead = true; if (this._offProj) this._offProj(); },
 
   onShow() {
     this.ensureTheme();
@@ -428,15 +431,19 @@ Page(pageBase({
         g.today = {
           id: tr.id != null ? tr.id : tr._rid, m: tr.m,
           d: store.datePrefix(tr.ts), t: tr.t,     // 右起显示创建时间，与时间线行同一口径
-          lv: store.batLevel(bv), batName: store.batName(bv), txt: tr.txt || ''
+          lv: store.batLevel(bv), batName: store.batName(bv),
+          // 「今天怎么样」没写时存的是占位主项（store.TODAY_PH）：展示上等于没写，
+          // 置空让 wxml 走「今天还没写能量说明」那个分支，别把「今日」两个字当话渲染出来
+          txt: (tr.txt && tr.txt !== store.TODAY_PH) ? tr.txt : ''
         };
         // 心情指数：与记页 _todayLockedOf 逐字同一套口径——
         // 老记录没存这个字段时是 0 格，wxml 整行不显示（画成最低档会被读成「很低落」）。
-        // 三处口径必须一致：记页只读摘要、记页最近列表、看页今日卡片。
+        // 展示用线性脸谱图标（与作息页今日卡同一套 SVG），uri 给 wxml 的 image
         const mi = (tr.extSrc || []).indexOf('todayMood');
         const mv = mi >= 0 ? (tr.ext || [])[mi] || '' : '';
         g.today.mlv = mv ? store.moodLevel(mv) : 0;
         g.today.moodName = store.moodName(mv);
+        g.today.moodUri = store.moodUri(mv);
         // 明天的计划：自由文本，没写就不出那一行
         const ti = (tr.extSrc || []).indexOf('free:tomorrow');
         g.today.tomorrow = ti >= 0 ? ((tr.ext || [])[ti] || '') : '';
@@ -583,6 +590,8 @@ Page(pageBase({
       state: q.state,
       extTags: q.extTags,
       mNot: q.mNot,
+      // 项目维度：当前项目（'' = 全局，不过滤）。切项目后 resetLoad 重走这里，列表自然收窄
+      projectId: store.curProject(),
       // 已加载的文档 id：配合 lte 游标去重，避免同毫秒记录被跳过或重复
       excludeIds: first ? null : (this.data.recs || []).map(r => r._rid)
     };
@@ -611,7 +620,8 @@ Page(pageBase({
      待办也不看时间范围（页面上没有那行筛选，见 look.wxml），这里只应用类别筛选，
      渲染量交给「显示更多」窗口收口。 */
   loadAllTasks() {
-    const all = app.globalData.records || [];
+    const cur = store.curProject();
+    const all = (app.globalData.records || []).filter(r => !cur || r.projectId === cur);
     const cat = this.data.kindFilter !== 'all' ? this.data.kindFilter : '';
     const list = all.filter(r => store.isTask(r.m) && (!cat || store.taskCat(r) === cat));
     this._loading = false;
@@ -626,7 +636,8 @@ Page(pageBase({
      与待办同源——直接用内存全量（app.globalData.records，各页取数后都在里面），
      按创建时间倒序；「显示更多」窗口在 rebuild 的分组里收口，攒多了也不会卡。 */
   loadAllTodays() {
-    const all = app.globalData.records || [];
+    const cur = store.curProject();
+    const all = (app.globalData.records || []).filter(r => !cur || r.projectId === cur);
     const list = all.filter(r => r.m === 'today').slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
     this._loading = false;
     this._everLoaded = true;
@@ -654,14 +665,14 @@ Page(pageBase({
     // 待办视图不展示统计面板（三个数量的口径在 buildTasks 里，取自本地全量）
     if (f === 'todo') { set({}); return; }
     if (f === 'all') {
-      store.countByModule({ startTs }).then(byMod => set({ byMod }));
+      store.countByModule({ startTs, projectId: store.curProject() }).then(byMod => set({ byMod }));
       return;
     }
     if (f === 'want') {
       // 筛了分类时状态分布也落在同一批记录上（与觉察筛喜恶同一口径；
       // 状态不是分类分布，跟着筛才和上面的列表对得上——随记那套「不跟筛走」只适用于类别分布）
       const tags = this.data.kindFilter !== 'all' ? [this.data.kindFilter] : null;
-      store.countByStatus({ startTs, extTags: tags }).then(bySt => set({ bySt }));
+      store.countByStatus({ startTs, extTags: tags, projectId: store.curProject() }).then(bySt => set({ bySt }));
       return;
     }
     // 随记 / 书·剧 / 占卜：按「类别 / 类型」数数量（取值自选项池，可增删）——和待办一样
@@ -676,8 +687,8 @@ Page(pageBase({
     // 总数单独查一次而不是各类别相加：池子外的老记录（没类别 / 类别被删了）不在任何一行里。
     if (CAT_STAT[f]) {
       const cats = store.getOPT(CAT_STAT[f]) || [];
-      const jobs = cats.map(c => store.countRecords({ m: f, startTs, extTags: [c] }));
-      jobs.push(store.countRecords({ m: f, startTs }));   // 最后一个＝总数
+      const jobs = cats.map(c => store.countRecords({ m: f, startTs, extTags: [c], projectId: store.curProject() }));
+      jobs.push(store.countRecords({ m: f, startTs, projectId: store.curProject() }));   // 最后一个＝总数
       Promise.all(jobs).then(arr => {
         const total = arr[arr.length - 1] || 0;
         const byCat = {};
@@ -689,12 +700,12 @@ Page(pageBase({
     // 觉察筛了喜恶时，统计也跟着落在同一个筛选里
     //（不然列表是筛过的、数字却是全模块的）
     const tags = (f === 'obs' && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
-    const jobs = [store.countRecords({ m: f, startTs, extTags: tags }), store.countByTxt({ m: f, startTs, extTags: tags })];
+    const jobs = [store.countRecords({ m: f, startTs, extTags: tags, projectId: store.curProject() }), store.countByTxt({ m: f, startTs, extTags: tags, projectId: store.curProject() })];
     if (f === 'obs') {
       const withTag = (t) => (tags ? tags.concat([t]) : [t]);
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('忘了时间') }));
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('充电') }));
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('耗电') }));
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('忘了时间'), projectId: store.curProject() }));
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('充电'), projectId: store.curProject() }));
+      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('耗电'), projectId: store.curProject() }));
     }
     Promise.all(jobs).then(([total, tops, fg, chg, tire]) => {
       const stat = { total: total || 0, tops: tops || [] };
@@ -709,7 +720,7 @@ Page(pageBase({
     this.setData({ loading: true, hasMore: false });
     const q = this.effQuery();
     // 待办不看时间范围（页面上没有那行筛选），其它维度照旧
-    const params = { m: q.m, mNot: q.mNot, startTs: this.data.filter === 'todo' ? null : this.data.rangeStart };
+    const params = { m: q.m, mNot: q.mNot, startTs: this.data.filter === 'todo' ? null : this.data.rangeStart, projectId: store.curProject() };
     store.loadAllRecords(params).then(all => {
       if (gen !== this._gen) return;   // 期间改过搜索词 / 切过维度：这份结果已经过期
       const q2 = this.data.q.trim().toLowerCase();
@@ -771,7 +782,7 @@ Page(pageBase({
     this.resetLoad();
     // 换维度后把这一页的标题对齐到屏幕顶部（像切 tab 那样主动滚一下）：
     // 各维度时间线长短差很多，不主动对齐就会被浏览器被动拉回，看着像整页在跳
-    this._alignLater('#blk-title');
+    this._alignLater('#searchBox');
   },
   /* 左右滑动切维度（全部 / 各维度）：向左滑下一个，向右滑上一个。
      例外：行尾左滑归行内（时间线行、待办行都是「进记卡改」，见 onRowSwipe / onRowTouchend）——
@@ -956,8 +967,16 @@ Page(pageBase({
     if (tryPanel && this.quickEdit(r)) return;
     this.editInCard(r);
   },
-  /* 跳记页完整编辑（看页是「概览 + 管理去记卡」的口径，待办 / 时间线行都走这条） */
+  /* 跳记页完整编辑（看页是「概览 + 管理去记卡」的口径，待办 / 时间线行都走这条）。
+     「今日」不走记页：那张卡在作息页顶部（全局每日锚点），跳过去直接展开编辑态，
+     与操作条上的「改」同一条路（避免两套 UI 对不上天气那一行） */
   editInCard(r) {
+    if (r.m === 'today') {
+      app.globalData.editTodayId = r.id;
+      this.setData({ sel: null, selRec: null });
+      wx.switchTab({ url: '/pages/sleep/sleep' });
+      return;
+    }
     app.globalData.editRec = store.decorate(r);
     this.setData({ sel: null, selRec: null });
     wx.switchTab({ url: '/pages/index/index' });
@@ -1061,6 +1080,14 @@ Page(pageBase({
       return;
     }
     if (type === 'edit') {
+      // 「今日」不走记页：它那张卡在**作息页顶部**（全局每日锚点），记页已经没有这个维度。
+      // 跳过去并让它直接展开编辑态，避免在这里另开一套表单（两套 UI 迟早会对不上天气那一行）
+      if (r.m === 'today') {
+        app.globalData.editTodayId = r.id;
+        this.setData({ sel: null, selRec: null });
+        wx.switchTab({ url: '/pages/sleep/sleep' });
+        return;
+      }
       app.globalData.editRec = r;
       this.setData({ sel: null, selRec: null });
       wx.switchTab({ url: '/pages/index/index' });
@@ -1120,7 +1147,10 @@ Page(pageBase({
       status: dump.status || '',
       startedAt: dump.startedAt || 0,
       abandonedAt: dump.abandonedAt || 0,
-      dueTs: dump.dueTs || 0, calTs: dump.calTs || 0   // 计划完成 / 已推日历：撤销后照原样回来
+      dueTs: dump.dueTs || 0, calTs: dump.calTs || 0,   // 计划完成 / 已推日历：撤销后照原样回来
+      // 项目归属：撤销要回到**原来那个项目**（与记页同一口径），
+      // 不带回来的话撤销出的这条会掉进全局，切回项目就看不见了
+      projectId: dump.projectId || store.curProject()
     };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;

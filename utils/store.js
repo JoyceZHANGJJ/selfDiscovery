@@ -3,6 +3,8 @@
 // 集合：records（记录）、options（用户新增选项）、usercfg（问候语/自定义维度）
 const log = require('./log.js');
 const date = require('./date.js');
+// 「今日」卡的两组线性图标（天气 6 / 心情 5）：data URI，直接喂给 <image>，不依赖任何图片文件
+const TODAY_ICONS = require('./today-icons.js');
 // 日期工具统一在 utils/date.js；这里起个别名，内部沿用同名调用，导出也照旧
 const dayLabel = date.dayLabel;
 const agoOf = date.agoOf;
@@ -181,12 +183,31 @@ const BATTERIES = [
    值域与存储方式完全对齐能量（'1'..'5'、存 ext），所以归一化/取格数的逻辑共用一份，
    只是档位名不同（心情说「平静 / 不错」，能量说「一般 / 较高」）。 */
 const MOODS = [
-  { v: '1', name: '很低落' },
-  { v: '2', name: '有点低' },
-  { v: '3', name: '平静' },
-  { v: '4', name: '不错' },
-  { v: '5', name: '很好' }
+  { v: '1', name: '很低落', uri: (TODAY_ICONS.MOOD || [])[0] },
+  { v: '2', name: '有点低', uri: (TODAY_ICONS.MOOD || [])[1] },
+  { v: '3', name: '平静', uri: (TODAY_ICONS.MOOD || [])[2] },
+  { v: '4', name: '不错', uri: (TODAY_ICONS.MOOD || [])[3] },
+  { v: '5', name: '很好', uri: (TODAY_ICONS.MOOD || [])[4] }
 ];
+/* 「今日」天气：六选一、手点（不接任何天气接口，所以要定位授权那一套一概没有）。
+   与能量 / 心情同性质——固定档位，不进选项池，「✎ 管理」里看不到也加不了。
+   存的就是中文名（'晴' 不是 'sunny'）：导出与喂给 AI 的文本是给人 / 给模型读的，
+   「天气：晴」一眼就懂，存代号还要再映射一次、漏一处就露出 sunny 这种英文。
+   它唯一的价值是**回看时对照「天气 × 电量 / 心情」**，不为好看而加。 */
+const WEATHER = [
+  { v: '晴', uri: (TODAY_ICONS.WEATHER || [])[0] },
+  { v: '多云', uri: (TODAY_ICONS.WEATHER || [])[1] },
+  { v: '阴', uri: (TODAY_ICONS.WEATHER || [])[2] },
+  { v: '雨', uri: (TODAY_ICONS.WEATHER || [])[3] },
+  { v: '雪', uri: (TODAY_ICONS.WEATHER || [])[4] },
+  { v: '风', uri: (TODAY_ICONS.WEATHER || [])[5] }
+];
+function weatherOf(v) { return WEATHER.find(w => w.v === v) || null; }
+// 「今天怎么样」没写时存进 txt 的占位主项（写入见 sleep 页 onTodaySave）：
+// 导出/导入按「维度 | 内容」解析，空主项那一行会被当成坏行丢掉，所以库里存的是这两个字。
+// 展示侧认出它就等于「没写」——作息卡、记页最近列表、看页时间线都按这个值过滤，
+// 它永远不会被当成用户写的话渲染出来。值改这里要连 sleep.js 一起（它引用本常量）
+const TODAY_PH = '今日';
 /* 书·剧的两条 5 格量：与上面两组同一套机制（纯图示、不进选项池、'1'..'5' 存 ext），
    档位名各写一份。分成两组而不是共用一组，因为「好看」和「好看」在这两个问题里
    不是一回事——「精彩」说的是作品本身（写得好不好），「喜爱」说的是我对它的感觉。
@@ -283,6 +304,20 @@ function moodName(v) { const m = MOODS.find(x => x.v === batValOf(v)); return m 
 function moodLevel(v) {
   const n = parseInt(batValOf(v), 10);
   return isNaN(n) ? 1 : Math.max(1, Math.min(5, n));
+}
+// 心情的线性 SVG（与 MOODS 同序）。没值返回空串——画不画由调用方按「有没有值」决定，
+// 不能拿第 1 张脸当「没记」的意思（那样看起来像「很低落」，其实只是当时没这个字段）
+function moodUri(v) { const m = MOODS.find(x => x.v === batValOf(v)); return m ? (m.uri || '') : ''; }
+
+/* 今天那条「今日」记录（**全局每日锚点**：不属于任何项目，查它时也不按当前项目收窄）。
+   与 shiji 的「全局锚点 · 不随项目」同一口径——项目是「记录当时在做什么」的上下文，
+   而今日是每天一次的自我锚点，跟项目无关；按项目收窄的话切到某个项目就看不见今天这条了。
+   作息页顶部的今日卡与记页的编辑回显都查这一处，避免两处各写一遍判定 */
+function todayRec(ts) {
+  const t = ts || Date.now();
+  const start = date.dayStart(t);
+  const end = start + date.DAY;
+  return (G.records || []).find(r => r.m === 'today' && r.ts >= start && r.ts < end) || null;
 }
 
 /* ---------------- 「睡」：记一个入睡时刻 ---------------- */
@@ -864,7 +899,7 @@ const COLMAP = {
   nopeMood: '情绪', nopeDeg: '程度', 'free:nopefeel': '感受', 'free:after': '之后',
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了', 'free:likeFeel': '当时感受',
   'free:howto': '怎么做',
-  todayBat: '剩余能量', todayMood: '心情指数', todoPrio: '优先级',
+  todayBat: '剩余能量', todayMood: '心情指数', todayWeather: '天气', todoPrio: '优先级',
   divType: '类型', divSpan: '时间范围',
   'free:divCard': '抽到的牌', 'free:divRead': '解读',
   // 回顾：事后翻回来补的一句「后来实际怎么样了」，只由「回顾」这个动作产生（见 index.checkEdit）。
@@ -1190,7 +1225,9 @@ const TIME_FIELDS = [
   'calTs'    // 最后一次「推到手机日历」（0＝没推过）：只作回显，小程序读不回系统日历
 ];
 // 文本类：字符串，'' ＝没填
-const TEXT_FIELDS = ['status', 'ref', 'refTxt', 'sleepNote', 'wakeNote'];
+// projectId：记录归属的项目（'' / 缺省 = 全局）。加进 TEXT_FIELDS 后，decorate / 写云（EXTRA_FIELDS 含 TEXT_FIELDS）
+// / moveRec 三处都按同一份清单带它，新增项目维度零额外改动
+const TEXT_FIELDS = ['status', 'ref', 'refTxt', 'sleepNote', 'wakeNote', 'projectId'];
 const EXTRA_FIELDS = TEXT_FIELDS.concat(TIME_FIELDS);   // 写云时按同一份清单带上
 
 // 给一条记录补上 ago / day
@@ -1598,6 +1635,65 @@ function loadCfg(type) {
   });
 }
 
+/* ---------------- 项目维度 ----------------
+   项目是「记录的归属上下文」：一条记录带 projectId（'' = 全局）。项目列表本身存 usercfg（type='projects'），
+   与问候语 / 自定义维度同套路（本地兜底 + 云端同步）；「当前选中哪个」只存本地，不进云端。
+   设计取舍（详见 PRD-v3 §2.1）：项目做成「你身处其中的上下文」，不是独立 tab——切换后 记/看/回看 自动收窄。 */
+const PROJ_LS = 'self_projects_v1';
+const PROJ_COLORS = ['#7C9A86', '#5E9A94', '#C0A05A', '#9A8C7A', '#948AA8', '#3F7A8A', '#B08968', '#6E8CB0'];
+function loadProjectsLocal() { try { return wx.getStorageSync(PROJ_LS) || []; } catch (e) { return []; } }
+function persistProjectsLocal(arr) { try { wx.setStorageSync(PROJ_LS, arr); } catch (e) {} }
+// 启动拉取项目列表：云端优先，失败回落本地
+function loadProjects() {
+  return new Promise(resolve => {
+    const local = loadProjectsLocal();
+    loadCfg('projects').then(cloud => {
+      const merged = (cloud && Array.isArray(cloud)) ? cloud : local;
+      persistProjectsLocal(merged);
+      G.projects = merged;
+      resolve(merged);
+    }).catch(() => { G.projects = local; resolve(local); });
+  });
+}
+function saveProjects(arr) {
+  G.projects = arr || [];
+  persistProjectsLocal(G.projects);
+  return saveCfg('projects', G.projects).catch(e => { log.warn('projects.sync', e); return false; });
+}
+function addProject(p) {
+  const arr = (G.projects || []).slice();
+  const np = Object.assign({
+    _id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: '未命名', color: PROJ_COLORS[0],
+    order: arr.length, archived: false, createdAt: Date.now()
+  }, p || {});
+  return saveProjects(arr.concat([np])).then(() => np);
+}
+function updateProject(id, patch) {
+  const arr = (G.projects || []).map(x => x._id === id ? Object.assign({}, x, patch) : x);
+  return saveProjects(arr);
+}
+// 不支持删除：项目只走「归档」——归档后从活跃列表消失、不可切回，但其下记录仍在（projectId 不变）。
+// 用 updateProject(id, { archived:true/false }) 切归档态；无 removeProject。
+// 当前项目：'' = 全局
+function curProject() { return G.curProject || ''; }
+function setCurProject(id) {
+  G.curProject = id || '';
+  try { wx.setStorageSync(CURPROJ_LS, G.curProject); } catch (e) {}
+  emitProjectChange();
+}
+// 项目切换订阅：页面 / 组件挂上后，切项目即收到通知去重新取数（与 onRecChange 同一套）
+const _projCbs = [];
+function onProjectChange(fn) {
+  if (typeof fn !== 'function') return function () {};
+  _projCbs.push(fn);
+  return function () { const i = _projCbs.indexOf(fn); if (i >= 0) _projCbs.splice(i, 1); };
+}
+function emitProjectChange() {
+  _projCbs.slice().forEach(fn => { try { fn(); } catch (e) { log.warn('store.onProjectChange', e); } });
+}
+function projectById(id) { return (G.projects || []).find(x => x._id === id) || null; }
+
 // 记录按微信用户（_openid）隔离：云数据库默认「仅创建者可读写」，
 // 不同用户创建的文档彼此不可见，这里无需手动加 openid 过滤。
 // 文档 -> 装饰记录。**这是云端文档回到内存的唯一入口**（冷启动、下拉刷新、翻页、迁移都走它），
@@ -1616,11 +1712,14 @@ function decorateDoc(d) {
 // extTags: 细节值（如觉察的「喜恶」= 喜欢 / 感兴趣 / 无感 / 讨厌）——ext 是数组，
 //          单个值直接等值命中（数组包含即算中），多个值要求同时都包含
 // mNot: 要排除的模块（看页「全部」不看待办：备忘 / 购物不进时间线，取回来只是白占一页的位置）
-function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null, notIds = null } = {}) {
+// projectId：项目维度收窄。'' / 缺省 = 不过滤（全局，含无 projectId 的旧记录）；
+// 真实 id = 只取该项目下的记录。放在 recWhere 一处，所有查询（列表 / 统计 / 搜索）自动跟随当前项目
+function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null, notIds = null, projectId = null } = {}) {
   const _ = db().command;
   const w = {};
   if (m && m !== 'all') w.m = m;
   else if (mNot && mNot.length) w.m = _.nin(mNot);
+  if (projectId) w.projectId = projectId;   // 真值才收窄；'' 当作全局
   if (m === 'want' && state) {
     if (state === 'todo') w.status = _.nin(['doing', 'done', 'abandon']);
     else if (state === 'doing') w.status = 'doing';
@@ -1649,10 +1748,10 @@ function recWhere({ m = null, mNot = null, startTs = null, before = null, state 
 // excludeIds 在**客户端**过滤（省流量，绝大多数情况够用）；
 // notIds 走服务器端 _.nin，只在「满页但全是已看过的」（同毫秒扎堆）时用——
 // 那种情况下客户端过滤会永远拿回同样 20 条，翻不动也停不下来。
-function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, startTs = null, state = null, extTags = null, excludeIds = null, notIds = null } = {}) {
+function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, startTs = null, state = null, extTags = null, excludeIds = null, notIds = null, projectId = null } = {}) {
   const take = Math.min(limit || 20, 20);
   return new Promise((resolve) => {
-    recCol().where(recWhere({ m, mNot, startTs, before, state, extTags, notIds })).orderBy('ts', 'desc').limit(take).get().then(res => {
+    recCol().where(recWhere({ m, mNot, startTs, before, state, extTags, notIds, projectId })).orderBy('ts', 'desc').limit(take).get().then(res => {
       const raw = res.data || [];
       let data = raw;
       if (excludeIds && excludeIds.length) {
@@ -1681,8 +1780,8 @@ function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, sta
 // 用并发池控制在飞的请求数（数据库有「同时连接数」上限，一次全甩出去会被拒），
 // 最后用 count 校验条数——对得上才算完，对不上回落到串行翻页。
 // 宁可慢，不能漏：漏记录在页面上的表现是「记录数不对」，而且不报错，最难查。
-function loadAllRecords({ m = null, mNot = null, startTs = null, onFirstPage = null } = {}) {
-  const W = { m, mNot, startTs };
+function loadAllRecords({ m = null, mNot = null, startTs = null, onFirstPage = null, projectId = null } = {}) {
+  const W = { m, mNot, startTs, projectId };
   // count 与第一页同时要：它只决定「剩下的要分几页并行抓」，晚一步就多一个往返
   const cntP = recCol().where(recWhere(W)).count().then(r => (r && r.total) || 0).catch(() => null);
   return loadRecordsPage(Object.assign({ limit: 20 }, W)).then(first => {
@@ -1760,20 +1859,20 @@ function loadRestSerial(W, head) {
 }
 // 记录总数（按 模块 / 时间范围 / 流转状态 / 细节标签 过滤），用于「共 X 条」准确统计。
 // 走 count 接口，不受列表分页影响。
-function countRecords({ m = null, startTs = null, state = null, extTag = null, extTags = null } = {}) {
+function countRecords({ m = null, startTs = null, state = null, extTag = null, extTags = null, projectId = null } = {}) {
   return new Promise((resolve) => {
     // extTag 是早期的单标签写法，extTags 支持「喜恶 + 沉浸」这类组合（都要命中）
     const tags = (extTags && extTags.length) ? extTags : (extTag ? [extTag] : []);
-    const w = recWhere({ m, startTs, state, extTags: tags });
+    const w = recWhere({ m, startTs, state, extTags: tags, projectId });
     recCol().where(w).count()
       .then(r => resolve((r && r.total) || 0)).catch(e => { log.warn('records.count', e); resolve(0); });
   });
 }
 // 统计：各觉察维度（不含备忘/购物）的条数 → { obs: 12, now: 3, want: 5 }
 // 静默维度（睡）不算在内：它不进记录流，多查一次也只是白跑一趟云
-function countByModule({ startTs = null } = {}) {
+function countByModule({ startTs = null, projectId = null } = {}) {
   const mods = MODULES.filter(m => !isTask(m.k) && !m.quiet);
-  return Promise.all(mods.map(m => countRecords({ m: m.k, startTs }))).then(arr => {
+  return Promise.all(mods.map(m => countRecords({ m: m.k, startTs, projectId }))).then(arr => {
     const out = {};
     mods.forEach((m, i) => { out[m.k] = arr[i] || 0; });
     return out;
@@ -1781,21 +1880,22 @@ function countByModule({ startTs = null } = {}) {
 }
 // 统计：可做维度下各流转状态的条数 → { todo, doing, done, abandon }
 // extTags：看页「可做」筛了分类时，状态分布也要落在同一批记录上（与觉察筛喜恶同一口径）
-function countByStatus({ startTs = null, extTags = null } = {}) {
+function countByStatus({ startTs = null, extTags = null, projectId = null } = {}) {
   const states = ['todo', 'doing', 'done', 'abandon'];
-  return Promise.all(states.map(s => countRecords({ m: 'want', startTs, state: s, extTags }))).then(arr => {
+  return Promise.all(states.map(s => countRecords({ m: 'want', startTs, state: s, extTags, projectId }))).then(arr => {
     const out = { todo: 0, doing: 0, done: 0, abandon: 0 };
     states.forEach((s, i) => { out[s] = arr[i] || 0; });
     return out;
   });
 }
 // 统计：某模块下「事项」出现次数前几名（聚合分组，不受分页影响）→ [{ txt, n }]
-function countByTxt({ m = null, startTs = null, top = 8, extTags = null } = {}) {
+function countByTxt({ m = null, startTs = null, top = 8, extTags = null, projectId = null } = {}) {
   const dbc = db().command;
   const $ = dbc.aggregate;
   const match = {};
   if (m) match.m = m;
   if (startTs != null) match.ts = dbc.gte(startTs);
+  if (projectId) match.projectId = projectId;
   const tags = (extTags || []).filter(Boolean);
   if (tags.length === 1) match.ext = tags[0];
   else if (tags.length > 1) match.ext = dbc.all(tags);
@@ -2515,6 +2615,9 @@ function unregDim(k) {
 }
 
 /* ---------------- 全局状态（store 自有，避免依赖 getApp） ---------------- */
+// 当前项目本地键（云端只存项目列表本身，不存「当前选中谁」）
+const CURPROJ_LS = 'self_curproject_v1';
+
 const G = {
   theme: 'mint',
   OPT: null,
@@ -2522,8 +2625,13 @@ const G = {
   greets: null,
   records: [],
   loaded: false,
-  editRec: null
+  editRec: null,
+  // 项目维度：curProject = 当前所在项目（'' = 全局）；projects = 项目列表（持久化到 usercfg）
+  curProject: '',
+  projects: []
 };
+// 冷启动恢复上次选中的项目（本地缓存；云端只存项目列表本身）
+try { G.curProject = wx.getStorageSync(CURPROJ_LS) || ''; } catch (e) {}
 
 /* ---------------- 启动加载 ---------------- */
 let _loading = false;
@@ -2572,7 +2680,7 @@ function ensureAll() {
   }
   _loading = true;
   _loadFail = false;
-  return Promise.all([loadRecords(), loadOptions(), loadDims(), loadGreets()]).then(([recs, O, dims, greets]) => {
+  return Promise.all([loadRecords(), loadOptions(), loadDims(), loadGreets(), loadProjects()]).then(([recs, O, dims, greets]) => {
     G.records = recs;
     G.OPT = O;
     G.dims = dims || [];
@@ -2624,7 +2732,8 @@ function reload(opts) {
 module.exports = {
   MODULES, OPT, GLABEL, OPTGROUPS, GRAPH_GROUPS, isGraphGroup, FIXED, FIELDS, DESC_KEY, DESC_SRC, THEMES, GREETS, DCOLORS, COLMAP, FALLBACK, curTheme, themeList, themeStyle, themeOf, syncWindowBg,
   BATTERIES, batName, batValOf, batLevel,
-  MOODS, moodName, moodLevel,
+  MOODS, moodName, moodLevel, moodUri,
+  WEATHER, weatherOf, todayRec, TODAY_PH,
   // 5 格档位表总目录（SCALES）与其上的两个取值函数：页面按组取档位表画格子，
   // 回读展示统一走 scaleScore（「x/5」）。今日那两个仍用 bat*/mood*（它们另有更完整的写法）
   SCALES, WOWS, LOVES, scaleOf, scaleKind, scaleName, scaleScore, SCALE_NO_CSS,
@@ -2637,5 +2746,7 @@ module.exports = {
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap, noteAddedOpt, takeAddedMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, onLoaded, onRecChange, emitRecChange, reload, regDim, unregDim,
+  // 项目维度
+  loadProjects, saveProjects, addProject, updateProject, curProject, setCurProject, onProjectChange, emitProjectChange, projectById, PROJ_COLORS,
   globalData: G
 };

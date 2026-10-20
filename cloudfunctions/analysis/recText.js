@@ -39,7 +39,7 @@ const COLMAP = {
   'free:doneFeel': '做了感受', 'free:doneGain': '做了收获', 'free:abandonWhy': '不做了',
   'free:likeFeel': '当时感受',
   'free:howto': '怎么做',
-  todayBat: '剩余能量', todayMood: '心情指数', todoPrio: '优先级',
+  todayBat: '剩余能量', todayMood: '心情指数', todayWeather: '天气', todoPrio: '优先级',
   'free:tomorrow': '明天的计划',
   divType: '类型', divSpan: '时间范围',
   'free:divCard': '抽到的牌', 'free:divRead': '解读', 'free:review': '回顾',
@@ -79,6 +79,9 @@ const BATTERIES = [
 const BAT_EMOJI = ['🪫', '¼🔋', '½🔋', '¾🔋', '🔋'];
 
 const DESC_SRC = 'free:desc';
+// 「今天怎么样」没写时的占位主项（与 utils/store.js 的 TODAY_PH 同源，两边要一起改）：
+// 库里存的是这两个字（空主项在导出/导入解析时会被当成坏行丢掉），但喂 AI 前要认出来＝没写
+const TODAY_PH = '今日';
 const GLABEL_OBS_MOOD = '感受';   // store 的 GLABEL.obsMood
 const DUE_END_H = 23, DUE_END_M = 59;
 
@@ -334,7 +337,7 @@ function readLine(r) {
   parts.push((r.t || hhmm(r.ts)) + ' ' + moduleLabel(r));
 
   const main = String(r.txt || '').trim();
-  if (main) parts.push(main);
+  if (main && main !== TODAY_PH) parts.push(main);
 
   const ws = wantState(r), tstate = taskState(r);
   const at = stateAt(r);
@@ -369,8 +372,8 @@ function readLine(r) {
       + (over ? (late > 0 ? '（已逾期 ' + late + ' 天）' : '（已逾期）') : ''));
   }
 
-  // 主项为空（今日只点了能量条没写说明）时补一句，否则读起来像丢了内容
-  if (!main && r.m === 'today') parts.push('（当天没写说明）');
+  // 主项为空（或只存了占位主项「今日」——今日只点了能量条没写说明）时补一句，否则读起来像丢了内容
+  if ((!main || main === TODAY_PH) && r.m === 'today') parts.push('（当天没写说明）');
 
   // 睡眠记录：txt 存的就是 'HH:MM'（留着是为了导入时主项非空），
   // 直接当主项输出就成了「23:30 睡 | 23:30」，同一件事写两遍。

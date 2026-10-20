@@ -1,6 +1,7 @@
 {
   "usingComponents": {
     "theme-switcher": "/components/theme-switcher/index",
+    "project-switcher": "/components/project-switcher/index",
     "rec-actions": "/components/rec-actions/rec-actions",
     "todo-list": "/components/todo-list/todo-list"
   },

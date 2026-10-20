@@ -55,7 +55,14 @@
 .etime .evv::after { content: '▾'; font-size: 9px; margin-left: 6px; color: var(--ink4); }
 
 /* 在看/记两页共用卡片布局：用时/历时紧跟事件文字后（与看页一致） */
-.rec .tvw { flex: 1; min-width: 0; display: flex; align-items: baseline; }
+/* 今日行进来后这里改成了 center 对齐：块行 / 图标没有文字基线，baseline 会把它们的
+   中线对歪（块不是偏高就是偏低）；行内其余都是同级文字，center 与 baseline 观感一致 */
+.rec .tvw { flex: 1; min-width: 0; display: flex; align-items: center; }
+/* 今日行的心情图标：.tvw 没有 gap（原先靠 baseline 排文字），图标紧贴「心情指数」，
+   这里补一拍间距；看页今日卡走 .tl-row（自带 gap:8px），不用这条 */
+.rec .tvw .mood-ic { margin-left: 8px; }
+/* 同理：「剩余能量」和第一块之间也要留一拍（.tl-row 那边由 gap 负责） */
+.rec .tvw .tl-blkrow { margin-left: 8px; }
 .rec .tvw .tv { flex: 0 1 auto; }
 .rec .tdur { flex-shrink: 0; font-size: 11.5px; color: var(--ink3); margin-left: 8px; }
 /* 在做：第 N 天 标签（与看页一致） */

@@ -20,6 +20,7 @@ Page(pageBase({
     geNewVal: '',
     geEditVal: '',
     dims: [],
+    projArchived: [],   // 已归档项目（在「设置 → 项目」里查看 / 恢复）
     dimOverlay: false,
     dimName: '',
     dimColor: '#7C9A86',
@@ -71,6 +72,7 @@ Page(pageBase({
         greets: this.g,
         dims: (app.globalData.dims || []).map(d => ({ k: d.k, n: d.n, c: d.c, opt: (d.opt || []).length })),
         recCount: (app.globalData.records || []).length,
+        projArchived: (app.globalData.projects || []).filter(p => p.archived),
         optGroups,
         optCount
       });
@@ -85,6 +87,16 @@ Page(pageBase({
 
   /* 悬浮球「＋」快捷记下一条待办后：只有「记录条数」会变 */
   onQuickTodo() { this.setData({ recCount: (app.globalData.records || []).length }); },
+
+  /* 已归档项目：从「设置 → 项目」恢复（切换器里不再列出归档项，避免置顶 / 挤占）。
+     恢复 = 解除归档，回到切换器活跃列表；其下记录始终保留（projectId 不变），切回「全局」可见 */
+  restoreProject(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    store.updateProject(id, { archived: false }).then(() => {
+      this.setData({ projArchived: (app.globalData.projects || []).filter(p => p.archived) });
+    });
+  },
 
   /* 问候语 */
   toggleGreet() { this.setData({ greetOpen: !this.data.greetOpen }); },

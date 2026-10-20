@@ -1,6 +1,7 @@
 {
   "usingComponents": {
-    "theme-switcher": "/components/theme-switcher/index"
+    "theme-switcher": "/components/theme-switcher/index",
+    "project-switcher": "/components/project-switcher/index"
   },
   "navigationStyle": "custom",
   "enablePullDownRefresh": true

@@ -317,18 +317,15 @@
                那句话是附属内容、挪到下面「能量说明」那一行（见下面的 .dt） -->
           <view wx:if="{{item.bat}}" class="tvw">
             <text class="tl-lab">剩余能量</text>
-            <view class="tl-bar">
-              <!-- wx:for-item="c" 必须写：这一层嵌在 recent 的循环里，
-                   不改名的话内层会把外层的 item 顶掉，item.bat.lv 就取不到了（格子全不亮） -->
-              <view wx:for="{{[0,1,2,3,4]}}" wx:for-item="c" wx:key="*this" class="tl-cell {{index<item.bat.lv?'on':''}}"></view>
+            <view class="tl-blkrow">
+              <!-- wx:for-item="c" 必须写：这一层嵌在 recent 循环里，内层不改名会把外层的 item 顶掉，item.bat.lv 就取不到（全不亮） -->
+              <view wx:for="{{[0,1,2,3,4]}}" wx:for-item="c" wx:key="*this" class="tl-blk {{index<item.bat.lv?'on':''}}"></view>
             </view>
-            <!-- 心情指数紧跟能量：两行并排才看得出「能量高心情低」这类错位。
-                 没记过心情的老记录不画这一行（lv=0 会画成空的，反像心情很差） -->
+            <!-- 心情指数紧跟能量：改用线性脸谱图标（与作息页今日卡同一套 SVG），不再是点条。
+                 没记过心情的老记录不显示（lv=0 会画成空的，反像心情很差） -->
             <block wx:if="{{item.mood.lv > 0}}">
               <text class="tl-lab tl-lab-2">心情指数</text>
-              <view class="tl-bar tl-bar-mood">
-                <view wx:for="{{[0,1,2,3,4]}}" wx:for-item="c" wx:key="*this" class="tl-cell mood {{index<item.mood.lv?'on':''}}"></view>
-              </view>
+              <image wx:if="{{item.mood.uri}}" class="mood-ic" src="{{item.mood.uri}}" mode="aspectFit" aria-label="心情 {{item.mood.name}}" />
             </block>
           </view>
           <view wx:else class="tvw"><text class="tv">{{item.txt}}</text><text wx:if="{{item.desc}}" class="tdesc">{{item.desc}}</text><text wx:if="{{item.dur}}" class="tdur">{{item.dur}}</text></view>
@@ -374,4 +371,5 @@
   <due-sheet open="{{dueOpen}}" value="{{dueTs}}" bind:change="onDuePicked" bind:close="onDueClose" />
 
   <theme-switcher lock="{{editing}}" bind:locked="onLocked" />
+  <project-switcher />
 </view>

@@ -23,3 +23,6 @@ yarn-error.log*
 
 # 本地优化建议文档（不入库）
 优化建议.md
+
+# WorkBuddy 项目内部数据（含本地记忆/会话，不入库）
+.workbuddy/

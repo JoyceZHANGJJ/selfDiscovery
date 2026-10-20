@@ -59,6 +59,12 @@ Page(pageBase({
     ed: { top: 0, left: 0, width: 0, height: 0 }
   },
 
+  onLoad() {
+    // 项目维度：切项目后整页重算（清单页本身没有切换器，它跟着进页时的当前项目走）
+    this._offProj = store.onProjectChange(() => { if (!this._dead) this.rebuild(); });
+  },
+  onUnload() { this._dead = true; if (this._offProj) { this._offProj(); this._offProj = null; } },
+
   onShow() {
     this.ensureTheme();
     this.layoutBrand();
@@ -99,7 +105,9 @@ Page(pageBase({
   },
 
   rebuild() {
-    const recs = app.globalData.records || [];
+    // 项目维度：清单同样只显示**当前项目**的记录（'' = 全局，不过滤），与记页「最近」/ 看页同一口径
+    const pid = store.curProject();
+    const recs = (app.globalData.records || []).filter(r => !pid || r.projectId === pid);
     const seg = this.data.seg;
     const isJot = seg === 'jot';
     const isAll = seg === 'all';
@@ -612,7 +620,10 @@ Page(pageBase({
       m: d.m, t: d.t, txt: d.txt, ext: d.ext || [], extSrc: d.extSrc || [],
       ts: d.ts, done: !!d.done, doneAt: d.doneAt || 0,
       status: d.status || '', startedAt: d.startedAt || 0, abandonedAt: d.abandonedAt || 0,
-      dueTs: d.dueTs || 0, calTs: d.calTs || 0
+      dueTs: d.dueTs || 0, calTs: d.calTs || 0,
+      // 项目归属：撤销要回到**原来那个项目**（与记页同一口径），
+      // 不带回来的话撤销出的这条会掉进全局，切回项目就看不见了
+      projectId: d.projectId || store.curProject()
     };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;

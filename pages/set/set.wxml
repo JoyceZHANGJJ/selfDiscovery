@@ -111,6 +111,17 @@
       <view class="srow"><view class="sl">导入记录</view><view class="sr" bindtap="onImportTap">粘贴</view></view>
       <view class="srow"><view class="sl">清空所有记录</view><view class="sr danger" bindtap="onClear">清空</view></view>
 
+      <!-- 项目：已归档的在这里查看 / 恢复（切换器里不再列出归档项，避免置顶 / 挤占） -->
+      <view class="sect-t" style="margin-top:18px">项目</view>
+      <view wx:if="{{projArchived.length}}">
+        <view wx:for="{{projArchived}}" wx:key="_id" class="srow">
+          <view class="sl"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{item.color}};margin-right:8px"></view>{{item.name}}</view>
+          <view class="mini-b" data-id="{{item._id}}" bindtap="restoreProject">恢复</view>
+        </view>
+        <view class="qc-hint">归档的项目不再出现在切换器；其下记录仍在，切回「全局」即可查看。</view>
+      </view>
+      <view wx:else class="srow"><view class="sl">已归档项目</view><view class="sv">无</view></view>
+
       <!-- 自定义标签：设置页只列出已有的自定义维度（可移除），不再展示节标题与「新增维度」入口。
            新增维度的浮层与逻辑（onAddDimTap / confirmDim）都还在，要恢复入口把那行 srow 加回来即可。
            没有自定义维度时整块不渲染（原来那句「还没有自定义维度」是配合新增入口的，入口没了就没意义了） -->

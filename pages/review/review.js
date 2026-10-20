@@ -101,6 +101,12 @@ Page(pageBase({
   },
   _docs: [],             // 全量档案（不塞进 data，避免 setData 过大）
 
+  onLoad() {
+    // 项目维度：切项目后按当前 projectId 重建档案 / 复盘（build 会分派到 buildDocs / buildPeriod）
+    this._offProj = store.onProjectChange(() => { if (!this._dead) this.build(); });
+  },
+  onUnload() { this._dead = true; if (this._offProj) this._offProj(); },
+
   onShow() {
     this.ensureTheme();
     this.layoutBrand();
@@ -277,7 +283,7 @@ Page(pageBase({
     // 主题档案只回看「觉察 / 此刻 / 可做」：待办是"要做的事"（流转在周 / 月复盘里看），
     // 随记是流水式的一句话——都算不上可回看的"内容主题"。
     // 「睡」也不进（isQuiet）：它没有内容可回看，统计在「睡」tab 里
-    const all = (app.globalData.records || []).filter(r => !store.isTask(r.m) && r.m !== 'jot' && !store.isQuiet(r.m));
+    const all = (app.globalData.records || []).filter(r => !store.isTask(r.m) && r.m !== 'jot' && !store.isQuiet(r.m) && (!store.curProject() || r.projectId === store.curProject()));
     // 记住已展开的，重建（换排序 / 显示更多）时不收起来
     const openMap = {};
     (this.data.docs || []).forEach(d => { if (d.open) openMap[d.txt] = 1; });
@@ -358,7 +364,7 @@ Page(pageBase({
     // 「睡」整类不进复盘（isQuiet）：它是每天一个时刻的记录，不参与「记录条数 / 活跃天数 /
     // 本期每天」这些内容口径的统计——那些数字是给"这段时间记了什么"用的。
     // 入睡自己的统计在「睡」tab（平均入睡时间、0 点前后天数）。这里挡住一处，下面全干净
-    const all = (app.globalData.records || []).filter(r => !store.isQuiet(r.m));
+    const all = (app.globalData.records || []).filter(r => !store.isQuiet(r.m) && (!store.curProject() || r.projectId === store.curProject()));
     const unit = this.data.view;                          // week | month
     const cur = periodOf(unit, this.data.offset);
     const pre = periodOf(unit, this.data.offset - 1);

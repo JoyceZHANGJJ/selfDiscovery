@@ -1,0 +1,58 @@
+<view class="psw" style="{{style}}">
+  <!-- 常驻按钮：颜色圆点 + 项目名 -->
+  <view class="pbtn" catchtap="onToggle" aria-role="button" aria-label="切换项目">
+    <text class="pdot" style="background:{{curColor}}"></text>
+    <text class="pname">{{curName}}</text>
+    <text class="parr">▾</text>
+  </view>
+
+  <!-- 半屏 sheet：列表切换 + 底部一行新建。项目只用颜色区分，无图标 -->
+  <view wx:if="{{open}}" class="pmask" catchtap="onMask">
+    <view class="psheet" catchtap="onNoop">
+      <view class="phead">
+        <text class="ptitle">项目</text>
+        <text class="pdone" catchtap="onDone">完成</text>
+      </view>
+
+      <view class="prow {{curId===''?'on':''}}" data-id="" catchtap="onSwitch">
+        <text class="pdot" style="background:#C4C9CE"></text>
+        <text class="pname">全局</text>
+        <text wx:if="{{curId===''}}" class="pcur">✓</text>
+      </view>
+      <view wx:for="{{projects}}" wx:key="_id"
+            class="prow {{curId===item._id?'on':''}}">
+        <block wx:if="{{editId===item._id}}">
+          <text class="pdot" style="background:{{editColor}}"></text>
+          <input class="pin2" value="{{editName}}" bindinput="onEditName"
+                 bindconfirm="onSaveEdit" focus="{{true}}" maxlength="20" />
+          <view class="pcolors2">
+            <view wx:for="{{colors}}" wx:key="*this" class="pc2 {{editColor===item?'on':''}}"
+                  style="background:{{item}}" data-c="{{item}}" catchtap="onEditColor"></view>
+          </view>
+          <text class="pact save" catchtap="onSaveEdit">保存</text>
+          <text class="pact" catchtap="onCancelEdit">取消</text>
+        </block>
+        <block wx:else>
+          <view class="prowmain" data-id="{{item._id}}" catchtap="onSwitch">
+            <text class="pdot" style="background:{{item.color}}"></text>
+            <text class="pname">{{item.name}}</text>
+            <text wx:if="{{curId===item._id}}" class="pcur">✓</text>
+          </view>
+          <text class="pact" data-id="{{item._id}}" catchtap="onEdit">改名</text>
+          <text class="pact" data-id="{{item._id}}" catchtap="onArchive">归档</text>
+        </block>
+      </view>
+
+      <view class="pnew">
+        <input class="pin" placeholder-class="pin-ph" placeholder="新建项目，起个名字" value="{{newName}}"
+               bindinput="onNewName" maxlength="20" confirm-type="done"
+               confirm-hold="{{false}}" cursor-spacing="20" bindconfirm="onCreate" />
+        <view class="pcolors">
+          <view wx:for="{{colors}}" wx:key="*this" class="pc {{newColor===item?'on':''}}"
+                style="background:{{item}}" data-c="{{item}}" catchtap="onPickColor"></view>
+        </view>
+        <view class="pcreate" catchtap="onCreate">创建并切换</view>
+      </view>
+    </view>
+  </view>
+</view>

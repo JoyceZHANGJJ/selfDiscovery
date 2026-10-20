@@ -1,0 +1,146 @@
+/* 顶部左侧项目切换器：与右上「起/睡」胶囊左右呼应（见 theme-switcher）。
+   实底胶囊挡住滚动穿透（同 theme-switcher 的取舍），各页排版不用动 */
+.psw {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+/* 顶部胶囊：与右侧「起 / 睡」（theme-switcher 的 .tss）同一套胶囊语言——
+   实底 + 1.2px 主题色描边 + 主题色加粗字，高度撑满胶囊矩形（与右簇同高同轴）。
+   之前是灰发丝边 + 灰字 + 写死 30px，看起来像禁用态、还比右簇矮 2px。
+   项目色仍由圆点承担（只用颜色区分项目）；全局时圆点灰（#C4C9CE） */
+.pbtn {
+  display: flex;
+  align-items: center;
+  height: 100%;          /* 容器高 = 胶囊矩形高（position() 给的），与右侧 .tsw 完全同高 */
+  min-height: 30px;      /* 兜底：无胶囊矩形时 position() 的 fallback 不带高度 */
+  max-width: 46vw;
+  padding: 0 12px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.2px var(--accent);
+}
+.pbtn:active { opacity: .62; }   /* 与 .tss:active 同 */
+/* 胶囊内名字/箭头走主题色（与「起 / 睡」同语言）；只作用于胶囊，行内 .pname 不受影响 */
+.pbtn .pname { color: var(--accent); font-weight: 700; }
+.pbtn .parr { color: var(--accent); }
+.pdot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex: none;
+}
+.pname {
+  font-size: 12px;
+  color: var(--ink3);
+  letter-spacing: .02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 36vw;
+}
+.parr {
+  font-size: 10px;
+  color: var(--ink3);
+  margin-left: 4px;
+  flex: none;
+}
+
+/* 半屏 sheet：极简平面。列表只留「圆点 + 名字」，当前项用主题色 ✓，无卡片套卡片 */
+.pmask {
+  position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, .42);
+  display: flex; align-items: flex-end;
+}
+.psheet {
+  width: 100%;
+  max-height: 70vh;
+  background: var(--bg);
+  border-radius: 20rpx 20rpx 0 0;
+  box-shadow: 0 -8rpx 30rpx rgba(0, 0, 0, .18);
+  padding: 16rpx 26rpx 24rpx;
+  box-sizing: border-box;
+  display: flex; flex-direction: column;
+  /* 微信自定义 tabBar 永远浮在页面内容之上（层级压不过），弹层整体抬到 tab 栏上方——
+     否则最底下的「创建并切换」按钮会被 tab 栏挡住（看不见也点不着） */
+  margin-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+}
+.phead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6rpx 0 4rpx;
+}
+/* 墨色层级对齐全 app 约定（themes.js 四级）：--ink 正文 > --ink3 次要 > --ink4 占位/最浅。
+   标题/项目名用 --ink；改名归档等次级操作用 --ink3；placeholder 用 --ink4（与 .big-in::placeholder 一致） */
+.ptitle { font-size: 15px; font-weight: 700; color: var(--ink); }
+.pdone { font-size: 14px; color: var(--accent); padding: 8rpx 0 8rpx 20rpx; }
+.pdone:active { opacity: .6; }
+
+/* 项目行：发丝分隔线，行高放宽（单手好点） */
+.prow {
+  display: flex; align-items: center;
+  min-height: 88rpx;
+  border-bottom: 1rpx solid var(--line);
+}
+.prow:last-of-type { border-bottom: none; }
+.prow .pdot { width: 10px; height: 10px; border-radius: 50%; margin-right: 20rpx; flex: none; }
+.prow .pname {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 15px; color: var(--ink);
+  /* 基础 .pname 是给顶部胶囊的（max-width:36vw），列表里必须放开，
+     否则名字被限宽、✓ 停在行中间而不是贴右缘 */
+  max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.prow.on .pname { color: var(--accent); font-weight: 700; }
+.pcur { font-size: 15px; color: var(--accent); margin-left: 12rpx; flex: none; }
+/* 切项目的可点区域（圆点 + 名字），点这里才切换；改名/归档是独立小字 */
+.prowmain { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
+.prowmain:active { opacity: .6; }
+/* 行内操作小字：改名 / 归档 / 恢复，次级信息用 --ink3（不用再叠 opacity） */
+.pact {
+  font-size: 12px; color: var(--ink3);
+  margin-left: 18rpx; padding: 16rpx 6rpx 16rpx 6rpx; flex: none;
+}
+.pact:active { color: var(--ink); }
+.pact.save { color: var(--accent); font-weight: 600; }
+
+/* 行内改名态：输入框 + 一行小色点 + 保存/取消 */
+.pin2 {
+  flex: 1 1 auto; min-width: 0; height: 60rpx;
+  font-size: 15px; color: var(--ink);
+  border-bottom: 1rpx solid var(--accent); padding: 0 4rpx;
+}
+.pcolors2 { display: flex; gap: 12rpx; padding: 0 14rpx; }
+.pc2 { width: 24rpx; height: 24rpx; border-radius: 50%; flex: none; transition: transform .12s ease; }
+.pc2.on { transform: scale(1.25); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4rpx var(--accent); }
+
+/* 已归档项目的「查看 / 恢复」在「设置」页，切换器里不再列出 */
+/* 新建：一个输入框 + 一行颜色圆点 + 一个按钮，没有多余结构 */
+.pnew {
+  border-top: 1rpx solid var(--line);
+  margin-top: 4rpx;
+  padding-top: 20rpx;
+}
+.pin {
+  width: 100%; box-sizing: border-box; height: 76rpx;
+  background: transparent;
+  border-bottom: 1rpx solid var(--line);
+  padding: 0 4rpx; font-size: 15px; color: var(--ink);
+  margin-bottom: 24rpx;
+}
+/* 占位符用最浅的 --ink4（与 .big-in::placeholder 同级），必须比项目名浅 */
+.pin-ph { color: var(--ink4); }
+.pcolors { display: flex; flex-wrap: wrap; gap: 26rpx; padding: 6rpx 4rpx 30rpx; }
+.pc {
+  width: 44rpx; height: 44rpx; border-radius: 50%;
+  transition: transform .12s ease;
+}
+.pc.on { transform: scale(1.18); box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent); }
+.pcreate {
+  padding: 20rpx; text-align: center;
+  background: var(--accent); color: #fff;
+  border-radius: 14rpx; font-size: 15px; font-weight: 600;
+}
+.pcreate:active { opacity: .85; }

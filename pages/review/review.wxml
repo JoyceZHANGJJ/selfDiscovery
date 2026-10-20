@@ -3,7 +3,7 @@
   <!-- 整页页面级滚动（与记 / 看 / 清单 一致）：不再套 scroll-view。
        这样 wx.pageScrollTo（回顶、翻期、切视图）才是真的，原生下拉刷新也走同一套 -->
   <view class="screen">
-    <view class="body">
+    <view class="body body-top">
       <!-- 取数失败：给一句说明 + 一个能点的重试 -->
       <block wx:if="{{loadFail}}">
         <view class="loadfail">
@@ -22,8 +22,6 @@
         </view>
       </block>
       <block wx:else>
-      <view class="sect-t">回看</view>
-
       <!-- AI 回看入口：有最新一份就显示，点开看完整历史 -->
       <view wx:if="{{aiLatest}}" class="ai-entry" bindtap="goAnalysis">
         <view class="ai-e-badge">AI</view>
@@ -204,4 +202,5 @@
   </view>
 
   <theme-switcher />
+  <project-switcher />
 </view>

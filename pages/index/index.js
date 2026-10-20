@@ -118,6 +118,19 @@ Page(pageBase({
     this._kbHandler = (res) => this._applyKb((res && res.height) || 0);
     if (wx.onKeyboardHeightChange) wx.onKeyboardHeightChange(this._kbHandler);
     this.setData({ todayMaxDate: this._todayMaxDate() });
+    // 项目维度：切项目后「最近 / 待办 / 已完成」三段要跟着换成当前项目的（与看页 / 回看页同一套口径）
+    this._offProj = store.onProjectChange(() => { if (!this._dead) this._onProjChange(); });
+  },
+
+  /* 切项目：只换「最近」那一段与「今日」的锁定态（今天**这个项目**记没记过）。
+     记卡与正在编辑的内容一律不动——编辑保存时仍按原记录的归属写回（见 doSave 的 projectId），
+     不会因为切了一下项目就把旧记录改挂到新项目上 */
+  _onProjChange() {
+    if (this.st.tag === 'today' && !this.st.edit) {
+      this.st.todayLocked = this._todayLockedNow();
+      this.setData({ todayLocked: this.st.todayLocked });
+    }
+    this.recompute();
   },
 
   // 「今日」编辑时 date picker 的上限＝今天（不能把一日一记记到未来）。
@@ -134,6 +147,8 @@ Page(pageBase({
   },
 
   onUnload() {
+    this._dead = true;
+    if (this._offProj) { this._offProj(); this._offProj = null; }
     if (wx.offKeyboardHeightChange && this._kbHandler) wx.offKeyboardHeightChange(this._kbHandler);
     if (this._kbTimer) { clearTimeout(this._kbTimer); this._kbTimer = null; }
     if (this._barTimer) { clearTimeout(this._barTimer); this._barTimer = null; }
@@ -355,7 +370,9 @@ Page(pageBase({
 
   modulesVM() {
     // 静默维度（睡）不出现在记页的维度标签里：它不在这一页记，只有顶部那个「睡」按钮和「睡」tab
-    return store.MODULES.filter(m => !m.quiet);
+    // 「今日」同样不在这里：它那张卡已搬到**作息页顶部**（全局每日锚点，一天一条），
+    // 这里留一个入口只会让人在两处记同一件事（且记页这套表单没有天气那一行）
+    return store.MODULES.filter(m => !m.quiet && m.k !== 'today');
   },
 
   checkEdit() {
@@ -573,7 +590,11 @@ Page(pageBase({
       // 与能量一样「没填就不画」，而不是画成最低档——画成 1 格会被读成「很低落」。
       const mi = (r.extSrc || []).indexOf('todayMood');
       const mv = mi >= 0 ? (r.ext || [])[mi] : '';
-      v.mood = { lv: mv ? store.moodLevel(mv) : 0, name: store.moodName(mv) };
+      // 心情改用线性脸谱图标（与作息页今日卡同一套 SVG），不再是 5 格点条
+      v.mood = { lv: mv ? store.moodLevel(mv) : 0, name: store.moodName(mv), uri: store.moodUri(mv) };
+      // 「今天怎么样」没写时 txt 是占位主项（见 store.TODAY_PH）：展示上等于没写，
+      // 别把「今日」两个字当能量说明渲染出来（老记录本来就是空串，走同一个 wx:if 隐藏）
+      if (v.txt === store.TODAY_PH) v.txt = '';
       v.dt = dt.filter(d => d.src !== 'todayBat' && d.src !== 'todayMood');
     }
     v.doingDays = doingDays;
@@ -719,7 +740,10 @@ Page(pageBase({
      ・待办：还没做完的待办（已放弃的不算——那类去清单页看），**按创建时间倒序**（下面单说）
      ・已完成：最近 10 条「完成」的（待办勾掉的 + 可做「做了」的 + 历史 m='done'），按完成时间倒序 */
   recentVM() {
-    const all = app.globalData.records || [];
+    // 项目维度：这三段同样只显示**当前项目**的记录（'' = 全局，不过滤）。
+    // 与看页 / 回看页同一口径：项目是记录的归属上下文，切了项目这一段就该跟着换
+    const cur = store.curProject();
+    const all = (app.globalData.records || []).filter(r => !cur || r.projectId === cur);
     const tab = this.data.recentTab;
     if (tab === 'todo') {
       /* 记页这一段的排序**故意与清单页 / 看页不同**：那边按优先级 → 计划时间 → 记录时间
@@ -833,8 +857,7 @@ Page(pageBase({
     // 「今日」一日一记：当天已记过 → 进「只读锁定」态（顶部显示摘要 + 修改入口），不进编辑态。
     // 内容禁填，点「修改」才回填进编辑态；保存＝更新当天那条，取消＝回到锁定态（见 onTodayEdit / onEditCancel）
     if (k === 'today' && !this.st.edit) {
-      const start = date.dayStart(Date.now());
-      const dup = (app.globalData.records || []).find(r => r.m === 'today' && r.ts >= start && r.ts < start + date.DAY);
+      const dup = this._todayRecNow();
       if (dup) {
         this.st.todayLocked = this._todayLockedOf(dup);
         this.st.tag = 'today';
@@ -1141,6 +1164,8 @@ Page(pageBase({
       recTs = c.ts; recT = c.t;   // 创建时间
     }
     const rec = { m: this.st.tag, t: recT, ts: recTs };
+    // 项目维度：新建记进「当前项目」；编辑时保留原记录的归属（避免切项目后误改旧记录的项目）
+    rec.projectId = editing ? (er.projectId || store.curProject()) : store.curProject();
     // 备忘/购物：勾选完成态（编辑时沿用原完成态）
     rec.done = editing ? (!!er.done) : false;
     rec.doneAt = editing ? (er.doneAt || 0) : 0;
@@ -1219,8 +1244,12 @@ Page(pageBase({
       const selfId = editing ? ((this.st.edit || {}).id || (this.st.edit || {})._rid) : null;
       const target = editing ? rec.ts : Date.now();
       const start = date.dayStart(target);
+      // 按**这条记录自己的项目**判重（编辑时保留原归属，见下面 rec.projectId）：
+      // 项目是记录的归属上下文，A 项目今天记过不该挡住 B 项目的今日
+      const pid = editing ? ((this.st.edit || {}).projectId || store.curProject()) : store.curProject();
       const dup = (app.globalData.records || []).find(r =>
-        r.m === 'today' && r.id !== selfId && r.ts >= start && r.ts < start + date.DAY);
+        r.m === 'today' && r.id !== selfId && r.ts >= start && r.ts < start + date.DAY &&
+        (!pid || r.projectId === pid));
       if (dup) {
         // datePrefix 对「今天」返回空串，所以先自己判一次，提示里才带得清是哪天
         const dl = store.datePrefix(dup.ts).trim();
@@ -1396,9 +1425,19 @@ Page(pageBase({
   _todayLockedNow(rec) {
     const start = date.dayStart(Date.now());
     const end = start + date.DAY;
-    const dup = (app.globalData.records || []).find(r => r.m === 'today' && r.ts >= start && r.ts < end);
+    const dup = this._todayRecNow();
     const r = dup || (rec && rec.m === 'today' && rec.ts >= start && rec.ts < end ? rec : null);
     return r ? this._todayLockedOf(r) : null;
+  },
+  /* 今天这条「今日」记录：**按当前项目收窄**（与「最近」同一套口径）。
+     A 项目今天记过不代表 B 项目今天也记过——不收窄就会出现
+     「最近里看不见今日那条（它属于别的项目），记卡却说今天已记过、锁着不让填」。
+     cur=''（全局）时不过滤，行为与以前一致 */
+  _todayRecNow() {
+    const start = date.dayStart(Date.now());
+    const end = start + date.DAY;
+    const cur = store.curProject();
+    return (app.globalData.records || []).find(r => r.m === 'today' && r.ts >= start && r.ts < end && (!cur || r.projectId === cur)) || null;
   },
 
   /* ---------------- 长按记录：复制这句话 ----------------
@@ -1494,8 +1533,16 @@ Page(pageBase({
     this.focusQe();
   },
 
-  /* 左滑「字段多的记录」＝进记卡完整编辑（与从操作条点「改」同一条路） */
+  /* 左滑「字段多的记录」＝进记卡完整编辑（与从操作条点「改」同一条路）。
+     「今日」不走记页：它那张卡在**作息页顶部**（全局每日锚点），记页已无此维度，
+     跳过去直接展开编辑态（见 sleep.js 的 buildToday(edit)），避免两套 UI 对不上天气那一行 */
   editInCard(r) {
+    if (r.m === 'today') {
+      app.globalData.editTodayId = r.id;
+      this.setData({ recSel: null, recSelRec: null });
+      wx.switchTab({ url: '/pages/sleep/sleep' });
+      return;
+    }
     app.globalData.editRec = store.decorate(r);
     this.checkEdit();   // 进入编辑态后由 checkEdit 统一滚回顶部
     this.recompute();
@@ -1633,6 +1680,14 @@ Page(pageBase({
       return;
     }
     if (type === 'edit') {
+      // 「今日」不走记页：那张卡在作息页顶部（全局每日锚点），记页已无此维度，
+      // 跳过去直接展开编辑态（与看页 onRecAction 的「改」同一条路）
+      if (r.m === 'today') {
+        app.globalData.editTodayId = r.id;
+        this.setData({ recSel: null, recSelRec: null });
+        wx.switchTab({ url: '/pages/sleep/sleep' });
+        return;
+      }
       app.globalData.editRec = store.decorate(r);
       this.checkEdit(); this.recompute();   // 进入编辑态后由 checkEdit 统一滚回顶部
       this.setData({ recSel: null, recSelRec: null });
@@ -1750,7 +1805,7 @@ Page(pageBase({
     const dump = u.dump;
     // 删除后撤销：忠实还原原记录，保留状态（未做/在做/做了/不做）、开始时间与放弃时间
     // （计划完成 / 已推日历也在 dumps 里，一起还原，否则撤销后那道胶囊就没了）
-    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0, status: dump.status || '', startedAt: dump.startedAt || 0, abandonedAt: dump.abandonedAt || 0, dueTs: dump.dueTs || 0, calTs: dump.calTs || 0 };
+    const rec = { m: dump.m, t: dump.t, txt: dump.txt, ext: dump.ext || [], extSrc: dump.extSrc || [], ts: dump.ts, done: dump.done || false, doneAt: dump.doneAt || 0, status: dump.status || '', startedAt: dump.startedAt || 0, abandonedAt: dump.abandonedAt || 0, dueTs: dump.dueTs || 0, calTs: dump.calTs || 0, projectId: dump.projectId || store.curProject() };
     store.addRecord(rec).then(rid => {
       rec._rid = rid; rec.id = rid;
       app.globalData.records.unshift(store.decorate(rec));

@@ -6,7 +6,7 @@
        挂它上面就收不到下面那片空白的 touch（这就是「空白处滑不动」的原因）。
        浮层 .sheet 在 .screen 之外，所以滑浮层不会误切段 -->
   <view class="screen" bindtouchstart="onSwipeStart" bindtouchend="onSwipeEnd">
-    <view class="body">
+    <view class="body body-top">
       <!-- 取数失败：给一句说明 + 一个能点的重试 -->
       <block wx:if="{{loadFail}}">
         <view class="loadfail">
@@ -26,7 +26,65 @@
         </view>
       </block>
       <block wx:else>
-      <view class="sect-t">作息</view>
+      <!-- ================= 今日（全局每日锚点 · 不随项目） =================
+           一天一条，记的是这一天自己的四个量：天气 / 剩余能量 / 心情 / 今天怎么样 + 明天的计划。
+           它不属于任何项目（项目是「当时在做什么」的上下文，今日是每天一次的自我锚点），
+           所以切项目时这一块不动——抬头那行小字就是在说这件事。
+           没记过时直接是可编辑态（有「记下」），记过之后是只读态，点「修改」才进编辑：
+           与记页其它维度同一套「记下 / 保存修改」的手感，不做成点一下就改（容易手滑改掉当天那条）。 -->
+      <view class="tc">
+        <view class="tc-head"><text class="tc-t">今日</text><text class="tc-note">全局锚点 · 不随项目</text></view>
+
+        <!-- 天气：六选一，手点。不接天气接口，所以要定位授权那一套一概没有 -->
+        <view class="tc-lab">天气</view>
+        <view class="tc-wrow">
+          <view wx:for="{{tc.weather}}" wx:key="v" class="tc-wi {{item.on?'on':''}} {{tcEdit?'':'ro'}}"
+                data-i="{{index}}" bindtap="onWeather" aria-role="button" aria-label="{{item.v}}">
+            <image src="{{item.uri}}" mode="aspectFit" class="tc-wimg" /><text class="tc-wn">{{item.v}}</text>
+          </view>
+        </view>
+
+        <!-- 剩余能量：与记页 / 看页同一套 5 格（点第 N 格＝选 N 格） -->
+        <view class="tc-row">
+          <text class="tc-lab tc-lab-i">剩余能量</text>
+          <view class="tc-erow">
+            <view wx:for="{{tc.bat}}" wx:for-item="b" wx:key="*this" class="tc-ed {{b.on?'on':''}} {{tcEdit?'':'ro'}}"
+                  data-i="{{index}}" bindtap="onEnergy" aria-role="button" aria-label="剩余能量 {{index+1}} 格"></view>
+          </view>
+        </view>
+
+        <!-- 心情：5 张脸（线性 SVG，不用 emoji——各机型字形不一致） -->
+        <view class="tc-lab">心情</view>
+        <view class="tc-row">
+          <view class="tc-mrow">
+            <view wx:for="{{tc.mood}}" wx:key="v" class="tc-mf {{item.on?'on':''}} {{tcEdit?'':'ro'}}"
+                  data-i="{{index}}" bindtap="onMood" aria-role="button" aria-label="心情 {{item.v}}">
+              <image src="{{item.uri}}" mode="aspectFit" class="tc-mimg" />
+            </view>
+          </view>
+          <text wx:if="{{tc.moodName}}" class="tc-mn">{{tc.moodName}}</text>
+        </view>
+
+        <!-- 编辑态：两个输入框 + 记下 / 取消 -->
+        <block wx:if="{{tcEdit}}">
+          <input class="tc-in" placeholder="今天怎么样（选填）" placeholder-class="tc-in-ph"
+                 value="{{tc.note}}" bindinput="onNote" maxlength="500" confirm-type="done" />
+          <textarea class="tc-in tc-ta" placeholder="明天准备做什么呢（选填）" placeholder-class="tc-in-ph"
+                    value="{{tc.tomorrow}}" bindinput="onTomorrow" maxlength="500" auto-height />
+          <view class="tc-foot">
+            <view class="btn gh" bindtap="onTodayCancel">取消</view>
+            <view class="btn" bindtap="onTodaySave">{{tc.id ? '保存修改' : '记下'}}</view>
+          </view>
+        </block>
+        <!-- 只读态：那两句话 + 修改 / 记今日 -->
+        <block wx:else>
+          <text wx:if="{{tc.note}}" class="tc-line">{{tc.note}}</text>
+          <text wx:else class="tc-line none">今天还没写这一句</text>
+          <text wx:if="{{tc.tomorrow}}" class="tc-line tmr"><text class="k">明天的计划</text>{{tc.tomorrow}}</text>
+          <view class="tc-act" bindtap="onTodayEdit">{{tc.id ? '修改' : '记今日'}}</view>
+          <view wx:if="{{tc.id}}" class="tc-when">{{tc.d}}{{tc.t}}</view>
+        </block>
+      </view>
 
       <!-- 起 / 睡 切换：点胶囊，或整页左右滑动（手势识别见 utils/swipe.js，与看 / 回看同一套）。
            默认「起」——早上记完起床，顺手就能看见昨晚睡得多晚 -->
@@ -255,4 +313,5 @@
   </view>
 
   <theme-switcher />
+  <project-switcher />
 </view>

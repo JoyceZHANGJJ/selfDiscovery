@@ -21,6 +21,11 @@ const WIN = 14;   // 时间线一次显示多少夜（更早的走底部「显�
 
 const EMPTY_TREND = { has: false, pts: [], seg: [], first: '', sum: '', anchorPct: null };
 
+// 「今日」那句「今天怎么样」没写时的占位主项：记录的主项不能空——
+// 导出 / 导入按「维度 | 内容」解析，空主项那一行会被当成坏行丢掉（见 exporter 的说明）。
+// 展示时认出它就是「没写」（见 buildToday 的 note），所以这个占位不会出现在界面上
+const TODAY_PH = store.TODAY_PH;
+
 // 'YYYY-MM-DD'（原生日期选择器的值格式；也是「改时刻」面板里显示的那串）
 function dayStr(d) {
   return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
@@ -52,7 +57,10 @@ Page(pageBase({
     // 行尾左滑「改」弹出的编辑面板：null＝没开。
     // { id, m, title, date, time, oldT, max, hint, note, notePh }——note 是这一条的备注
     // （起＝起床感受 / 睡＝晚睡原因），进来时回显，可改也可清空
-    ed: null
+    ed: null,
+    // 顶部「今日」卡（全局每日锚点）：null＝数据还没到。tcEdit＝这一块是不是编辑态
+    tc: null,
+    tcEdit: false
   },
 
   onShow() {
@@ -66,8 +74,112 @@ Page(pageBase({
     store.ensureAll().then(ok => {
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       this.setData({ ready: true });
+      // 从看页点「改」今日那条过来：直接进编辑态（今日只在这一页记/改，见 look 的 onRecAction）
+      this.buildToday(!!app.globalData.editTodayId);
+      app.globalData.editTodayId = '';
       this.refresh();
     });
+  },
+
+  /* ---------------- 顶部「今日」卡 ----------------
+     一天一条、全局（不属于任何项目）：天气 / 剩余能量 / 心情 / 今天怎么样 + 明天的计划。
+     今天还没记过 → 直接进编辑态（卡里就有「记下」）；记过 → 只读，点「修改」才进编辑。 */
+  buildToday(edit) {
+    const rec = store.todayRec();
+    const es = (rec && rec.extSrc) || [];
+    const ex = (rec && rec.ext) || [];
+    const at = (s) => { const i = es.indexOf(s); return i >= 0 ? (ex[i] || '') : ''; };
+    const batV = at('todayBat');
+    const moodV = at('todayMood');
+    const wV = at('todayWeather');
+    const lv = batV ? store.batLevel(batV) : 0;   // 0＝还没选（一格都不亮，不等于「最低」）
+    const txt = rec ? (rec.txt || '') : '';
+    const tc = {
+      id: rec ? rec.id : '',
+      has: !!rec,
+      weather: store.WEATHER.map(w => ({ v: w.v, uri: w.uri, on: w.v === wV })),
+      bat: [0, 1, 2, 3, 4].map(i => ({ on: i < lv })),
+      mood: store.MOODS.map(m => ({ v: m.v, uri: m.uri, on: m.v === moodV })),
+      moodName: moodV ? store.moodName(moodV) : '',
+      note: (txt && txt !== TODAY_PH) ? txt : '',
+      tomorrow: at('free:tomorrow'),
+      d: rec ? store.datePrefix(rec.ts) : '',
+      t: rec ? (rec.t || '') : ''
+    };
+    // 今天没记过 → 进编辑态等着填；记过 → 只读（点「修改」才换）。
+    // 注意：onShow 总是传布尔（!!editTodayId），故 edit 永不为 null——
+    // 用「edit 为真就进编辑，否则按有没有记录决定」才是原意；
+    // 若写成 edit != null ? !!edit : !rec，因 false != null 为真，正常进入时会被强行置成只读，
+    // 导致没记过今日的卡也点不动（天气/能量/心情全部 no-op）
+    this.setData({ tc, tcEdit: !!edit || !rec });
+  },
+  // 编辑态里点选（只读态点了没用：那三个控件在只读时是展示，不是开关）
+  onWeather(e) {
+    if (!this.data.tcEdit) return;
+    const i = +e.currentTarget.dataset.i;
+    const w = this.data.tc.weather.slice();
+    const on = !w[i].on;
+    w.forEach((x, k) => { x.on = (k === i) ? on : false; });   // 六选一，再点已选中的＝取消
+    this.setData({ 'tc.weather': w });
+  },
+  onEnergy(e) {
+    if (!this.data.tcEdit) return;
+    const i = +e.currentTarget.dataset.i;
+    this.setData({ 'tc.bat': [0, 1, 2, 3, 4].map(k => ({ on: k <= i })) });   // 点第 N 格＝N 格
+  },
+  onMood(e) {
+    if (!this.data.tcEdit) return;
+    const i = +e.currentTarget.dataset.i;
+    const m = this.data.tc.mood.slice();
+    const on = !m[i].on;
+    m.forEach((x, k) => { x.on = (k === i) ? on : false; });
+    this.setData({ 'tc.mood': m, 'tc.moodName': (on ? store.moodName(m[i].v) : '') });
+  },
+  onNote(e) { this.setData({ 'tc.note': e.detail.value }); },
+  onTomorrow(e) { this.setData({ 'tc.tomorrow': e.detail.value }); },
+  onTodayEdit() { if (!this.data.tcEdit) this.setData({ tcEdit: true }); },
+  onTodayCancel() { this.buildToday(false); },   // 丢掉没保存的改动，回到只读（没记过就回到「记今日」）
+  onTodaySave() {
+    if (this._tSaving) return;
+    const tc = this.data.tc;
+    // 剩余能量是「点第 N 格＝点亮前 N 格」（onEnergy 里 0..i 全亮），
+    // 所以档位＝亮了几格，不是第一个亮的是第几格——用 findIndex 会恒为 0，存下来永远是 1 格
+    const lv = tc.bat.filter(b => b.on).length;
+    // 剩余能量必选：它是今日的主项（与记页同一条口径），没它这条以后认不出是哪一天的状态
+    if (lv < 1) { wx.showToast({ title: '先选一下剩余能量', icon: 'none' }); return; }
+    const mi = tc.mood.findIndex(m => m.on);
+    const wi = tc.weather.findIndex(w => w.on);
+    const ext = [], src = [];
+    ext.push(String(lv)); src.push('todayBat');
+    if (mi >= 0) { ext.push(String(mi + 1)); src.push('todayMood'); }
+    if (wi >= 0) { ext.push(store.WEATHER[wi].v); src.push('todayWeather'); }
+    const tmr = (tc.tomorrow || '').trim();
+    if (tmr) { ext.push(tmr); src.push('free:tomorrow'); }
+    const note = (tc.note || '').trim();
+    const old = store.todayRec();
+    this._tSaving = true;
+    const back = (ok, msg) => {
+      this._tSaving = false;
+      wx.showToast({ title: msg, icon: 'none' });
+      if (ok) this.buildToday(false);
+    };
+    if (old) {
+      // 更新当天那条：只改这四个量 + 那句话，ts / 归属都不动（今天还是今天）
+      old.txt = note || TODAY_PH;
+      old.ext = ext; old.extSrc = src;
+      store.updateRecord(old).then(() => back(true, '已更新'))
+        .catch(() => back(false, '没保存上，再试一次'));
+      return;
+    }
+    const ts = Date.now();
+    // 今日是全局锚点：projectId 恒空（不跟当前项目走）
+    const rec = { m: 'today', t: date.hhmm(ts), ts, txt: note || TODAY_PH, ext, extSrc: src, done: false, doneAt: 0, status: '', projectId: '' };
+    store.addRecord(rec).then(rid => {
+      rec._rid = rid; rec.id = rid;
+      if (!app.globalData.records) app.globalData.records = [];
+      app.globalData.records.unshift(store.decorate(rec));
+      back(true, '记下了');
+    }).catch(() => back(false, '没记上，再试一次'));
   },
   // 切走时把编辑面板收掉、并把 tab 栏放回来（它是本页自己的实例，别把 hidden 带回来）
   onHide() { this._stopClock(); if (this.data.ed) this.setData({ ed: null }); this.setTabHidden(false); },

@@ -2,7 +2,7 @@
   <view class="statusbar-mask"></view>
   <!-- 整页改为页面级滚动（与记页一致）：搜索框等原生输入层由微信同步位置，不再套在 scroll-view 里 -->
   <view class="screen">
-    <view class="body" bindtap="clearFloats">
+    <view class="body body-top" bindtap="clearFloats">
       <!-- 取数失败：给一句说明 + 一个能点的重试（以前这里什么都不显示，整屏空白） -->
       <view wx:if="{{loadFail}}" class="loadfail">
         <view class="lft">没加载出来</view>
@@ -23,7 +23,6 @@
       </view>
 
       <block wx:else>
-      <view class="sect-t" id="blk-title">{{filter==='all'?'全部记录':(filterName+' · 记录')}}</view>
       <input id="searchBox" class="search" placeholder="搜索…" value="{{q}}" bindinput="onSearch" confirm-type="search" adjust-position="{{true}}" cursor-spacing="20" always-embed="{{true}}" bindfocus="onSearchFocus" />
 
       <!-- 维度行：横向滚动，维度多也不换行（换行会把下面整块内容往下顶一截）。
@@ -137,19 +136,17 @@
                 bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
             <view class="tl-row">
               <text class="tl-lab">剩余能量</text>
-              <view class="tl-bar">
-                <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-cell {{index<grp.today.lv?'on':''}}"></view>
+              <view class="tl-blkrow">
+                <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-blk {{index<grp.today.lv?'on':''}}"></view>
               </view>
               <!-- 右起显示创建时间：与时间线行同一口径（datePrefix + t） -->
               <text class="tl-when">{{grp.today.d}}{{grp.today.t}}</text>
             </view>
-            <!-- 心情指数：与能量同一套 5 格、另一套颜色（--mood），与记页只读摘要逐字一致。
+            <!-- 心情指数：改用线性脸谱图标（与作息页今日卡同一套 SVG），右侧仍带档位名。
                  没记过心情（老记录）时整行不显示——画成 0 格会被读成「心情很差」 -->
             <view wx:if="{{grp.today.mlv > 0}}" class="tl-row">
               <text class="tl-lab">心情指数</text>
-              <view class="tl-bar tl-bar-mood">
-                <view wx:for="{{[0,1,2,3,4]}}" wx:key="*this" class="tl-cell mood {{index<grp.today.mlv?'on':''}}"></view>
-              </view>
+              <image wx:if="{{grp.today.moodUri}}" class="mood-ic" src="{{grp.today.moodUri}}" mode="aspectFit" aria-label="心情 {{grp.today.moodName}}" />
               <text class="tl-when">{{grp.today.moodName}}</text>
             </view>
             <text wx:if="{{grp.today.txt}}" class="todaycard-txt">{{grp.today.txt}}</text>
@@ -193,4 +190,5 @@
   </view>
 
   <theme-switcher />
+  <project-switcher />
 </view>
