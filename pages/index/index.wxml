@@ -184,6 +184,12 @@
         <!-- 今日已填且只读：这个分支（能量说明 / 细节·都可跳过）也一并藏掉。
              内容和上方只读摘要完全重复，留着只是让人以为还能改 -->
         <block wx:elif="{{!(tag==='today' && todayLocked && !editing)}}">
+        <!-- 「再做一次」的来源提示：只在从一条「做了」的记录复制进来时出现（见 startAgain）。
+             写清"从哪条来"，否则填的人会以为这是新的一条、跟上次没关系 -->
+        <view wx:if="{{againSrc}}" class="againbar">
+          <text class="ab-t">再做一次</text>
+          <text class="ab-s">来自 {{againSrc}} 那条 · 内容已带过来</text>
+        </view>
         <view class="ehead"><view class="et">{{composer.mainLabel}}</view><view class="mg" data-g="{{composer.main}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view></view>
         <view wx:if="{{composer.mainOpts.length}}" class="chips">
           <view wx:for="{{composer.mainOpts}}" wx:key="*this" class="chip {{item.on?'on':''}}" data-v="{{item.v}}" bindtap="onMainChip">{{item.v}}</view>
@@ -199,38 +205,39 @@
           <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
         </view>
 
-        <view class="extra-h">细节 · 都可跳过</view>
-        <block wx:for="{{composer.items}}" wx:key="index">
-        <!-- hide：如「感受」下面的档位——还没选情绪时整行不出现 -->
-        <view wx:if="{{!item.hide}}" class="extra {{item.first?'first':''}} {{item.label?'':'nlab'}} {{item.sub?'sub':''}}">
-          <!-- 没有标题的项（如档位副行、自由感受输入框）：不渲染标题行，内容紧跟上面的选项。
-               档位副行（item.sub）连管理入口也不给——它就是感受的一个强度档位 -->
-          <view wx:if="{{!item.sub && (item.label || item.type==='g')}}" class="qrow">
-            <view class="ql">{{item.label}}</view>
-            <view wx:if="{{item.canManage}}" class="mg" data-g="{{item.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view>
-          </view>
-          <block wx:if="{{item.type==='g' || item.type==='fx'}}">
-            <view class="chips">
-              <view wx:for="{{item.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{item.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
-            </view>
-            <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{index}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fld{{index}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
+        <block wx:if="{{tag==='aware'}}">
+          <!-- 常驻：「这件事对我」(wantKind, sec=base) 始终可见；其余收进下方三个折叠区 -->
+          <block wx:for="{{composer.items}}" wx:key="index" wx:if="{{item.sec==='base'}}">
+            <template is="cItem" data="{{item, idx:index, fi:focusIdx, kbGap}}" />
           </block>
-          <!-- maxlength="-1"：不限字数。textarea 不写这个属性时微信默认 140 字，
-               「有什么想抒发的？」这种框正好最容易撞上限——想多说两句就被无声截断，
-               而截断是静默的（不报错、不提示），用户只会以为自己没打上。
-               这里给自由抒发的框（感受 / 收获 / 原因 / 描述一类）全部放开；
-               主输入框与「归类」输入框保持默认，那些本来就该短。 -->
-          <!-- 一行式（准确率）：标题 + 短输入框 + 单位，同上（占卜走 plain，这里留一份是
-               为了让任何维度都能用这个形态，不至于换个布局就整行消失） -->
-          <view wx:if="{{item.type==='free' && item.inline}}" class="qrow inline">
-            <view class="ql">{{item.label}}</view>
-            <view class="inline-fld">
-              <input class="mini-in num-in" type="{{item.num?'digit':'text'}}" placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
-              <text wx:if="{{item.unit}}" class="unit">{{item.unit}}</text>
-            </view>
+          <!-- 折叠入口：默认全收，点 ＋ 展开对应区（见 index.wxss 的 .folds/.fold）。
+               只把「这件事对我」常驻，首屏信息量降一档，长反思再逐步展开 -->
+          <view class="folds">
+            <view class="fold" data-f="status" bindtap="toggleFold"><text class="p">＋</text>做没做</view>
+            <view class="fold" data-f="feel" bindtap="toggleFold"><text class="p">＋</text>感受</view>
+            <view class="fold" data-f="more" bindtap="toggleFold"><text class="p">＋</text>更多</view>
           </view>
-          <textarea wx:elif="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
-        </view>
+          <view wx:if="{{folds.status}}" class="sec">
+            <block wx:for="{{composer.items}}" wx:key="index" wx:if="{{item.sec==='status'}}">
+              <template is="cItem" data="{{item, idx:index, fi:focusIdx, kbGap}}" />
+            </block>
+          </view>
+          <view wx:if="{{folds.feel}}" class="sec">
+            <block wx:for="{{composer.items}}" wx:key="index" wx:if="{{item.sec==='feel'}}">
+              <template is="cItem" data="{{item, idx:index, fi:focusIdx, kbGap}}" />
+            </block>
+          </view>
+          <view wx:if="{{folds.more}}" class="sec">
+            <block wx:for="{{composer.items}}" wx:key="index" wx:if="{{item.sec==='more'}}">
+              <template is="cItem" data="{{item, idx:index, fi:focusIdx, kbGap}}" />
+            </block>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="extra-h">细节 · 都可跳过</view>
+          <block wx:for="{{composer.items}}" wx:key="index">
+            <template is="cItem" data="{{item, idx:index, fi:focusIdx, kbGap}}" />
+          </block>
         </block>
         </block>
 
@@ -309,10 +316,13 @@
         <view class="edge" style="background:{{item.c}}"></view>
         <view class="hd">
           <view wx:if="{{item.task}}" class="ck {{item.done?'on':''}}" data-id="{{item.id}}" catchtap="onRecCheck"></view>
+          <text wx:if="{{item.projName}}" class="mn-proj">{{item.projName}}</text>
           <text class="mn" style="color:{{item.c}}">{{item.m}}</text>
           <!-- 优先级小旗：与清单页 / 看页的 todo-list 逐字一致（只有挑过的档才显示，见 store.prioShow） -->
           <view class="prio" wx:if="{{item.pn}}" style="color:{{item.pc}}" aria-label="优先级 {{item.pn}}"></view>
           <text wx:if="{{item.doingDays}}" class="tag doing">第{{item.doingDays}}天</text>
+          <!-- 觉察的「做没做」：做了 / 不做 / 未做 三档小标（在做由上面的「第 N 天」表达） -->
+          <text wx:if="{{item.st}}" class="tag st-{{item.stCls}}">{{item.st}}</text>
           <!-- 「今日」一日一记：**能量格是主项**（与记页只读摘要 / 看页卡片同一套 5 格条），
                那句话是附属内容、挪到下面「能量说明」那一行（见下面的 .dt） -->
           <view wx:if="{{item.bat}}" class="tvw">
@@ -372,4 +382,29 @@
 
   <theme-switcher lock="{{editing}}" bind:locked="onLocked" />
   <project-switcher />
+
+  <!-- 记卡细节项：觉察折叠区与非觉察维度共用，避免「常驻 + 三个折叠区」四套循环重复同一段渲染。
+       传入 idx（在 composer.items 里的真实下标，供 #fld{idx} 聚焦）、fi（focusIdx）、kbGap -->
+  <template name="cItem">
+    <view wx:if="{{!item.hide}}" class="extra {{item.first?'first':''}} {{item.label?'':'nlab'}} {{item.sub?'sub':''}}">
+      <view wx:if="{{!item.sub && (item.label || item.type==='g')}}" class="qrow">
+        <view class="ql">{{item.label}}</view>
+        <view wx:if="{{item.canManage}}" class="mg" data-g="{{item.group}}" bindtap="onManage" aria-label="管理这一组的选项">✎ 管理</view>
+      </view>
+      <block wx:if="{{item.type==='g' || item.type==='fx'}}">
+        <view class="chips">
+          <view wx:for="{{item.opts}}" wx:for-item="o" wx:key="*this" class="chip {{o.on?'on':''}}" data-g="{{item.group}}" data-v="{{o.v}}" bindtap="onChip">{{o.v}}</view>
+        </view>
+        <input wx:if="{{item.type==='g' && !item.noInput}}" class="mini-in" placeholder="{{item.ph}}" value="{{item.typedVal}}" bindinput="onGroupInput" data-g="{{item.group}}" data-idx="{{idx}}" confirm-type="done" bindconfirm="onGroupConfirm" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fld{{idx}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
+      </block>
+      <view wx:if="{{item.type==='free' && item.inline}}" class="qrow inline">
+        <view class="ql">{{item.label}}</view>
+        <view class="inline-fld">
+          <input class="mini-in num-in" type="{{item.num?'digit':'text'}}" placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{idx}}" id="fld{{idx}}" focus="{{idx===fi}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
+          <text wx:if="{{item.unit}}" class="unit">{{item.unit}}</text>
+        </view>
+      </view>
+      <textarea wx:elif="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{idx}}" id="fld{{idx}}" focus="{{idx===fi}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+    </view>
+  </template>
 </view>

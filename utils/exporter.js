@@ -81,12 +81,16 @@ function hhmm(ts) {
 }
 function md(ts) {const s = ymd(ts); return s.slice(5, 7) + '月' + s.slice(8, 10) + '日'; }
 
-// ---------------- 状态（待办的完成态 / 可做的流程节点）----------------
-// 可做：未做 / 在做 / 做了 / 不做（与 store.recMname / 列表口径一致）
-const WANT_STATE = { doing: '在做', done: '做了', abandon: '不做', '': '未做' };
+// ---------------- 状态（待办的完成态 / 觉察的做没做）----------------
+// 觉察：未做 / 在做 / 做了 / 不做（与列表口径一致）。
+// **没状态时不一概写「未做」**：三合一后 status 是可选层，一条纯感受记录本来就不跟踪做没做，
+// 给它盖上「未做」的章是凭空造了一个结论。只有标了「性质」的（想做 / 可做 / 得做）才当成
+// "想做还没做"，这才是有信息量的那一句——判据与看页的「未做」计数同源（status 为空即未做）
+const WANT_STATE = { doing: '在做', done: '做了', abandon: '不做' };
 function wantState(r) {
-  if (r.m !== 'want') return '';
-  return WANT_STATE[r.status || ''] || '未做';
+  if (!(r.m === 'aware' || r.m === 'obs' || r.m === 'now' || r.m === 'want')) return '';
+  if (!r.status) return extOf(r, 'wantKind') ? '未做' : '';
+  return WANT_STATE[r.status] || '';
 }
 // 待办：完成 / 放弃（与列表的两个分段一致）；abandonWhy 在 decorate 里已把「原因」换成它
 function taskState(r) {
@@ -153,10 +157,6 @@ function displayExtras(r) {
   // 「具体的描述」：页面上跟主项并排的那一句，最容易在导出时被漏掉
   const desc = extOf(r, store.DESC_SRC);
   if (desc) push('描述', desc);
-
-  // 「此刻」的喜恶：维度名里故意没带（见 moduleLabel），所以在这里补。
-  // 觉察的喜恶已经进了维度名，这里只管此刻。
-  if (r.m === 'now') push('喜恶', extOf(r, 'obsKind'));
 
   // 待办的优先级：默认档在列表里不显示（每行都挂标签等于没筛出信息），
   // 但导出是给人读的，该写就写——「不紧急不重要」也是信息
@@ -227,14 +227,10 @@ function readLine(r) {
   //   todayMood —— 心情也已在上面补成「平静（3/5 格）」，这里同理不能再写
   //   bookKind —— 同理：类别已进维度名（「书·剧·小说」），store.buildExt 里已排掉
   //     书·剧的两条评分**不在**跳过名单里：它们就该以「精彩程度：4/5」出现在细节区
-  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todayMood: 1, todoKind: 1, obsKind: 1, bookKind: 1 };
+  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todayMood: 1, todoKind: 1, bookKind: 1 };
   const dl = (store.buildExt(r.m, r.ext, r.extSrc) || []).filter(d => {
     if (d.v === '' || d.v == null) return false;
     if (SKIP_IN_DETAIL[d.src]) return false;
-    // buildExt 给觉察 / 此刻合成的「喜恶」那一项**不带 src**（见它内部 push），
-    // 所以只能按标签认。它已经进了维度名（觉察）或 displayExtras（此刻），
-    // 细节区再写一遍就成了同一句话在同一行出现两次。
-    if (!d.src && d.lbl === store.COLMAP.obsKind) return false;
     return true;
   });
   if (dl.length) parts.push(dl.map(d => (d.lbl ? d.lbl + '：' : '') + d.v).join('、'));
@@ -270,7 +266,7 @@ function readLine(r) {
 
   // 觉察的结束时间（顶层 endTs，点「结束」那一刻记的）：看页显示「历时 X」，
   // 导出不写就等于丢了「这次觉察持续了多久」。句式与看页同口径（date.fmtDur）。
-  if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+  if ((r.m === 'aware' || r.m === 'obs' || r.m === 'now' || r.m === 'want') && r.endTs && r.ts && r.endTs > r.ts) {
     const ds = date.fmtDur(r.endTs - r.ts);
     if (ds) parts.push('历时：' + ds);
   }
@@ -284,14 +280,11 @@ function readLine(r) {
 // 但导出是独立文本，一行只写「灵感」会让人以为这是另一个维度 —— 所以这里一律带维度名。
 function moduleLabel(r) {
   const n = store.mname(r.m);
-  if (r.m === 'want') { const k = extOf(r, 'wantKind'); return k ? n + '·' + k : n; }
+  if (r.m === 'aware') { const k = extOf(r, 'wantKind'); return k ? n + '·' + k : n; }
   if (store.isTask(r.m)) { const k = extOf(r, 'todoKind'); return k ? n + '·' + k : n; }
   if (r.m === 'jot') { const k = extOf(r, 'jotKind'); return k ? n + '·' + k : n; }
   // 书·剧：类别（小说 / 漫剧）拼进维度名，与 store.recMname / 云函数 moduleLabel 同一口径
   if (r.m === 'book') { const k = extOf(r, 'bookKind'); return k ? n + '·' + k : n; }
-  if (r.m === 'obs') { const k = extOf(r, 'obsKind'); return k ? n + '·' + k : n; }
-  // 「此刻」的喜恶不给维度名 —— 它在 App 里复用觉察那套情绪 chips（见 store 的 FIELDS.now），
-  // 但此刻不是「对某件事的感受」，写出来「此刻·喜欢」读着别扭。放到下面的补充项里带。
   return n;
 }
 
@@ -352,7 +345,7 @@ function summary(list) {
   out.push('维度分布：' + dims.map(m => store.mname(m) + ' ' + byM[m] + ' 条').join('，'));
 
   // 可做的流转状态：这是最值得单独拎出来的一组——「未做」堆积说明想做但一直没做
-  const wants = list.filter(r => r.m === 'want');
+  const wants = list.filter(r => r.m === 'aware');
   if (wants.length) {
     const byS = { '未做': 0, '在做': 0, '做了': 0, '不做': 0 };
     wants.forEach(r => { byS[wantState(r)]++; });
@@ -460,7 +453,7 @@ function backupLine(r) {
   }
   // 觉察的结束时间（顶层 endTs）：带时分——它是「那一刻」，不是「那一天」。
   // 完成于 / 放弃于那几个只带日期是既有口径（那边按日记），结束于不能跟着省时分。
-  if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+  if ((r.m === 'aware' || r.m === 'obs' || r.m === 'now' || r.m === 'want') && r.endTs && r.ts && r.endTs > r.ts) {
     tags.push('结束于 ' + ymd(r.endTs) + ' ' + hhmm(r.endTs));
   }
   // 起睡备注**必须最后 push**：它是自由文本，可能含逗号，导入端按「备注取到段尾」整体还原

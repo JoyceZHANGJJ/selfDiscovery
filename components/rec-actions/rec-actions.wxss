@@ -25,6 +25,7 @@
 .flow.done { color: #6E8CB0; background: rgba(110,140,176,.12); }
 .flow.abandon { color: #948AA8; background: rgba(148,138,168,.14); }   /* 放弃：灰紫，区别于开始/完成 */
 .flow.restore { color: #7C9A86; background: rgba(124,154,134,.15); }      /* 恢复：绿，区别于放弃 */
+.flow.again { color: #C0A05A; background: rgba(192,160,90,.18); }        /* 再做一次：金（原「可做」的维度色），只出现在「做了」之后 */
 .flow.end { color: #5E9A94; background: rgba(94,154,148,.14); }          /* 结束：青，区别于完成(蓝)/恢复(绿) */
 .flow.review { color: #B79BE0; background: rgba(155,123,192,.18); }     /* 回顾：紫，唯一「事后补一句」的动作 */
 

@@ -28,24 +28,29 @@ Component({
       const rec = this.data.rec || {};
       const rawm = rec.rawm;
       const status = rec.status || '';
-      const isWant = rawm === 'want';
-      const isObsNope = rawm === 'obs' || rawm === 'nope';
+      // 觉察：三合一后 觉察 / 此刻 / 可做 都是 aware，流转按钮只维护这一套。
+      // 老键（obs/now/want）还要认，否则迁移中途的机器上老记录没有操作条
+      const isAware = rawm === 'aware' || rawm === 'obs' || rawm === 'now' || rawm === 'want';
       // 待办：备忘 / 购物 合并后都是 todo（memo / buy 兼容迁移前的老数据）
       const isTask = rawm === 'todo' || rawm === 'memo' || rawm === 'buy';
       const flow = [];
-      // 可做：未做/在做 显示 开始(仅未在做)/完成/放弃；不做 显示 恢复
-      if (isWant && status !== 'done' && status !== 'abandon') {
+      // 觉察：未做 / 在做 显示 开始（仅未在做）/ 完成 / 放弃；不做 显示 恢复
+      if (isAware && status !== 'done' && status !== 'abandon') {
         if (status !== 'doing') flow.push({ type: 'start', label: '开始', cls: 'start' });
         // type 必须是 complete（页面 handler 按 complete 处理）；cls 仍是 done（对应 .flow.done 样式）
         flow.push({ type: 'complete', label: '完成', cls: 'done' });
         flow.push({ type: 'abandon', label: '放弃', cls: 'abandon' });
       }
-      if (isWant && status === 'abandon') {
+      if (isAware && status === 'abandon') {
         flow.push({ type: 'restore', label: '恢复', cls: 'restore' });
       }
-      // 觉察 / 无感：结束（仅未结束显示；已结束后改时间走「改」，不再显示「结束」）
-      if (isObsNope && !rec.ended) {
-        flow.push({ type: 'end', label: '结束', cls: 'end' });
+      /* 「再做一次」：**只在「做了」的记录上出现**。
+         它是"同一件事隔一段时间再做一次"的入口——没做完就谈不上再来一次，所以
+         未做 / 在做 / 不做 都不给。点了不直接建记录：预填回记卡、点「记下」才落库
+         （见 pages/index 的 onAgain），所以手滑多点一下不会凭空多一条。
+         与「恢复」互斥（一个属于做了、一个属于不做），不会同时出现。 */
+      if (isAware && status === 'done') {
+        flow.push({ type: 'again', label: '再做一次', cls: 'again' });
       }
       // 待办（备忘 / 购物）：完成永远走条目上的勾选框，操作条只给次级操作 —— 放弃 / 恢复。
       // 放弃只是小概率事件，放这儿不会影响「点一下勾掉」这条主路径
@@ -66,9 +71,9 @@ Component({
         flow,
         calLabel: canCal ? (rec.calTs ? '已推日历' : '推到日历') : '',
         showEditDel: !!rawm,
-        showEndSep: isObsNope && !rec.ended,
+        showEndSep: false,
         // 有流转按钮时，与右边的「改 / 删除」之间加一道分隔线（占卜的「回顾」同理）
-        showWantSep: (isWant && status !== 'done') || (isTask && flow.length > 0) || isDiv,
+        showWantSep: (isAware && status !== 'done') || (isTask && flow.length > 0) || isDiv,
         title: rec.m ? (rec.m + ' · ' + rec.txt) : ''
       });
     },

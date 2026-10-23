@@ -6,10 +6,12 @@ const date = require('../../utils/date.js');
 const vm = require('../../utils/vm.js');
 const app = getApp();
 
-// 「有默认值」的选项组：见 ensureModuleDefaults——这几个组进入对应维度时会自动补一个默认值，
-// 既然有默认值就不该被点空（再点已选中的那一个＝什么也没发生，保持必选）
-// 待办的「优先级」也在内：它与类别一样有默认值，不该被点空（参见 PRIO_DEFAULT）
-const REQUIRED_PICK = { wantKind: 1, todoKind: 1, todoPrio: 1, jotKind: 1, obsStart: 1, todayBat: 1, divType: 1, bookKind: 1, bookStatus: 1 };
+/* 「有默认值」的选项组：见 ensureModuleDefaults——这几个组进入对应维度时会自动补一个默认值，
+   既然有默认值就不该被点空（再点已选中的那一个＝什么也没发生，保持必选）
+   待办的「优先级」也在内：它与类别一样有默认值，不该被点空（参见 PRIO_DEFAULT）
+   注：三合一后「性质」(wantKind) 与「怎么开始的」(obsStart) 都**不再给默认值**——
+   替人预设「想做」会把每条纯感受记录都标成想做，统计立刻失真，所以它们也从这里退出 */
+const REQUIRED_PICK = { todoKind: 1, todoPrio: 1, jotKind: 1, todayBat: 1, divType: 1, bookKind: 1, bookStatus: 1 };
 
 // 只在「回顾」态出现的自由字段：占卜的「回顾」与「准确率」。
 // 两个都属于「过一段时间才有的东西」——占卜当下既没有实际发展，也没有准不准可言，
@@ -41,6 +43,29 @@ function tsFromDate(dStr, tStr) {
 // 维度标签行两端渐变提示在 data 里的字段名（pageBase.applyScrollFade 按字段名 setData）
 const TAG_FADE = { r: 'tagFade', l: 'tagFadeL' };
 
+// 三合一之前的老维度键。迁移还没跑完的机器上老记录仍是 obs/now/want，
+// 这一页也要能编辑它们（读侧全按 m 判定，漏一个就点不进记卡）
+const LEGACY_AWARE_M = { obs: 1, now: 1, want: 1 };
+function isAwareRec(m) { return m === 'aware' || !!LEGACY_AWARE_M[m]; }
+
+// 「做没做」四态：标签 → 存储值。**未做 = 不写 status**（空串＝不跟踪），
+// 所以它不是"另一个状态"，而是"没选状态"那一档；这也让老记录（没有 status）天然就是未做。
+const STATUS_OPTS = [
+  { v: '未做', s: '' },
+  { v: '在做', s: 'doing' },
+  { v: '做了', s: 'done' },
+  { v: '不做', s: 'abandon' }
+];
+function statusLabelOf(s) {
+  const hit = STATUS_OPTS.find(x => x.s === (s || ''));
+  return hit ? hit.v : '未做';
+}
+// 反向：卡片上点的标签 → 存储值（未做 = 空串，见 STATUS_OPTS 的说明）
+function statusValOf(label) {
+  const hit = STATUS_OPTS.find(x => x.v === label);
+  return hit ? hit.s : '';
+}
+
 Page(pageBase({
   data: {
     ready: false,
@@ -53,6 +78,11 @@ Page(pageBase({
     recent: [],
     recentTab: 'recent',   // 「最近」这一段的切换：'recent'（最近）/ 'done'（已完成的最新十条）
     editing: false,
+    // 觉察记卡折叠：「做没做 / 感受 / 更多」三区的开合态（仅觉察用，见 index.wxml 的 .folds/.sec）。
+    // 放在 data 里，recompute 的 setData 不碰它，所以切维度之外不会被动重置；手动开合可跨 recompute 保持
+    folds: { status: false, feel: false, more: false },
+    // 「再做一次」的来源提示（'10-21「学吉他」'）：有值才在记卡顶部显示一条，记下即清
+    againSrc: '',
     focusIdx: -1,
     // 写云在途（点「记下」到云端返回）：期间再点直接忽略，避免同一条被连点落两遍。
     // 同时给按钮一个置灰反馈，见 app.wxss 的 .btn.off
@@ -109,6 +139,7 @@ Page(pageBase({
     // 占卜的「回顾」态：从记录操作条点「回顾」进入编辑时为真，
     // 此时才显示「回顾」那个输入框（平时它整行不出现，见 buildComposer）
     reviewing: false,
+    againFrom: null,   // 「再做一次」的来源记录：有值＝本次是复制着填的（见 startAgain / doSave）
     todayLocked: null   // 「今日」一日一记：当天已记过时存当天那条（只读锁定态），点「修改」才进编辑
   },
 
@@ -122,7 +153,9 @@ Page(pageBase({
     this._offProj = store.onProjectChange(() => { if (!this._dead) this._onProjChange(); });
   },
 
-  /* 切项目：只换「最近」那一段与「今日」的锁定态（今天**这个项目**记没记过）。
+  /* 切项目：换「最近」那一段与「今日」的锁定态（今天**这个项目**记没记过），
+     并让维度标签按「新项目启用的维度」收窄（见 modulesVM）；
+     当前选中维度若被新项目禁用，回落到有效默认（有「今日」则今日，否则第一个维度）。
      记卡与正在编辑的内容一律不动——编辑保存时仍按原记录的归属写回（见 doSave 的 projectId），
      不会因为切了一下项目就把旧记录改挂到新项目上 */
   _onProjChange() {
@@ -130,6 +163,15 @@ Page(pageBase({
       this.st.todayLocked = this._todayLockedNow();
       this.setData({ todayLocked: this.st.todayLocked });
     }
+    const mods = this.modulesVM();   // 已按当前项目启用的维度收窄
+    let cur = this.data.tag;
+    if (!mods.some(m => m.k === cur)) {
+      const def = mods[0] && mods[0].k;   // 默认选中＝维度标签第一个（记卡已把随记排到最前）
+      cur = def; this.st.tag = def;
+      this.setData({ tag: def });
+      this.ensureModuleDefaults(def);
+    }
+    this.setData({ modules: mods, tagScrollId: 'tg-' + cur });
     this.recompute();
   },
 
@@ -171,7 +213,7 @@ Page(pageBase({
       // 没拉到：撤掉骨架屏、显示可点的重试（以前这里什么都不做，页面会永远停在骨架屏）
       if (!ok) { this.setData({ loadFail: true, ready: true }); return; }
       const mods = this.modulesVM();
-      const def = mods.some(m => m.k === 'today') ? 'today' : (mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k));
+      const def = mods[0] && mods[0].k;   // 默认选中＝维度标签第一个（记卡已把随记排到最前）
       // 当前选中无效（如删掉了「观察」维度）时，回落到默认：有观察则观察，否则第一个维度
       let cur = this.data.tag;
       if (!mods.some(m => m.k === cur)) { cur = def; this.setData({ tag: def }); }
@@ -191,6 +233,12 @@ Page(pageBase({
       // 刚新增的那一项，若对应位置还空着就替他选上（见 applyRenames / applyAdded）
       if (this.st.fromManage) { this.applyRenames(); this.applyAdded(); }
       this.st.fromManage = false;
+      // 看页点「再做一次」：它只把来源记录丢过来，真正的预填在这里做（两页共用同一套）
+      if (app.globalData.againRec) {
+        const src = app.globalData.againRec;
+        app.globalData.againRec = null;
+        this.startAgain(src);
+      }
       this.checkEdit();
       this.rotateGreet();
       // 数据就绪后再渲染真实内容，避免首屏出现空卡片「闪一下」；
@@ -369,10 +417,21 @@ Page(pageBase({
   },
 
   modulesVM() {
-    // 静默维度（睡）不出现在记页的维度标签里：它不在这一页记，只有顶部那个「睡」按钮和「睡」tab
+    // 静默维度（睡 / 起）不出现在记页的维度标签里：它不在这一页记，只有顶部那个「睡」按钮和「睡」tab
     // 「今日」同样不在这里：它那张卡已搬到**作息页顶部**（全局每日锚点，一天一条），
     // 这里留一个入口只会让人在两处记同一件事（且记页这套表单没有天气那一行）
-    return store.MODULES.filter(m => !m.quiet && m.k !== 'today');
+    // 再按「当前项目启用的维度」收窄（设置 → 全局维度 / 项目维度里可点按显隐、长按拖动调序，
+    // 见 store.currentProjectDims）；切到「全局」时返回全部维度。
+    // 切项目后由 onProjectChange → recompute 自动重算这套标签。
+    // **顺序严格跟随 currentProjectDims**：「全局」/ 未配置过的项目＝基础顺序（随记最前，
+    // 其余按 MODULES 原顺序，见 store.baseDimOrder）；配过的项目以用户调的次序为准——
+    // 所以这里不能再写死随记最前，只能按 key 顺序回填 MODULES 元数据。
+    const keys = new Set(store.currentProjectDims());
+    const byK = {};
+    store.MODULES.forEach(m => {
+      if (!m.quiet && m.k !== 'today' && keys.has(m.k)) byK[m.k] = m;
+    });
+    return store.currentProjectDims().map(k => byK[k]).filter(Boolean);
   },
 
   checkEdit() {
@@ -380,6 +439,9 @@ Page(pageBase({
     if (!g.editRec) return;
     const r = g.editRec; g.editRec = null;
     // 历史遗留 m='done' 记录（新流程已并入「可做」）：无对应字段定义，安全跳过编辑，避免崩溃
+    // 三合一之前的老键（obs / now / want）在迁移没跑完时仍可能出现：按 aware 的字段定义编辑，
+    // 否则这类记录会"点不开"——看起来像坏了，其实只是找不到字段表
+    if (!store.FIELDS[r.m] && isAwareRec(r.m)) r.m = 'aware';
     if (!store.FIELDS[r.m]) { this.st.edit = null; this.setData({}); return; }
     const main = store.FIELDS[r.m].main;
     const O = store.getOPT(main);
@@ -407,7 +469,7 @@ Page(pageBase({
     });
     // 旧此刻记录的「情绪（genFeel）/ 感受（free:nownote）」映射到觉察同款（obsMood / free:obsfeel）：
     // FIELDS.now 已不再定义这两组，不映射的话编辑保存会把旧值悄悄丢掉——编辑一次就完成这一条迁移
-    if (r.m === 'now') {
+    if ((this.st.pick['genFeel'] || []).length || this.st.free['nownote']) {
       if ((this.st.pick['genFeel'] || []).length) {
         this.st.pick['obsMood'] = (this.st.pick['obsMood'] || []).concat(this.st.pick['genFeel']);
         delete this.st.pick['genFeel'];
@@ -435,7 +497,7 @@ Page(pageBase({
     // 展示哪些字段：点「完成」(action)→仅做了的感受/收获并聚焦；点「开始」(action)→仅进行中感受并聚焦；
     // 点「放弃」(action)→仅“为什么不做了”并聚焦；普通点开编辑：做中→进行中感受；已做（做了）→进行中感受 与 做了的感受/收获 都可改；
     // 已「不做」→“为什么不做了”可改
-    if (r.m === 'want') {
+    if (isAwareRec(r.m)) {
       const st0 = r.status || '';
       const isDone = st0 === 'done';
       const isAbandon = st0 === 'abandon';
@@ -445,7 +507,17 @@ Page(pageBase({
       else { this.st.showDoing = (st0 === 'doing') || isDone; this.st.showDone = isDone; this.st.showAbandon = isAbandon; }
       this.st.abandoning = this.st.abandoning || isAbandon; // 编辑「不做」记录时保持放弃态，保存不改状态/时间
       this.st.doing = this.st.showDoing;
-    } else {
+      // 卡片上那排「做没做」的回显：正要走的流转优先，其次是记录本身的状态
+      this.st.pick['status'] = [this.st.completing ? '做了' : (this.st.startMode ? '在做' : (isAbandon ? '不做' : statusLabelOf(st0)))];
+    }
+    // 编辑 / 流转进入觉察：把「做没做 / 感受」两区自动展开，
+    // 否则流转要聚焦的「进行中感受 / 做了的感受 / 原因」会落在收起的区里，键盘弹不出来
+    if (this.st.tag === 'aware' && isAwareRec(r.m)) {
+      const flow = this.st.startMode || this.st.completing || this.st.abandoning;
+      const hasStatus = (this.st.pick['status'] || [])[0];
+      if (flow || hasStatus) this.setData({ 'folds.status': true, 'folds.feel': true });
+    }
+    else {
       // 待办 / 随记 等没有 可做 那套流转分支，只认「放弃」一种：
       // 点「放弃」进来时保持 abandoning —— 保存修改时才落「已放弃」+ 时间（见 doSave）。
       // 「放弃原因」这一格只在放弃流程里出现，编辑一条已放弃的待办不再多出它；
@@ -457,18 +529,18 @@ Page(pageBase({
     // 做了的记录：legacy(m='done') 完成时间=ts、惦记=refTs；新流程(want+status done) 完成时间=doneAt、创建=ts
     // 觉察(obs)：结束时间=endTs（无则默认当前，编辑时可改）
     const isLegacyDone = r.m === 'done';
-    const isWantDone = (r.m === 'want') && (r.status === 'done');   // 仅「已做（做了）」记录回显结束时间；点「完成」流转时结束时间在保存时才记，不展示结束时间输入框
+    const isWantDone = (r.status === 'done');   // 仅「已做（做了）」记录回显结束时间；点「完成」流转时结束时间在保存时才记，不展示结束时间输入框
     const isDoneView = isLegacyDone || isWantDone;
     // 「放弃时间」这一行：可做的「不做」记录、以及**已放弃的待办**都要给出来（能回看、也能改）。
     // 待办原来只在列表里看到「放弃 · HH:MM」，进记卡反而没有这一行——这里补上
-    const isWantAbandon = ((r.m === 'want') && (r.status === 'abandon' || this.st.abandoning)) ||
+    const isWantAbandon = (isAwareRec(r.m) && (r.status === 'abandon' || this.st.abandoning)) ||
                           (store.isTask(r.m) && r.status === 'abandon');
     const createTs = isLegacyDone ? (r.refTs || r.ts) : r.ts;   // 做了(legacy)：惦记=refTs；want-done/obs：创建=ts
     const startTs = r.startedAt || 0;
     let endTs = 0;
     if (isLegacyDone) endTs = r.ts;                              // legacy：完成=ts
     else if (isWantDone) endTs = r.doneAt || 0;                  // want-done：完成=doneAt
-    else if (r.m === 'obs') endTs = r.endTs || 0;                // 觉察：结束=endTs；未结束(首次)不填，由「结束」按钮记录
+    else if (isAwareRec(r.m)) endTs = r.endTs || 0;                // 觉察：结束=endTs；未结束(首次)不填，由「结束」按钮记录
     const abandonTs = isWantAbandon ? (r.abandonedAt || Date.now()) : 0;  // 放弃时间=abandonedAt，无则默认现在
     const c = dtStr(createTs), s = dtStr(startTs), e = dtStr(endTs), ab = dtStr(abandonTs);
     this.setData({
@@ -478,7 +550,7 @@ Page(pageBase({
       editHasStart: !!startTs,
       editStartDate: s.date, editStartTime: s.time,
       // 觉察：点「改」且已有结束时间才回显结束时间供修改；点「结束」进入时不回显（结束时间在保存时才记）
-      editHasEnd: isDoneView || (r.m === 'obs' && !!r.endTs && !this.st.ending),
+      editHasEnd: isDoneView || (isAwareRec(r.m) && !!r.endTs),
       editEndDate: e.date, editEndTime: e.time,
       editHasAbandon: isWantAbandon,
       editAbandonDate: ab.date, editAbandonTime: ab.time
@@ -554,10 +626,10 @@ Page(pageBase({
   recVM(r) {
     const dt = store.buildExt(r.m, r.ext, r.extSrc);
     const task = store.isTask(r.m);
-    const doingDays = (r.m === 'want' && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
+    const doingDays = (isAwareRec(r.m) && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
     // 用时/历时（与看页一致）：做了=用了/惦记了；觉察=历时
     let dur = '';
-    const isDoneView = (r.m === 'done') || (r.m === 'want' && r.status === 'done');
+    const isDoneView = (r.m === 'done') || (isAwareRec(r.m) && r.status === 'done');
     if (isDoneView) {
       const endTs = r.doneAt || r.ts;
       const baseTs = r.m === 'done' ? (r.refTs || r.ts) : r.ts;
@@ -567,12 +639,12 @@ Page(pageBase({
       const ds = date.fmtDur(durMs);
       if (ds) dur = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
     }
-    if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+    if (isAwareRec(r.m) && r.endTs && r.ts && r.endTs > r.ts) {
       const ds = date.fmtDur(r.endTs - r.ts);
       if (ds) dur = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
     }
     // 不做 的历时：从创建到放弃（惦记了多久）
-    if (r.m === 'want' && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
+    if (isAwareRec(r.m) && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
       const ds = date.fmtDur(r.abandonedAt - r.ts);
       if (ds) dur = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
@@ -598,6 +670,18 @@ Page(pageBase({
       v.dt = dt.filter(d => d.src !== 'todayBat' && d.src !== 'todayMood');
     }
     v.doingDays = doingDays;
+    /* 觉察的「做没做」：状态不在维度名里（见 store.recMname），列表行上要单独看得见——
+       否则「做了」和「没做」长得一模一样。
+       规则与导出 / 看页同一套：有状态就显示；没状态但标了「性质」的也显示（未做）；
+       两样都没有的纯感受记录不显示——给它盖「未做」的章等于凭空造结论。
+       「在做」不在这里显示：行首的「第 N 天」已经把这件事说清楚了 */
+    if (isAwareRec(r.m)) {
+      const sv = r.status || '';
+      const hasKind = (r.extSrc || []).indexOf('wantKind') >= 0;
+      if (sv === 'done') { v.st = '做了'; v.stCls = 'done'; }
+      else if (sv === 'abandon') { v.st = '不做'; v.stCls = 'abandon'; }
+      else if (!sv && hasKind) { v.st = '未做'; v.stCls = 'todo'; }
+    }
     v.dur = dur;
     // 清单标题超长：隐藏原因/用途，标题独占整行自动折行（右侧只留时间）
     v.longTxt = task && String(r.txt || '').length > 12;
@@ -618,39 +702,30 @@ Page(pageBase({
     // （见 index.wxml），所以这里先从细节列表里摘出来；保存仍按 f.items 的原顺序写 ext/extSrc，
     // 于是 export/import 的按顺序对齐完全不受影响
     const descItem = (f.items || []).find(it => it.free === store.DESC_KEY);
-    // 「可做」按流转状态过滤字段：进行中感受 仅做中/点开始/已做编辑时显示；做了的感受/收获 仅点完成/已做编辑时显示
+    // 细节项：先摘掉「具体的描述」（它单独摆在主输入框下方，见 index.wxml）
     let fitems = f.items.filter(it => it.free !== store.DESC_KEY);
     // 「放弃原因」只在两种时候出现：① 正在走「放弃」这个动作（从操作条点「放弃」进来）；
     // ② 编辑一条**已经放弃**的记录（回看 / 改原因）。其余时候不出现——
-    // 这条规则待办与可做同一套（待办以前漏了，导致每写一条待办都摆着「为什么不做了」）
+    // 这条规则待办与觉察同一套（待办以前漏了，导致每写一条待办都摆着「为什么不做了」）
     fitems = fitems.filter(it => it.free !== 'abandonWhy' ||
       this.st.abandoning || !!(this.st.edit && this.st.edit.status === 'abandon'));
     // 占卜的「回顾」「准确率」：只有点「回顾」进来才出现。占卜当下既没有实际发展、
     // 也没有准不准可言，摆在那儿只会让人以为必填；得由那个动作把它们请出来。
     // （这与 abandonWhy 同一套路：条件字段平时藏起来，被动作唤出来时才占一行）
     fitems = fitems.filter(it => REVIEW_ONLY_FREE.indexOf(it.free) < 0 || !!this.st.reviewing);
-    if (tag === 'want') {
-      fitems = fitems.filter(it => {
-        if (it.free === 'doingNote') return !!this.st.showDoing;
-        if (it.free === 'doneFeel' || it.free === 'doneGain') return !!this.st.showDone;
-        return true;
-      });
-    }
-    // 档位（obsDeg）是情绪的修饰：没选情绪、也没有历史档位时整行不展示。
-    // 觉察与此刻的情绪都是 obsMood（此刻整块复用觉察的「感受」），程度副行同一套
-    const moodG = (tag === 'obs' || tag === 'now') ? 'obsMood' : '';
-    const showDeg = !!moodG &&
-      ((this.st.pick[moodG] || []).length > 0 || (this.st.pick['obsDeg'] || []).length > 0);
-    // 展示顺序与存储顺序解耦：觉察的细节在编辑器里排成
-    // 「喜恶 → 感受（情绪 chips + 档位副行 + 自由输入框）→ 怎么开始的 → 沉浸 → 精力」，
-    // 但保存仍按 f.items 的原顺序写 ext/extSrc，导出/导入的按顺序对齐因此不受影响
-    if (tag === 'obs') {
-      const key = (it) => it.g || (it.fx ? 'fx:' + it.fx : 'free:' + it.free);
-      // 档位紧跟情绪（点完情绪就在原处展开），自由感受再跟在后面
-      const want = ['obsKind', 'obsMood', 'obsDeg', 'free:obsfeel', 'obsStart', 'fx:forgot', 'fx:nrg'];
-      const rest = fitems.filter(it => want.indexOf(key(it)) < 0);   // 未列出的照旧附在后面，不会被吞掉
-      fitems = want.map(k => fitems.find(it => key(it) === k)).filter(Boolean).concat(rest);
-    }
+    /* 觉察：按 FIELDS.aware 里标的 when 决定这一行什么时候出现。
+       当前状态按优先级取：正在走某个流转（点「开始 / 完成 / 放弃」进来的）> 卡片上刚点的状态 >
+       记录本身的状态。**这一条替代了原来按键名硬编码的那段**（doingNote / doneFeel / doneGain 逐个列），
+       以后再加一行"只在某个状态下出现"的字段，只在 store 的 FIELDS 里标 when，不用回来改这里。 */
+    const curStatusVal = this.st.completing ? 'done'
+      : (this.st.abandoning ? 'abandon'
+      : (this.st.startMode ? 'doing'
+      : (statusValOf((this.st.pick['status'] || [])[0] || '') || ((this.st.edit && this.st.edit.status) || ''))));
+    fitems = fitems.filter(it => !it.when || it.when === curStatusVal);
+    // 旧的两个开关还给别处用（focusIdx 挑输入框），跟着同一个口径走
+    this.st.showDoing = curStatusVal === 'doing';
+    this.st.showDone = curStatusVal === 'done';
+    this.st.showAbandon = curStatusVal === 'abandon';
     const items = fitems.map((it, idx) => {
       if (it.g) {
         // 是否给「✎ 管理」入口：纯图示档位组（剩余能量 / 心情指数）与固定选项组（书·剧「状态」）都不给——
@@ -689,9 +764,9 @@ Page(pageBase({
         }
         // 手填只记这一条，不进选项池（要复用同一句话，去「✎ 管理」里加）
         const ph = '也可以手填，和选项一起记下（不加入选项池）';
-        // sub：情绪下面的档位副行——不显示标题、不给管理入口，chip 小一号，未选情绪时隐藏
-        return { type: 'g', first: idx === 0, group: it.g, label: it.sub ? '' : store.GLABEL[it.g], single: !!it.single, noInput: !!it.noInput, canManage: canManage, ph, opts, typedVal: this.st.typed[it.g] || '',
-          sub: !!it.sub, hide: !!it.sub && !showDeg, below: !!it.below };
+        // 注：原来的 sub（情绪的档位副行）随「程度」一起退场了，label 不再有特例
+        return { type: 'g', first: idx === 0, group: it.g, label: store.GLABEL[it.g], single: !!it.single, noInput: !!it.noInput, canManage: canManage, ph, opts, typedVal: this.st.typed[it.g] || '',
+          sub: false, hide: false, below: !!it.below };
       }
       if (it.fx) {
         const fx = store.FIXED[it.fx];
@@ -704,9 +779,33 @@ Page(pageBase({
       return { type: 'free', first: idx === 0, key: it.free, label: it.label, ph: it.ph, ta: !!it.ta, val: this.st.free[it.free] || '',
         inline: !!it.inline, unit: it.unit || '', num: !!it.num };
     });
+    /* 「做没做」这一行：**不是选项池里的组**，是页面自己维护的四态（见 STATUS_OPTS）。
+       插在「这件事对我」后面——先定这件事是什么、对我是什么性质，再说做没做。
+       它的值不进 ext（status 是记录的顶层字段），所以在 doSave 里单独写。
+       canManage=false：这四档写死在代码里，给「✎ 管理」只会送用户进一个空白页。 */
+    if (tag === 'aware') {
+      const at = items.findIndex(x => x.group === 'wantKind');
+      items.splice(at >= 0 ? at + 1 : 0, 0, {
+        type: 'g', first: false, group: 'status', label: '做没做',
+        single: true, noInput: true, canManage: false, ph: '',
+        opts: STATUS_OPTS.map(o => ({ v: o.v, on: statusLabelOf(curStatusVal) === o.v })),
+        typedVal: '', sub: false, hide: false, below: false
+      });
+    }
+    // 折叠分区（仅觉察）：把「做没做 / 感受 / 更多」收进三个可折叠区，
+    // 只把「这件事对我」(wantKind) 常驻，其余默认收起，降低首屏信息量（见 index.wxml 的 .folds/.sec）。
+    // sec 只决定渲染分组，不动数据顺序与存储（store 仍是 FIELDS.aware 的原顺序）
+    if (tag === 'aware') {
+      const SEC = { wantKind: 'base', status: 'status', obsMood: 'feel', obsfeel: 'feel', forgot: 'status', nrg: 'status', doingNote: 'status', doneFeel: 'status', abandonWhy: 'status', trigger: 'more', howto: 'more', hope: 'more' };
+      items.forEach(it => {
+        const g = it.group || it.key || '';
+        const k = g.startsWith('fx:') ? g.slice(3) : g;
+        it.sec = SEC[k] || 'base';
+      });
+    }
     // 今日那句改成同时提能量和心情：下面两条 5 格条是并列的，
     // 只说「能量」的话，填的人会以为心情那栏没处写、或者干脆不填。
-    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '今天发生了哪些影响能量和心情的事呢？', div: '占卜的问题是？', book: '书名或剧名 · 回车就记下' };
+    const MAINPH = { aware: '发生了什么，或者想做点什么', todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '今天发生了哪些影响能量和心情的事呢？', div: '占卜的问题是？', book: '书名或剧名 · 回车就记下' };
     // 待办 / 随记 / 今日 / 占卜 / 书·剧：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行。
     // 今日：电池（类别）摆在主输入框上方、印象（主输入框）在下方，无细节分割线（见 index.wxml 的 plain 分支）
     // 书·剧同理：类别在上、名称在中、评分与进度在下
@@ -871,9 +970,10 @@ Page(pageBase({
     this.st.due = 0;
     this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false; this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false;
     this.st.reviewing = false;   // 切走维度就退出回顾态：「回顾」是占卜那一条的事，不该跟着跑到别的维度去
+    this.st.againFrom = null;
     this.st.todayLocked = null;
     this.ensureModuleDefaults();
-    this.setData({ tag: this.st.tag, todayLocked: null });
+    this.setData({ tag: this.st.tag, todayLocked: null, againSrc: '', folds: { status: false, feel: false, more: false } });
     this.recompute();
     // 这里**不主动置顶**：切维度只是换记卡里的内容，页面停在你滑到的位置。
     // 点标签也一样——标签就在记卡里，能点到它说明记卡本来就在视野里；
@@ -914,6 +1014,14 @@ Page(pageBase({
     // 「今日」已填且只读锁定态：内容禁填（点「修改」才解锁），这里直接拦下
     if (this.data.todayLocked && !this.data.editing) return;
     const g = e.currentTarget.dataset.g, v = e.currentTarget.dataset.v;
+    // 「做没做」：页面自己维护的四态（不在选项池里，见 STATUS_OPTS）。单选，
+    // 再点一次已选中的那一档＝回到「未做」（不跟踪）——所以它不进 REQUIRED_PICK
+    if (g === 'status') {
+      const cur = (this.st.pick['status'] || [])[0] || '';
+      this.st.pick['status'] = cur === v ? [] : [v];
+      this.recompute();
+      return;
+    }
     let arr = this.st.pick[g] || [];
     if (arr.indexOf(v) >= 0) {
       // 有默认值的组（类别 / 分类 / 开始方式…）必须留一个：再点已选中的不反选（见 REQUIRED_PICK）
@@ -922,10 +1030,14 @@ Page(pageBase({
     }
     else { if (store.isSingle(g)) arr = []; arr.push(v); }
     this.st.pick[g] = arr;
-    // 档位是情绪的修饰，情绪被取消时把档位一并清掉（否则会存下没头没尾的程度）。
-    // 觉察与此刻的情绪都是 obsMood，联动同一套；取值行见 buildComposer 的 showDeg
-    if (g === 'obsMood' && !arr.length) this.st.pick['obsDeg'] = [];
     this.recompute();
+  },
+  // 觉察记卡：展开 / 收起「做没做 / 感受 / 更多」三区（见 index.wxml 的 .folds）。
+  // folds 在 data 里、recompute 不重置，所以手动开合跨 recompute 保持；切维度时才整体复位
+  toggleFold(e) {
+    const f = e.currentTarget.dataset.f;
+    if (!f) return;
+    this.setData({ ['folds.' + f]: !this.data.folds[f] });
   },
 
   /* 待办那一行「计划完成」：点一格就设好（今天 / 明天 / 本周末 / 下周一 / 无），
@@ -1035,7 +1147,7 @@ Page(pageBase({
   resetToInitial() {
     this.clearFloats();
     const mods = this.modulesVM();
-    const def = mods.some(m => m.k === 'today') ? 'today' : (mods.some(m => m.k === 'obs') ? 'obs' : (mods[0] && mods[0].k));
+    const def = mods[0] && mods[0].k;   // 默认选中＝维度标签第一个（记卡已把随记排到最前）
     this.st.edit = null;
     this.st.tag = def;
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
@@ -1106,11 +1218,9 @@ Page(pageBase({
   // 各维度自动补上的那一个选项（「不算用户选的」的白名单）
   _defaultPicks() {
     const t = this.st.tag, d = {};
-    if (t === 'want' && store.wantKindDefault) d.wantKind = (store.wantKindDefault() || [])[0];
     if (t === 'todo' && store.todoKindDefault) d.todoKind = (store.todoKindDefault() || [])[0];
     if (t === 'todo' && store.todoPrioDefault) d.todoPrio = (store.todoPrioDefault() || [])[0];
     if (t === 'jot' && store.jotKindDefault) d.jotKind = (store.jotKindDefault() || [])[0];
-    if (t === 'obs' && store.obsStartDefault) d.obsStart = (store.obsStartDefault() || [])[0];
     if (t === 'div' && store.divTypeDefault) d.divType = (store.divTypeDefault() || [])[0];
     if (t === 'book' && store.bookKindDefault) d.bookKind = (store.bookKindDefault() || [])[0];
     if (t === 'book' && store.bookStatusDefault) d.bookStatus = (store.bookStatusDefault() || [])[0];
@@ -1148,9 +1258,9 @@ Page(pageBase({
     const editing = !!this.st.edit;
     const er = this.st.edit || {};
     const erDoneLegacy = er.m === 'done';
-    const erWantDone = (er.m === 'want') && (er.status === 'done' || this.st.completing);
+    const erWantDone = isAwareRec(er.m) && (er.status === 'done' || this.st.completing);
     // 与 checkEdit 的 isWantAbandon 对齐：可做的「不做」记录 + 已放弃的待办，都用「放弃时间」输入框的值
-    const erWantAbandon = ((er.m === 'want') && (er.status === 'abandon' || this.st.abandoning)) ||
+    const erWantAbandon = (isAwareRec(er.m) && (er.status === 'abandon' || this.st.abandoning)) ||
                           (store.isTask(er.m) && er.status === 'abandon');
     const c = tsFromDate(this.data.editDate, this.data.editTime);
     let startedAt = er.startedAt || 0;
@@ -1186,8 +1296,37 @@ Page(pageBase({
     if (this.st.completing) { rec.status = 'done'; rec.doneAt = Date.now(); }
     // 「放弃」流转进入：保存时才置「不做」并记录放弃时间（默认现在）
     if (this.st.abandoning) { rec.status = 'abandon'; rec.abandonedAt = Date.now(); }
+    /* 卡片上的「做没做」：新建时它是唯一的状态来源；编辑时是就地改状态。
+       走「开始 / 完成 / 放弃」那个动作时以动作为准（上面三行已经写好）——这里不插手，
+       否则刚点「完成」进来的编辑会被回显的旧状态盖回去。
+       时间戳跟着状态走：新进某个状态补时间，退回「未做」三个时间一起清掉。 */
+    if (this.st.tag === 'aware' && !this.st.startMode && !this.st.completing && !this.st.abandoning) {
+      const sv = (this.st.pick['status'] || []).length ? statusValOf(this.st.pick['status'][0]) : '';
+      if (sv !== (er.status || '')) {
+        const now0 = Date.now();
+        if (sv === 'doing' && !rec.startedAt) rec.startedAt = now0;
+        if (sv === 'done' && !rec.doneAt) rec.doneAt = now0;
+        if (sv === 'abandon' && !rec.abandonedAt) rec.abandonedAt = now0;
+      }
+      if (!sv) { rec.startedAt = 0; rec.doneAt = 0; rec.abandonedAt = 0; }
+      rec.status = sv;
+    }
     if (er.ref) rec.ref = er.ref;
     if (er.refTxt) rec.refTxt = er.refTxt;
+    /* 重复做：同系列共用 seriesId。首条懒写——第一次点「再做一次」时才把 seriesId
+       回写给源记录，于是「第 3 次」「平均几天一次」都能按同系列聚合，
+       不需要一个常驻主条目（那是 PRD-v3 里的主子模型，代价更高，见方案文档） */
+    if (this.st.againFrom) {
+      const src = this.st.againFrom;
+      const sid = src.seriesId || src._rid || src.id || ('s' + Date.now());
+      rec.seriesId = sid;
+      if (!src.seriesId) {
+        src.seriesId = sid;
+        store.updateRecord(src).catch(() => {});
+      }
+    } else if (editing && er.seriesId) {
+      rec.seriesId = er.seriesId;   // 编辑一条已在系列里的记录：别把系列键丢了
+    }
     if (erDoneLegacy) rec.refTs = refTs;
     // 新流程「做了」记录(want+done)：完成时间改用「结束时间」输入框，用户改过才覆盖
     if (erWantDone && this.data.editHasEnd) {
@@ -1203,7 +1342,7 @@ Page(pageBase({
     // - 点「结束」进入（ending）：保存修改这一刻才落结束时间（默认现在），此前不写云；
     // - 点「改」进来且显示结束时间输入框：用户改过才覆盖；
     // - 未结束且非结束流转：保持原样，编辑内容不碰结束时间
-    if (er.m === 'obs') {
+    if (isAwareRec(er.m)) {
       if (this.st.ending) {
         rec.endTs = Date.now();
       } else if (this.data.editHasEnd) {
@@ -1258,11 +1397,6 @@ Page(pageBase({
         if (!editing) { app.globalData.editRec = store.decorate(dup); this.checkEdit(); }
         return;
       }
-    }
-    // 想做模块：分类为必选（默认已选「想做」）
-    if (this.st.tag === 'want' && (!this.st.pick['wantKind'] || !this.st.pick['wantKind'].length)) {
-      wx.showToast({ title: '请选择分类（想要/可做/喜欢）', icon: 'none' });
-      return;
     }
     // 待办：类别为必选（默认已选「备忘」）
     if (this.st.tag === 'todo' && (!this.st.pick['todoKind'] || !this.st.pick['todoKind'].length)) {
@@ -1345,12 +1479,10 @@ Page(pageBase({
   // 觉察的「怎么开始的」不是必选，但也有个默认（自己想做），填的时候少点一下
   ensureModuleDefaults(tag) {
     const t = tag || this.st.tag;
-    if (t === 'want' && !this.st.pick['wantKind']) this.st.pick['wantKind'] = store.wantKindDefault();
     if (t === 'todo' && !this.st.pick['todoKind']) this.st.pick['todoKind'] = store.todoKindDefault();
     // 优先级默认「不紧急不重要」：新建待办不点也有值，但列表里不显示标记（见 store.prioShow）
     if (t === 'todo' && !this.st.pick['todoPrio']) this.st.pick['todoPrio'] = store.todoPrioDefault();
     if (t === 'jot' && !this.st.pick['jotKind']) this.st.pick['jotKind'] = store.jotKindDefault();
-    if (t === 'obs' && !this.st.pick['obsStart']) this.st.pick['obsStart'] = store.obsStartDefault();
     // 占卜：牌种必选，进入就默认选好「塔罗」（想改随时点另一个）
     if (t === 'div' && !this.st.pick['divType']) this.st.pick['divType'] = store.divTypeDefault();
     // 书·剧：类别必选，进入就默认选好「小说」（想看漫剧随时点另一个）
@@ -1364,6 +1496,7 @@ Page(pageBase({
     this.st.edit = null; this.st.startMode = false; this.st.doing = false; this.st.completing = false; this.st.showDoing = false; this.st.showDone = false;
     this.st.abandoning = false; this.st.showAbandon = false; this.st.ending = false; this.st.focusFree = '';
     this.st.reviewing = false;   // 回顾态是一次性的：记下之后「回顾」那行收回去，别把下一条也变成回顾
+    this.st.againFrom = null;    // 来源提示只服务于这一条，记下就结束
     this.st.main = ''; this.st.mainPick = null; this.st.pick = {}; this.st.typed = {}; this.st.free = {};
     this.st.due = 0;   // 计划完成也一并归零：下一条待办默认又没有计划（「没计划」是常态）
     this.ensureModuleDefaults();   // 记下后仍在 可做 / 待办 / 随记 时，把默认分类 / 类别选回来
@@ -1375,7 +1508,7 @@ Page(pageBase({
       const isToday = rec.ts >= st0 && rec.ts < st0 + date.DAY;
       this.st.todayLocked = isToday ? this._todayLockedOf(rec) : null;
     }
-    this.setData({ editing: false, focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', todayLocked: this.st.todayLocked });
+    this.setData({ editing: false, againSrc: '', focusIdx: -1, editDate: '', editTime: '', editHasStart: false, editStartDate: '', editStartTime: '', editHasEnd: false, editEndDate: '', editEndTime: '', editHasAbandon: false, editAbandonDate: '', editAbandonTime: '', todayLocked: this.st.todayLocked });
     this.recompute();
     if (isEdit) { wx.showToast({ title: '已更新', icon: 'none', duration: 800 }); return; }
     this._showSavedBar(rec);
@@ -1607,8 +1740,53 @@ Page(pageBase({
     this.setData({ recSel: id, recSelRec: r ? { m: store.recMname(r), txt: r.txt, rawm: r.m, status: r.status || '', ended: !!r.endTs, done: !!r.done, dueTs: r.dueTs || 0, calTs: r.calTs || 0 } : null });
   },
 
+  /* 「再做一次」：把一条**已经做了**的记录预填回记卡，而不是直接建一条。
+     为什么不直接建：① 能改时间、能补一句；② 更重要的——**手滑多点一下就凭空多一条**
+     是不可接受的（那条会进统计、进时间线），所以仍然要点「记下」才落库。
+     带过来：大类 / 描述 / 性质 / 原因 / 怎么做 / 希望（这些是"这件事"本身，每次一样）；
+     不带：状态与各状态的专属字段（进行中感受 / 沉浸 / 充耗 / 做了的感受 / 放弃原因）——
+     那些都属于"上一次"，新的一次要重新填（所以 startAgain 只挑白名单，不做整条复制）。
+     系列：第一次点的时候把 seriesId 懒写回源记录，之后同系列共用（见 doSave）。 */
+  startAgain(r) {
+    if (!r || !isAwareRec(r.m)) return;
+    const extOf = (src) => {
+      const i = (r.extSrc || []).indexOf(src);
+      return i >= 0 ? ((r.ext || [])[i] || '') : '';
+    };
+    const pick = {}, free = {};
+    if (extOf('wantKind')) pick['wantKind'] = [extOf('wantKind')];
+    ['trigger', 'howto', 'hope', 'desc'].forEach(k => {
+      const v = extOf('free:' + k);
+      if (v) free[k] = v;
+    });
+    this.st.tag = 'aware';
+    this.st.edit = null;
+    // 大类：放进 main（不是 mainPick）——不在池里时 buildComposer 会把它当临时 chip 排在最前，
+    // 点了别的就换掉，不改选项池
+    this.st.main = r.txt || '';
+    this.st.mainPick = null;
+    this.st.pick = pick;
+    this.st.typed = {};
+    this.st.free = free;
+    this.st.due = 0;
+    this.st.againFrom = r;
+    this.st.startMode = false; this.st.completing = false; this.st.abandoning = false;
+    this.st.ending = false; this.st.reviewing = false; this.st.focusFree = '';
+    this.st.showDoing = false; this.st.showDone = false; this.st.showAbandon = false;
+    this.setData({
+      tag: 'aware',
+      editing: false,
+      todayLocked: null,
+      recSel: null, recSelRec: null,
+      folds: { status: false, feel: false, more: true },
+      againSrc: (store.datePrefix(r.ts) || '').trim() + '「' + (r.txt || '') + '」'
+    });
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 });
+    this.recompute();
+  },
+
   /* 记录操作条统一入口（记页「最近」与看页共用 rec-actions 组件；行为各自实现，按钮集合只维护一处）
-     type: start | complete | abandon | restore | end | edit | del */
+     type: start | complete | abandon | restore | again | edit | del */
   onRecAction(e) {
     if (this.guardEdit()) return;   // 编辑态：不允许对其它记录做流转/改/删
     const type = e.detail.type;
@@ -1635,7 +1813,7 @@ Page(pageBase({
       return;
     }
     if (type === 'start' || type === 'complete' || type === 'abandon') {
-      if (r.m !== 'want') return;
+      if (!isAwareRec(r.m)) return;
       app.globalData.editRec = r;
       if (type === 'start') app.globalData.editStart = true;
       if (type === 'complete') app.globalData.editComplete = true;
@@ -1645,7 +1823,7 @@ Page(pageBase({
       return;
     }
     if (type === 'restore') {
-      if (r.m !== 'want' || r.status !== 'abandon') return;
+      if (!isAwareRec(r.m) || r.status !== 'abandon') return;
       const now = Date.now();
       r.status = ''; r.ts = now; r.t = nowStr();
       r.abandonedAt = 0; r.startedAt = 0;
@@ -1658,16 +1836,12 @@ Page(pageBase({
       this.recompute();
       return;
     }
-    if (type === 'end') {
-      if (r.m !== 'obs') return;
-      // 不在这里落结束时间：只标记待结束，等点「保存修改」时才记录结束时间并写云
-      // 同时打开编辑态聚焦「感受」输入框、弹键盘，便于立刻记感受
-      app.globalData.editRec = r;
-      app.globalData.editEnding = true;
-      app.globalData.editEndFocus = true;
+    /* 「再做一次」：只对「做了」的记录开放——组件里也只对它们显示按钮，这里再挡一次，
+       免得别的入口（看页 / 将来的快捷动作）漏判。走的是「预填回记卡」，不是直接建记录 */
+    if (type === 'again') {
+      if (!isAwareRec(r.m) || r.status !== 'done') return;
       this.setData({ recSel: null, recSelRec: null });
-      this.checkEdit();
-      this.recompute();
+      this.startAgain(r);
       return;
     }
     if (type === 'review') {

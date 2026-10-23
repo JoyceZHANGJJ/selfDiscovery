@@ -21,6 +21,15 @@ Page(pageBase({
     geEditVal: '',
     dims: [],
     projArchived: [],   // 已归档项目（在「设置 → 项目」里查看 / 恢复）
+    projDimEditors: [], // 项目维度：每个活跃项目一组维度行（显隐 + 顺序）
+    projOpen: false,    // 「设置 → 项目 · 已归档项目」是否展开：**默认收起**（归档项平时很少动）
+    projDimOpen: false, // 「设置 → 项目维度」是否展开：**默认收起**（活跃项目多时很占屏）
+    gDimOpen: false,    // 「设置 → 全局维度」是否展开：**默认收起**（与「项目维度」同一套折叠）
+    globalDims: [],     // 全局维度行：{k,n,c,on}（顺序即「全局」范畴的维度标签顺序）
+    dimDragging: false, // 是否正在长按拖动维度行（与「✎ 管理」选项页同一套）
+    dimDragPid: '',     // 正在拖动的范畴：''＝全局，否则项目 _id
+    dimDragIdx: -1,     // 正在拖动的行下标
+    dimRowH: 38,        // 维度行高（拖动换算用，与 .pd-row 的 height 保持一致）
     dimOverlay: false,
     dimName: '',
     dimColor: '#7C9A86',
@@ -63,7 +72,7 @@ Page(pageBase({
     });
     store.ensureAll().then(() => {
       this.g = app.globalData.greets ? JSON.parse(JSON.stringify(app.globalData.greets)) : JSON.parse(JSON.stringify(store.GREETS));
-      const O = app.globalData.OPT || {};
+      const O = store.activeOptPool() || {};   // 每个项目的选项池独立：这里按当前项目取（全局→全局池）
       // optCount 是所有组里的「选项总数」，不是组数；optGroups 才是有内容的组数
       const optGroups = Object.keys(O).filter(k => (O[k] || []).length).length;
       const optCount = Object.keys(O).reduce((s, k) => s + (O[k] ? O[k].length : 0), 0);
@@ -77,6 +86,8 @@ Page(pageBase({
         optCount
       });
       this.buildQuickOpts();
+      this.buildGlobalDimEditor();
+      this.buildProjDimEditors();
     });
   },
 
@@ -95,8 +106,13 @@ Page(pageBase({
     if (!id) return;
     store.updateProject(id, { archived: false }).then(() => {
       this.setData({ projArchived: (app.globalData.projects || []).filter(p => p.archived) });
+      store.reload();   // 重新拉记录：恢复项目后，其记录重新出现在「全局」视图
     });
   },
+
+  /* 项目 / 项目维度：默认收起（见 data.projOpen / projDimOpen）。只是折叠，不影响已配置的内容 */
+  toggleProj() { this.setData({ projOpen: !this.data.projOpen }); },
+  toggleProjDim() { this.setData({ projDimOpen: !this.data.projDimOpen }); },
 
   /* 问候语 */
   toggleGreet() { this.setData({ greetOpen: !this.data.greetOpen }); },
@@ -473,5 +489,116 @@ Page(pageBase({
     store.unregDim(k);
     store.saveDims(app.globalData.dims);
     this.setData({ dims: (app.globalData.dims || []).map(x => ({ k: x.k, n: x.n, c: x.c, opt: (x.opt || []).length })) });
+  },
+
+  /* 项目维度：把每个活跃项目展开成「维度行列表」（显隐 + 顺序）。
+     每个项目默认全部启用（无 dims 字段即全部）；「全局」的维度在上一节「全局维度」配（同构）。
+     点按行切换显隐，长按行拖动调序（onDimDragStart/Move/End，与「✎ 管理」选项页同一套）。 */
+  buildProjDimEditors() {
+    const meta = {};
+    store.configurableDims().forEach(d => { meta[d.k] = d; });   // 含自定义维度（ensureAll 已 regDim）
+    const editors = (app.globalData.projects || [])
+      .filter(p => !p.archived)
+      .map(p => {
+        const { order, off } = store.dimCfg(p._id);             // 全序（含关掉的）＋隐藏集合
+        return {
+          _id: p._id, name: p.name, color: p.color,
+          dims: order.map(k => ({ k, n: meta[k].n, c: meta[k].c, on: !off.has(k) }))
+        };
+      });
+    this.setData({ projDimEditors: editors });
+  },
+
+  /* 全局维度：不切到具体项目（「全局」范畴）时的显隐 + 顺序，与项目维度同一套行列表。
+     无配置＝全部启用、按基础顺序（随记最前，见 store.baseDimOrder）。 */
+  buildGlobalDimEditor() {
+    const meta = {};
+    store.configurableDims().forEach(d => { meta[d.k] = d; });
+    const { order, off } = store.dimCfg('');
+    this.setData({ globalDims: order.map(k => ({ k, n: meta[k].n, c: meta[k].c, on: !off.has(k) })) });
+  },
+
+  toggleGDim() { this.setData({ gDimOpen: !this.data.gDimOpen }); },
+
+  // 点按维度行：切换该范畴下这个维度的显隐（改动即写回，无需「完成」按钮；全关会回退全部启用）。
+  // 写完以 store 为准重建——被回退成「全部启用」时即时纠正，不会出现「设置里全关、记页全在」。
+  onGlobalDimToggle(e) {
+    if (this._dimJustDragged()) return;
+    const k = e.currentTarget.dataset.k;
+    if (!k) return;
+    const dims = (this.data.globalDims || []).map(d => d.k === k ? Object.assign({}, d, { on: !d.on }) : d);
+    store.setGlobalDims(dims.map(d => d.k), dims.filter(d => !d.on).map(d => d.k));
+    this.buildGlobalDimEditor();
+  },
+  onProjDimToggle(e) {
+    if (this._dimJustDragged()) return;
+    const pid = e.currentTarget.dataset.pid, k = e.currentTarget.dataset.k;
+    if (!pid || !k) return;
+    const ed = (this.data.projDimEditors || []).find(x => x._id === pid);
+    if (!ed) return;
+    const dims = ed.dims.map(d => d.k === k ? Object.assign({}, d, { on: !d.on }) : d);
+    store.setProjectDims(pid, dims.map(d => d.k), dims.filter(d => !d.on).map(d => d.k));
+    this.buildProjDimEditors();
+  },
+
+  /* —— 维度行拖动调序（与「✎ 管理」选项页同一套）——
+     长按某行进入拖动（onDimDragStart）；拖动中的 touchmove / touchend 接在 .pd-list 容器上
+     （catch：行会实时换位，接在容器上事件目标不会乱）；位移按行高换算成目标下标、实时换位，
+     松手才持久化（只写一次，少惊动云端）。未进入拖动时在维度区滑动不会触发调序。 */
+  onDimDragStart(e) {
+    const ds = e.currentTarget.dataset;
+    const idx = +ds.idx;
+    const pid = ds.pid || '';                      // ''＝全局维度，否则项目 _id
+    const rows = this._dimRows(pid);
+    if (!rows || !rows[idx]) return;
+    this._dimStartY = e.touches[0].clientY;
+    this._dimBaseIdx = idx;
+    this.setData({ dimDragging: true, dimDragPid: pid, dimDragIdx: idx });
+    clearTimeout(this._dimDragTimer);
+    // 兜底：手指划出维度区再松手时 touchend 到不了容器，5 秒后强制收场，免得拖动态卡住
+    this._dimDragTimer = setTimeout(() => this.onDimDragEnd(), 5000);
+    wx.vibrateShort && wx.vibrateShort({ type: 'light' });
+  },
+  onDimDragMove(e) {
+    if (!this.data.dimDragging) return;
+    const pid = this.data.dimDragPid;
+    const rows = this._dimRows(pid);
+    if (!rows || !rows.length) return;
+    const delta = e.touches[0].clientY - this._dimStartY;
+    let target = this._dimBaseIdx + Math.round(delta / this.data.dimRowH);
+    if (target < 0) target = 0;
+    if (target > rows.length - 1) target = rows.length - 1;
+    if (target === this.data.dimDragIdx) return;
+    const arr = rows.slice();
+    const item = arr.splice(this.data.dimDragIdx, 1)[0];
+    arr.splice(target, 0, item);
+    if (pid) {
+      const editors = (this.data.projDimEditors || []).map(ed => ed._id === pid ? Object.assign({}, ed, { dims: arr }) : ed);
+      this.setData({ projDimEditors: editors, dimDragIdx: target });
+    } else {
+      this.setData({ globalDims: arr, dimDragIdx: target });
+    }
+  },
+  onDimDragEnd() {
+    if (!this.data.dimDragging) return;
+    clearTimeout(this._dimDragTimer);
+    const pid = this.data.dimDragPid;
+    this.setData({ dimDragging: false, dimDragIdx: -1 });
+    this._dimDragAt = Date.now();                  // 压制随后可能补发的 tap（长按后松手会误切显隐）
+    const rows = this._dimRows(pid);
+    if (!rows || !rows.length) return;
+    if (pid) store.setProjectDims(pid, rows.map(d => d.k), rows.filter(d => !d.on).map(d => d.k));
+    else store.setGlobalDims(rows.map(d => d.k), rows.filter(d => !d.on).map(d => d.k));
+  },
+  // 取某范畴当前的维度行（pid ''＝全局）；拖动结束后一小段时间内忽略行点击
+  _dimRows(pid) {
+    if (pid) {
+      const ed = (this.data.projDimEditors || []).find(x => x._id === pid);
+      return ed ? ed.dims : null;
+    }
+    return this.data.globalDims || null;
+  },
+  _dimJustDragged() {
+    return this._dimDragAt && Date.now() - this._dimDragAt < 400;
   }
 }));

@@ -40,10 +40,14 @@ function catInfo(qc) {
 function buildQaCats() {
   const pool = store.getOPT('todoKind') || [];
   const jpool = store.getOPT('jotKind') || [];
+  // 当前项目启用的维度（切到「全局」＝全部启用）：项目若禁用待办 / 随记，快捷球不再提供该维度
+  const dimOn = new Set(store.currentProjectDims());
   let cats = (store.getQuickCats() || []).map(qc => {
     const info = catInfo(qc);
     return { key: (qc.m === 'jot' ? 'jot:' : 'todo:') + info.cat, m: info.k, src: info.src, cat: info.cat, n: info.n, c: info.c, ph: info.ph };
   });
+  // 项目维度收窄（与 optsReady 无关，随时生效）：项目禁用的维度直接拿掉
+  cats = cats.filter(qc => (qc.m === 'todo' && !dimOn.has('todo')) || (qc.m === 'jot' && !dimOn.has('jot')) ? false : true);
   // 池子没就绪时**先不过滤**：此刻 pool / jpool 是内置默认池（getOPT 的回退），
   // 用户自己加的类别会被它当成「已删除」而静默筛掉——冷启动后第一次点球就少几项，
   // 第二次点又全了（那时 ensureAll 回来了）。宁可先多摆几个，等 _syncQaCats 补完再收。
@@ -58,8 +62,14 @@ function buildQaCats() {
     return (ai < 0 ? 1e9 : ai) - (bi < 0 ? 1e9 : bi);
   });
   if (!cats.length) {
-    const d = catInfo({ m: 'todo', cat: (store.todoKindDefault() || [])[0] || '备忘' });
-    cats = [{ key: 'todo:' + d.cat, m: 'todo', src: d.src, cat: d.cat, n: d.n, c: d.c, ph: d.ph }];
+    // 兜底：该项目仍启用的维度里挑一个默认类别（优先待办）；都不启用则留空（onQaSave 会拦下，不落脏记录）
+    if (dimOn.has('todo')) {
+      const d = catInfo({ m: 'todo', cat: (store.todoKindDefault() || [])[0] || '备忘' });
+      cats = [{ key: 'todo:' + d.cat, m: 'todo', src: d.src, cat: d.cat, n: d.n, c: d.c, ph: d.ph }];
+    } else if (dimOn.has('jot')) {
+      const d = catInfo({ m: 'jot', cat: (store.jotKindDefault() || [])[0] || '念头' });
+      cats = [{ key: 'jot:' + d.cat, m: 'jot', src: d.src, cat: d.cat, n: d.n, c: d.c, ph: d.ph }];
+    }
   }
   return cats;
 }
@@ -493,6 +503,8 @@ _restoreQaFocus() {
       const txt = (this.data.qaTxt || '').trim();
       if (!txt) { wx.showToast({ title: '先写点什么', icon: 'none' }); return; }
       const a = this.data.qaCats[this.data.qaIdx] || {};
+      // 当前项目未启用任何快捷维度（待办 / 随记都被关掉）时，类别为空——拦下，不落脏记录
+      if (!a.m) { wx.showToast({ title: '当前项目未启用待办/随记', icon: 'none' }); return; }
       const ts = Date.now();
       // 待办 / 随记：把类别写进 ext（src=todoKind / jotKind）；
       // 待办再多写一份优先级（src=todoPrio）——与记卡同一份结构，清单页排序 / 小旗才认得它。

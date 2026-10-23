@@ -13,15 +13,21 @@ const datePrefix = date.datePrefix;
 /* ---------------- 常量（与线上版同构） ---------------- */
 // 可选维度。无感 / 悦己已并入觉察（见 migrateNopeLikeIntoObs），不再是可选维度，
 // 只会在迁移完成前短暂地存在于历史数据里
+//
+// 「觉察」是 2026-10 把 觉察(obs) + 此刻(now) + 可做(want) **三合一**后的唯一维度（type 'aware'）：
+// ・一条记录＝一次发生。原来「这是感受还是想做的事」的前置判断没有了，一张卡填到哪层算哪层。
+// ・「做没做」四态（未做 / 在做 / 做了 / 不做）从一个独立维度变成这条记录上的**可选状态**，
+//   不填＝不跟踪。
+// ・合并真正的红利：觉察原来的「结束」就是可做的「完成」，觉察的「精力 耗电/充电」就是充耗——
+//   以前同一件事要在两张卡里各记一次，现在一份数据两个用途（见 FIELDS.aware 的 fx:nrg）。
+// 老记录（m='obs'/'now'/'want'）由 migrateAwareMerge 改写 m，见该函数。
 const MODULES = [
   // 「今日」：一日一记，**主项是当天剩余能量**（5 格能量条，1 很低 … 5 满），
   // 「能量说明」的那句话是**附属内容**（可不写）——记录行里能量格在上、那句话在下；
   // 放在第一个（用户一进记页最先看到），默认选中维度也是「今日」（见 index 的 onShow / resetToInitial）；
   // 不进时间线行——内容显示在所在日期行的旁边（见 look 的 groupByDay / grp.today）
   { k: 'today', n: '今日', c: '#B08968' },
-  { k: 'obs', n: '觉察', c: '#7C9A86' },
-  { k: 'now', n: '此刻', c: '#5E9A94' },
-  { k: 'want', n: '可做', c: '#C0A05A' },
+  { k: 'aware', n: '觉察', c: '#7C9A86' },
   // 待办：备忘 / 购物 合并而来。一条待办的 m 都是 todo，
   // 「是备忘还是购物」看 ext 里的「类别」（todoKind），颜色也按类别给（见 catColor / taskColor）
   { k: 'todo', n: '待办', c: '#9A8C7A' },
@@ -56,22 +62,20 @@ const MODULES = [
 function isQuiet(k) { const m = MODULES.find(x => x.k === k); return !!(m && m.quiet); }
 
 const OPT = {
-  // 觉察：归类 / 喜恶 / 程度 / 感受 里带「无感 · 悦己」味道的词，是 2026-10 合并维度时
-  // 并进来的（原本属于已删除的无感 / 悦己）。直接写在觉察自己这里，池子就不再依赖
-  // 那两个已经消失的组——否则同一批词会被「死组」和「活组」各算一份。
-  // 默认池每个只留 4 个、尽量覆盖不同方向：够启动就行，更贴合自己的等用起来再加。
-  // 「归类」只放"身上发生过的事"：原先掺着的「掌控自己的时间 / 没有任务压力 /
-  // 做想做的事 / 无人打扰」是悦己留下来的愿望 / 状态词，会把统计搅浑，已移除
-  obsWhat: ['写方案', '陪家人', '加班', '刷手机'],
-  obsStart: ['工作必须', '自己想做', '别人提议'],
-  obsKind: ['喜欢', '感兴趣', '无感', '讨厌', '不想'],
-  obsDeg: ['微微', '有点', '很', '非常', '极度'],   // 一条刻度，不是「方向」，所以留 5 个
+  /* 觉察（三合一后只剩两组 chips，其余都是自由文本或固定组）：
+     ・awareItem —— 「什么事」的大类池。原 觉察·归类 / 此刻·想记的是 / 可做·什么事 三池合并：
+       它们是同一件事的三种叫法，合并后点选口径统一，统计与看页筛选都按它分。
+       默认池 8 个（事件 4 + 日常 3 + 想做的事 1）：够启动就行，更贴合自己的等用起来再加。
+       注：「归类」只放"身上发生过的事"——原先掺着的愿望 / 状态词会把统计搅浑，不要往回加。
+     ・obsMood —— 「感受」的情绪词（原 觉察 / 此刻 共用这一池）。键名保留 obs 前缀是
+       为了不再迁一次选项池（它对用户不可见，只有代码里认）。
+     ・wantKind —— 「这件事对我」的性质：想做（我愿意）/ 可做（我可以）/ 得做（我不得不）。
+       它和「什么事」是**两根不同的轴**：前者是这件事叫什么，后者是我与它的关系——
+       所以绝不能并进大类池（同一件事可以既"得做"又想"做好"）。
+       2026-10 之前这三档叫 想做 / 可试 / 喜欢，改名的来龙去脉见 migrateWantKindV2。 */
+  awareItem: ['加班', '陪家人', '刷手机', '写方案', '做饭', '散步', '看剧', '学吉他'],
   obsMood: ['开心', '平静', '焦虑', '低落'],
-  genDoing: ['写代码', '做饭', '散步', '看剧'],
-  genFeel: ['专注', '走神', '疲惫', '无聊'],
-  genWant: ['喝咖啡', '走一走', '看会儿书', '找人聊聊'],
-  wantItem: ['学吉他', '早睡', '去旅行', '跑步'],
-  wantKind: ['想做', '可试', '喜欢'],
+  wantKind: ['想做', '可做', '得做'],
   // 待办：类别（备忘 / 购物，可在「✎ 管理」里加新类别）；主项就是记事本身，不进选项池
   todoKind: ['备忘', '购物'],
   // 待办：优先级（紧急 / 重要 四象限，见下方 PRIO_*）。顺序即轻重（前＝先做），
@@ -112,30 +116,34 @@ const OPT = {
   // 没有 chips 入口，那两组池子永远不会被用到（选项池界面里也看不到），已删掉
 };
 
-// 「归类」：觉察 / 无感已把「什么事」解耦成「归类（名词性、可归类）+ 具体的描述（自由、不可归类）」。
-// 叫「归类」而不是「什么事 / 触动的点」，是因为池子里装的不一定是事——也可能是一个概念（自由）
-// 或一个物件（猫），所以标签只描述它的作用：从池里点选的那个用来归类的词。
-// 可做 / 此刻 也已解耦，那边主项叫「什么事 / 想记的是」。**主项一律从池里点选（必填）**，
-// 下面那个「具体的描述」只是补充、可留空——它对不对得上归类不该由描述顶替（口径见 index 的 doSave）；
-// 悦己等还没迁
+// 「什么事」＝**大类 + 描述**两块，仍是一件事的两面：
+// 大类（awareItem）是名词性、可归类的，从池里点选、必填；描述（free:desc）自由、不可归类、可留空。
+// 两者**不互相顶替**（只写描述不选大类＝不成立，口径见 index 的 doSave）。
+// 合并前这三个维度各有一套叫法（觉察叫「归类」、此刻叫「想记的是」、可做叫「什么事」），
+// 现在统一成「什么事」——同一个动作不该有三个名字。
+// 另：「性质」wantKind 是**另一根轴**（我愿不愿意 / 是不是非做不可），不并进大类池。
 const GLABEL = {
-  obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
-  genWant: '此刻想做的事', wantItem: '什么事', wantKind: '分类', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶',
-  doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', todoPrio: '优先级', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
+  awareItem: '什么事', wantKind: '这件事对我', obsMood: '感受',
+  doneFeel: '做了的感受', doneGain: '收获', todoItem: '要记住什么', todoKind: '类别', todoPrio: '优先级', jotKind: '类别', jotItem: '想记点什么',
   todayItem: '能量说明', todayBat: '剩余能量', todayMood: '心情指数',
   divItem: '占卜的问题', divType: '类型', divSpan: '时间范围',
-  bookItem: '名称', bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度'
+  bookItem: '名称', bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
+  // —— 以下是已退场的组，只为老记录 / 老选项池的标题兜底，不要再往 FIELDS 里加回去 ——
+  obsWhat: '归类', obsKind: '喜恶', obsDeg: '程度', obsStart: '怎么开始的', genDoing: '想记的是', genFeel: '情绪',
+  genWant: '此刻想做的事', wantItem: '什么事', nopeThing: '归类', nopeDeg: '程度', nopeMood: '无感的情绪', nopeKind: '喜恶', likeItem: '什么事'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
-// 否则这些「死组」会一直被合并回来、在选项池里重复计数
-const DEAD_OPT_GROUPS = ['nopeThing', 'nopeDeg', 'nopeMood', 'nopeKind', 'likeItem', 'memoItem', 'buyItem'];
+// 否则这些「死组」会一直被合并回来、在选项池里重复计数。
+// 2026-10 三合一又退场一批：归类 / 想记的是 / 什么事 三池并进 awareItem（见 migrateAwarePools），
+// 喜恶 / 程度 / 怎么开始的 整组取消，genFeel 更早就不用了
+const DEAD_OPT_GROUPS = [
+  'nopeThing', 'nopeDeg', 'nopeMood', 'nopeKind', 'likeItem', 'memoItem', 'buyItem',
+  'obsWhat', 'genDoing', 'wantItem', 'obsKind', 'obsDeg', 'obsStart', 'genFeel', 'genWant'
+];
 
 const OPTGROUPS = [
-  { m: 'obs', gs: ['obsWhat', 'obsKind', 'obsDeg', 'obsStart', 'obsMood'] },
-  // 此刻不再列 genFeel：情绪 / 程度整块复用觉察的 obsMood / obsDeg，选项在觉察的「✎ 管理」里维护
-  { m: 'now', gs: ['genDoing', 'genWant'] },
-  { m: 'want', gs: ['wantItem', 'wantKind'] },
+  { m: 'aware', gs: ['awareItem', 'wantKind', 'obsMood'] },
   { m: 'todo', gs: ['todoKind', 'todoPrio'] },
   { m: 'jot', gs: ['jotKind'] }
 ];
@@ -666,10 +674,14 @@ function wakeStats(recs, opts) {
   };
 }
 
-// 固定选项组（写死，不给“管理”入口）
+// 固定选项组（写死，不给“管理”入口）。两组都只在「觉察 · 做了」之后出现（见 FIELDS.aware 的 when）：
+//   ・沉浸：做起来才知道有没有忘了时间
+//   ・充耗：**这是三合一最实在的一处复用**——原来觉察记一次「精力（耗电/充电）」、
+//     可做记一次「充耗」，同一件事要填两遍；现在一份数据同时喂给两边统计。
+//     档位按「耗 → 中 → 充」排，三格读起来是一条刻度，不是三个平行的词
 const FIXED = {
-  forgot: { label: '忘了时间吗（可不选）', opts: ['忘了时间', '没有', '不确定'] },
-  nrg: { label: '做完精力如何（可不选）', opts: ['耗电', '充电', '没变化'] }
+  forgot: { label: '沉浸', opts: ['忘了时间', '没有', '不确定'] },
+  nrg: { label: '这次做完，充耗如何', opts: ['耗电', '没变化', '充电'] }
 };
 
 // 注：早先有个「~ 前缀 = 把这条手填值固化进选项池」的写法，已整体移除。
@@ -684,55 +696,38 @@ const DESC_SRC = 'free:' + DESC_KEY;
 // 模块字段：g=选项组（noInput=不给手填输入框）/ fx=固定选项组 / free=自由文本
 // 注：g 组若没标 noInput，就带一个手填输入框——手填值只记这一条，不进选项池
 const FIELDS = {
-  // 觉察（无感 / 悦己 已并入这里）。编辑器里的展示顺序由 index 的 buildComposer 排成
-  // 「喜恶 → 程度 → 感受（情绪 chips + 紧随的自由输入框）→ 怎么开始的 → 沉浸 → 精力」；
-  // 这里的书写顺序是「存储顺序」——新分组追加在末尾，导出/导入的按顺序对齐因此不受影响
-  obs: { main: 'obsWhat', items: [
-    { g: 'obsStart', single: true, noInput: true },
-    { fx: 'forgot' }, { fx: 'nrg' },
+  /* 觉察（觉察 + 此刻 + 可做 三合一）。一条记录＝一次发生。
+     下面的书写顺序＝**存储顺序**（ext / extSrc 按它排，导出导入按位对齐），新字段只能往后加。
+     编辑器里的展示顺序另排（见 index 的 buildComposer），两者解耦。
+     when 标的是**这一行什么时候在卡里出现**（index 按它过滤，别在页面里逐个写死键名）：
+       ・不标   —— 常驻：什么事 / 描述 / 性质 / 感受
+       ・doing  —— 在做时才出现（进行中感受）
+       ・done   —— 做了之后才问（沉浸 / 充耗 / 做了的感受）
+       ・abandon—— 不做时才问（为什么不做了）
+     为什么沉浸和充耗跟着「做了」走：它们问的都是"做完回头看"的事——没做就说不上充耗，
+     "忘了时间"也要做起来才知道。原来它们在觉察里是常驻两行，合并后挂到状态上，
+     省掉两个永远填不对的格子（见 2026-10 的记卡改版）。 */
+  aware: { main: 'awareItem', items: [
+    // 「这件事对我」：想做 / 可做 / 得做。与「什么事」是两根独立的轴，**没有默认值**——
+    // 替人预设「想做」会把每条纯感受记录都标成想做，统计立刻失真（见 index 的 ensureModuleDefaults）
+    { g: 'wantKind', single: true, noInput: true },
+    // 「感受」：情绪 chips + 紧随的自由输入框，一组共用「感受」一个标题（见 buildExt / COLMAP）
     { g: 'obsMood', single: true, noInput: true },
     { free: 'obsfeel', label: '', ph: '有什么想抒发的？', ta: true },
-    // 具体的描述：不可归类，编辑时不带标题，就在「归类」下方
-    { free: 'desc', label: '', ph: '发生了什么？', ta: true },
-    // 喜恶 / 程度：原本属于「无感」，并入后所有觉察记录都能用。
-    // 程度是「感受」的修饰（微微 / 有点 / 很…），sub 表示它在编辑器里作为情绪的副行展示：
-    // 不单独起标题、chip 小一号、没选情绪时不出现（见 index 的 buildComposer 与 index.wxml）
-    { g: 'obsKind', single: true, noInput: true },
-    { g: 'obsDeg', single: true, noInput: true, sub: true }
-  ] },
-  now: { main: 'genDoing', items: [
-    // 「感受」完全复用觉察那套：情绪 chips（obsMood，标题「感受」）+ 程度副行（obsDeg，小一号、
-    // 没选情绪不出现）+ 感受输入框（free:obsfeel）——记卡里只有「感受」一个标题；
-    // 展示与复制时三个也合成一组「感受」（见 buildExt 的 obs/now 合写）。
-    // 旧此刻记录的 genFeel / free:nownote：编辑载入时映射过来（index 的 checkEdit），展示也兼容
-    { g: 'obsMood', single: true, noInput: true },
-    { g: 'obsDeg', single: true, noInput: true, sub: true },
-    { free: 'obsfeel', label: '', ph: '有什么想抒发的？', ta: true },
-    { g: 'genWant', single: true },
-    // 「具体的描述」：与「想记的是」解耦（主项可归类、描述不可归类），可留空。
-    // 固定放最后一位，导出/导入的按顺序对齐不受影响
-    { free: 'desc', label: '', ph: '再补一句也行，可不填', ta: true }
-  ] },
-  want: { main: 'wantItem', items: [
-    { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },
-    // 「原因」（原「是什么让你想做」）：紧跟在分类下方，写是什么让你想做（可跳过）。
-    // 记录里那一栏也叫「原因」（见 COLMAP），创建与回看一个叫法。
-    // 注意 srcList 是「按标签匹配」导入的，插在中间不会打乱旧文本的详情对齐
+    { fx: 'forgot', when: 'done' },
+    { fx: 'nrg', when: 'done' },
+    { free: 'doingNote', when: 'doing', label: '进行中感受', ph: '做的过程中冒出来的感受，随便写', ta: true },
+    // 「做了的感受」合并了原「收获」：同一时刻的两句话，分两个框只会让人挑一个写
+    { free: 'doneFeel', when: 'done', label: '做了的感受', ph: '那一刻的感受、收获了什么，随便写', ta: true },
+    { free: 'abandonWhy', when: 'abandon', label: '为什么不做了', ph: '为什么不想做了？随便写', ta: true },
+    // 「原因 / 怎么做 / 希望」：想做的事才会想这些，但它们是自由文本、可跳过，
+    // 不跟着状态强行显隐（有人只想记一句"我要学吉他"）。原「是什么让你想做」统一叫「原因」
     { free: 'trigger', label: '原因', ph: '刚看到别人晒成果，有点不甘心' },
-    // 「怎么做」挪到「原因」下面：先说清为什么想做，再写打算怎么做
     { free: 'howto', label: '怎么做', ph: '要怎么做？', ta: true },
     { free: 'hope', label: '希望最终变成什么样', ph: '变成每天稳定的习惯' },
-    // 「进行中感受」仅在做中/点「开始」后显示（由 index 编辑态按状态过滤）
-    { free: 'doingNote', label: '进行中感受', ph: '做的过程中冒出来的感受，随便写', ta: true },
-    // 「做了的感受 / 收获」仅点「完成」后显示（由 index 编辑态按状态过滤）
-    { free: 'doneFeel', label: '做了的感受', ph: '做完那一刻心里冒出来的话', ta: true },
-    { free: 'doneGain', label: '收获', ph: '这次有什么收获，随便写', ta: true },
-    // 「为什么不做了」仅点「放弃」或编辑「不做」记录时显示（由 index 编辑态按状态过滤）
-    { free: 'abandonWhy', label: '为什么不做了', ph: '为什么不想做了？随便写', ta: true },
-    // 「具体的描述」：与「什么事」解耦（事可归类、描述不可归类），可留空。
-    // 固定放最后一位，导出/导入顺序不变。
-    // 「什么事」与觉察的「归类」同一口径：**必须从选项池点选**，描述不顶替主项（见 index 的 doSave）
-    { free: 'desc', label: '', ph: '再补一句也行，可不填', ta: true }
+    // 「具体的描述」：与「什么事」的大类配对（大类可归类、描述不可归类），可留空。
+    // 固定放最后一位，导出/导入的按顺序对齐不受影响；**描述不顶替大类**（口径见 index 的 doSave）
+    { free: 'desc', label: '', ph: '补一句也成，可不填', ta: true }
   ] },
   /* 待办（备忘 / 购物 合并后）：类别 + 一句话。
      类别（todoKind）默认 备忘 / 购物，可在「✎ 管理」里加新类别；
@@ -891,8 +886,11 @@ const DCOLORS = ['#7C9A86', '#5E9A94', '#C0A05A', '#948AA8', '#6E8CB0', '#B4544E
 
 // 细节回读标签：来源 -> 字段名
 const COLMAP = {
+  // 「性质」：这条对我是什么——想做 / 可做 / 得做。三合一后它是常驻一组，
+  // 回读时排在细节行里（原来叫「分类」，hideDetail 不给看；现在它是判断"愿意还是不得不"的唯一线索）
+  wantKind: '性质',
   obsKind: '喜恶', obsDeg: '程度',
-  obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
+  obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '充耗', 'fx:mood': '心情', obsMood: '心情',
   'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受', 'free:tasknote': '原因', 'free:memonote': '原因', 'free:buynote': '干什么用',
   'free:desc': '描述',
   'free:trigger': '原因', 'free:hope': '希望实现成', 'free:doingNote': '进行中感受',
@@ -918,12 +916,18 @@ const COLMAP = {
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
 
 /* ---------------- 纯计算 ---------------- */
+// 三合一之前的老维度键。迁移（migrateAwareMerge）还没跑完的机器上，老记录仍要显示成「觉察」，
+// 而不是把 m 键原样露出来（'obs' / 'want'）。迁移跑完后这些分支自然走不到，
+// 但留着不花什么钱——用户换设备、清缓存时它会顶一次用
+const LEGACY_AWARE = { obs: 1, now: 1, want: 1 };
 function mname(k) {
   if (k === 'done') return '做了';   // 兼容历史 m='done' 记录（新流程已并入「可做·做了」）
+  if (LEGACY_AWARE[k]) return '觉察';
   const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n }))).find(x => x.k === k); return m ? m.n : k;
 }
 function mcolor(k) {
   if (k === 'done') return '#6E8CB0';
+  if (LEGACY_AWARE[k]) return '#7C9A86';
   const m = MODULES.concat((G.dims || []).map(d => ({ k: d.k, n: d.n, c: d.c }))).find(x => x.k === k); return m ? m.c : '#7C9A86';
 }
 // 该选项组是否单选（点新项替换旧项）。遍历所有维度的字段定义（不依赖 OPTGROUPS——
@@ -951,7 +955,19 @@ function groupOwner(g) {
   }
   return null;
 }
-function getOPT(g) { const O = G.OPT || OPT; return O[g] || []; }
+// 选项池按「当前项目」取：每个项目的选项池独立（建项目即拷贝全局池，见 addProject / migrateProjectOpts）。
+//  · 真实项目 → 该项目自己的快照 project.opt（快照里没有的组回退到代码默认 OPT，不继承全局后续的用户改动）；
+//  · 「全局」 → 全局池 G.OPT（与旧行为完全一致）。
+// 读侧单一收敛点：改这里，记页 chips / 看·清单类别筛选 / 快捷球类别 / 默认类别 / 颜色 全部跟随项目。
+function getOPT(g) {
+  const pid = curProject();
+  if (pid) {
+    const p = projectById(pid);
+    if (p && p.opt) return p.opt[g] || OPT[g] || [];
+  }
+  const O = G.OPT || OPT;
+  return O[g] || [];
+}
 /* 选项池是否已经真的载入（G.OPT 非 null）。
    getOPT 在没载入时**回退到内置默认池**——那样读是安全的（拿默认词凑合显示），
    但拿它当「用户真实的池」去**过滤**用户的勾选，就会把用户自己加的类别静默筛掉。
@@ -1018,12 +1034,6 @@ function jotKindDefault() {
   const def = k.indexOf('念头') >= 0 ? '念头' : (k[0] || '念头');
   return [def];
 }
-// 觉察「怎么开始的」默认：优先锁定值「自己想做」（不随选项顺序变化），找不到再退第一个
-function obsStartDefault() {
-  const k = getOPT('obsStart');
-  const def = k.indexOf('自己想做') >= 0 ? '自己想做' : (k[0] || '自己想做');
-  return [def];
-}
 // 占卜默认牌种：优先锁定值「塔罗」（不随选项顺序变化），找不到再退第一个，最后兜底「塔罗」
 function divTypeDefault() {
   const k = getOPT('divType');
@@ -1085,25 +1095,22 @@ function buildExt(m, ext, extSrc) {
   // 随记 / 书·剧的「类别」同理——行首显示的模块名里已经带上了（见 recMname），
   // 再写一遍就成了同一个词在一行里出现两次，读着像有两件事
   }).filter(d => hideSrc.indexOf(d.src) < 0 && d.src !== DESC_SRC && d.src !== 'jotKind' && d.src !== 'bookKind');
-  // 觉察 / 此刻：详情按「喜恶 → 感受 → …」展示，与编辑器里的顺序一致。
-  // 「感受」是一组：程度（obsDeg）与情绪（obsMood）连写成「有点焦虑」，再和自由感受用 · 连成一行
-  // —— 与编辑器里「档位 + 情绪 + 自由输入框」合成一块的口径一致（此刻整块复用觉察，见 FIELDS.now）；
-  // 旧此刻记录的情绪（genFeel）/ 感受（free:nownote）也并进这一组，展示不丢内容。
-  // 只影响回读展示，ext/extSrc 里各字段仍独立
-  if (m === 'obs' || m === 'now') {
+  // 觉察（含三合一之前的老记录）：详情按「感受 → 其余」展示，与编辑器里的顺序一致。
+  // 「感受」是一组：情绪（obsMood）+ 自由感受用 · 连成一行；老记录里还有「程度 + 情绪」连写的
+  // （有点焦虑）和旧此刻的情绪 / 感受，一并并进这一组，展示不丢内容。
+  // 喜恶 / 怎么开始的已经从卡里退场，但老记录的 ext 里还有——它们会按原顺序落到下面的
+  // 「其余细节」里，照旧读得出来（写停读留）。只影响回读展示，ext/extSrc 里各字段仍独立
+  if (m === 'aware' || LEGACY_AWARE[m]) {
     const picks = (src) => list.filter(d => d.src === src).map(d => d.v).filter(Boolean);
     const out = [];
-    const kind = picks('obsKind')[0] || '';
-    if (kind) out.push({ lbl: COLMAP.obsKind, v: kind });
     const feel = [
-      (picks('obsDeg')[0] || '') + (picks('obsMood').join('')),   // 程度+情绪连写：有点焦虑
-      picks('genFeel').join('、'),                                 // 旧此刻：情绪多选
+      (picks('obsDeg')[0] || '') + (picks('obsMood').join('')),   // 老记录：程度+情绪连写
+      picks('genFeel').join('、'),                                 // 老此刻：情绪多选
       picks('free:obsfeel').join(' '),                             // 自由感受
-      picks('free:nownote').join(' ')                              // 旧此刻：感受输入框
+      picks('free:nownote').join(' ')                              // 老此刻：感受输入框
     ].filter(Boolean).join(' · ');
     if (feel) out.push({ lbl: GLABEL.obsMood, v: feel });   // 组名跟随编辑器里的「感受」
-    // 其余细节（觉察：怎么开始的 → 沉浸 → 精力；此刻：想做的事）按原顺序附后
-    const used = ['obsKind', 'obsDeg', 'obsMood', 'genFeel', 'free:obsfeel', 'free:nownote'];
+    const used = ['obsDeg', 'obsMood', 'genFeel', 'free:obsfeel', 'free:nownote'];
     list.forEach(d => { if (used.indexOf(d.src) < 0) out.push(d); });
     return out;
   }
@@ -1173,15 +1180,13 @@ function recMname(r) {
     const i = es.indexOf(src);
     return i >= 0 ? ex[i] : '';
   };
-  if (r.m === 'want') {
-    const st = r.status || '';
-    const stateName = st === 'doing' ? '在做' : (st === 'done' ? '做了' : (st === 'abandon' ? '不做' : '未做'));
+  // 觉察（三合一）：带上「这件事对我」的性质（觉察·想做 / 觉察·得做），
+  // 一眼能看出这条是"我愿意"还是"我不得不"。
+  // **状态不拼在这里**——未做 / 在做 / 做了 / 不做 由列表行上的状态小标单独表达
+  // （见 index.wxml 的 .st）。都拼进名字会变成「做了·想做」，一次说两件事，反而读不顺
+  if (r.m === 'aware' || LEGACY_AWARE[r.m]) {
     const k = extVal('wantKind');
-    return k ? stateName + '·' + k : stateName;
-  }
-  if (r.m === 'obs') {
-    const k = extVal('obsKind'), n = mname('obs');
-    return k ? n + '·' + k : n;
+    return k ? mname('aware') + '·' + k : mname('aware');
   }
   // 随记：只显示类别（念头 / 灵感 …），不带「随记·」前缀——随记本来就都在随记这一栏里，
   // 带前缀反而啰嗦；老记录没有类别时才回落到「随记」
@@ -1665,7 +1670,12 @@ function addProject(p) {
   const np = Object.assign({
     _id: 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     name: '未命名', color: PROJ_COLORS[0],
-    order: arr.length, archived: false, createdAt: Date.now()
+    order: arr.length, archived: false, createdAt: Date.now(),
+    // 新建项目默认启用全部维度（见 configurableDims），顺序取基础顺序（随记最前，见 baseDimOrder）；
+    // 之后可在设置里逐项目收窄 / 调序
+    dims: baseDimOrder(),
+    // 选项池独立拷贝：建项目即把当前全局池整份复制给它，之后全局再怎么改都不影响本项目（见 getOPT / optScope）
+    opt: JSON.parse(JSON.stringify(G.OPT || OPT))
   }, p || {});
   return saveProjects(arr.concat([np])).then(() => np);
 }
@@ -1693,6 +1703,118 @@ function emitProjectChange() {
   _projCbs.slice().forEach(fn => { try { fn(); } catch (e) { log.warn('store.onProjectChange', e); } });
 }
 function projectById(id) { return (G.projects || []).find(x => x._id === id) || null; }
+// 已归档项目的 _id 列表：切换器不列出、不可切回，但其下记录仍在（projectId 不变）。
+// 全局视图据此把它们也藏起来（见 recWhere）——归档＝从切换器移除，记录不该在「全局」里冒出来。
+function archivedProjectIds() { return (G.projects || []).filter(p => p.archived).map(p => p._id); }
+
+// 可配置的维度集合：所有「非静默、非今日」的维度（含运行期注册的自定义维度）。
+// 「今日」是页内精力、sleep/wake 是静默维度，都不进「按项目启用」的可勾选列表。
+function configurableDims() {
+  return MODULES.filter(m => !m.quiet && m.k !== 'today');
+}
+// 基础维度顺序：「全局」与未配置过的项目用它——随记(jot) 排最前（记卡第一个就是它，顺手就能记），
+// 其余按 MODULES 原顺序（觉察 → 此刻 → 可做 → 待办 → 占卜 → 书·剧 …）。
+function baseDimOrder() {
+  const all = configurableDims().map(m => m.k);
+  return all.filter(k => k === 'jot').concat(all.filter(k => k !== 'jot'));
+}
+/* 维度配置（2026-10 起，全局与项目同构）：
+   dims ＝ 全部维度的**展示顺序**（含被关掉的，顺序即记页维度标签顺序）；off ＝ 被关掉的 key 集合。
+   项目存项目自身（p.dims / p.dimsOff）；「全局」存 usercfg type='dimsGlobal'（G.gDims = {dims, off}）。
+   旧模型（dims＝启用集合、关掉的不在数组里）由 migrateProjectDims 一次性转换。 */
+// 规整一份配置：无效 key 剔除、去重、后新增的自定义维度补到末尾；全关 → 回退全部（避免「什么都不能记」）
+function normalizeDimCfg(dims, off) {
+  const base = baseDimOrder();
+  const valid = new Set(base);
+  const order = (dims || []).filter(k => valid.has(k)).filter((k, i, a) => a.indexOf(k) === i);
+  base.forEach(k => { if (order.indexOf(k) < 0) order.push(k); });
+  let offArr = (off || []).filter(k => valid.has(k) && order.indexOf(k) >= 0).filter((k, i, a) => a.indexOf(k) === i);
+  if (offArr.length >= order.length) offArr = [];
+  return { order, off: offArr };
+}
+// 某范畴（项目 id / ''＝全局）的维度配置：order＝展示顺序（含关掉的，新维度补尾），off＝隐藏集合
+function dimCfg(id) {
+  const p = id ? projectById(id) : null;
+  const cfg = p ? { dims: p.dims, off: p.dimsOff } : G.gDims;
+  const base = baseDimOrder();
+  const order = (cfg && cfg.dims && cfg.dims.length) ? cfg.dims.filter(k => base.indexOf(k) >= 0) : base.slice();
+  base.forEach(k => { if (order.indexOf(k) < 0) order.push(k); });
+  const off = new Set(((cfg && cfg.off) || []).filter(k => base.indexOf(k) >= 0));
+  return { order, off };
+}
+// 某范畴启用的维度 key 列表（顺序即记页维度标签的顺序）。全关 → 回退全部（兜底）
+function projectDims(id) {
+  const { order, off } = dimCfg(id);
+  if (off.size >= order.length) return order;
+  return order.filter(k => !off.has(k));
+}
+// 当前项目（'' = 全局）启用的维度 key 列表（顺序即展示顺序）
+function currentProjectDims() { return projectDims(curProject()); }
+// 记录归属项目的展示名：仅「全局」（curProject 为空）且记录确实属于某项目时返回项目名，
+// 否则 ''（单项目视图 / 全局记录 / 项目已查不到）。**只给名字不带分隔符**——
+// 「项目 | 维度」的分隔样式（浅色细线）由 wxml/wxss 层画，这里不再拼「｜」字符。
+// 给「记页·最近 / 看页」记录行用——项目混杂的全局视图下能一眼看出每条记录属于哪个项目。
+function recProjName(r) {
+  if (curProject()) return '';           // 当前在某项目里：行都同属此项目，无需前缀
+  const pid = r ? r.projectId : '';
+  if (!pid) return '';                   // 全局记录：不显示（用户要求「全局的不用显示」）
+  const p = projectById(pid);
+  if (!p) return '';                     // 项目已删 / 归档查不到：不显示孤名
+  return p.name;
+}
+// 写某项目的维度配置（dims＝全序、off＝隐藏项）并广播——记页标签 / 默认选中维度随之重算
+function setProjectDims(id, dims, off) {
+  const p = projectById(id);
+  if (!p) return Promise.resolve(false);
+  const { order, off: offArr } = normalizeDimCfg(dims, off);
+  p.dims = order; p.dimsOff = offArr;
+  return updateProject(id, { dims: order, dimsOff: offArr }).then(() => { emitProjectChange(); return true; });
+}
+/* —— 全局维度：显隐 + 顺序（不切到具体项目、即「全局」范畴时生效）。无配置＝全部启用、按基础顺序 —— */
+const GDIMS_TYPE = 'dimsGlobal';
+function loadGlobalDims() {
+  return new Promise((resolve) => {
+    loadCfg(GDIMS_TYPE).then(d => {
+      G.gDims = (d && d.dims && d.dims.length) ? { dims: d.dims.slice(), off: (d.off || []).slice() } : null;
+      resolve(G.gDims);
+    }).catch(e => { log.warn('gDims.load', e); resolve(null); });
+  });
+}
+function saveGlobalDims() {
+  return new Promise((resolve) => {
+    saveCfg(GDIMS_TYPE, G.gDims || { dims: [], off: [] }).then(resolve).catch(e => { log.warn('gDims.sync', e); resolve(); });
+  });
+}
+// 写全局维度配置（dims＝全序、off＝隐藏项）并广播；空 dims ＝ 恢复默认（全部启用、按基础顺序）
+function setGlobalDims(dims, off) {
+  const { order, off: offArr } = normalizeDimCfg(dims, off);
+  G.gDims = { dims: order, off: offArr };
+  return saveGlobalDims().then(() => { emitProjectChange(); return true; });
+}
+
+// —— 选项池：按项目独立（建项目即拷贝全局池，见 addProject / migrateProjectOpts）——
+// 当前生效的选项池对象（读 + 设置页计数用）：真实项目→其独立快照 project.opt；全局→G.OPT
+function activeOptPool() {
+  const pid = curProject();
+  if (pid) { const p = projectById(pid); if (p && p.opt) return p.opt; }
+  return G.OPT || OPT;
+}
+// 选项池的编辑范畴：
+//  · global ＝ 改全局池（既有机器：options 集合 / optCustom / optOrder / delDef，逻辑原样保留）；
+//  · project ＝ 改某项目独立池（plain 快照，无「默认词」概念，直接改 project.opt + updateProject）。
+function optScope() {
+  const pid = curProject();
+  if (pid) { const p = projectById(pid); if (p && p.opt) return { kind: 'project', id: pid, name: p.name || '未命名' }; }
+  return { kind: 'global' };
+}
+// 项目独立池：设置某组并持久化（新增 / 删除 / 排序 / 撤销都走它）
+function setProjOpt(g, arr) {
+  const pid = curProject(); if (!pid) return Promise.resolve(false);
+  const p = projectById(pid); if (!p) return Promise.resolve(false);
+  if (!p.opt) p.opt = {};
+  p.opt[g] = (arr || []).slice();
+  return updateProject(pid, { opt: p.opt });
+}
 
 // 记录按微信用户（_openid）隔离：云数据库默认「仅创建者可读写」，
 // 不同用户创建的文档彼此不可见，这里无需手动加 openid 过滤。
@@ -1714,19 +1836,33 @@ function decorateDoc(d) {
 // mNot: 要排除的模块（看页「全部」不看待办：备忘 / 购物不进时间线，取回来只是白占一页的位置）
 // projectId：项目维度收窄。'' / 缺省 = 不过滤（全局，含无 projectId 的旧记录）；
 // 真实 id = 只取该项目下的记录。放在 recWhere 一处，所有查询（列表 / 统计 / 搜索）自动跟随当前项目
-function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null, notIds = null, projectId = null } = {}) {
+function recWhere({ m = null, mNot = null, startTs = null, before = null, state = null, extTags = null, txtIs = null, txtNotIn = null, notIds = null, projectId = null } = {}) {
   const _ = db().command;
   const w = {};
   if (m && m !== 'all') w.m = m;
   else if (mNot && mNot.length) w.m = _.nin(mNot);
   if (projectId) w.projectId = projectId;   // 真值才收窄；'' 当作全局
-  if (m === 'want' && state) {
+  else {
+    // 全局（projectId 为空）：把**已归档**项目的记录也藏起来——归档＝从切换器移除、不可切回，
+    // 其记录不该在「全局」视图里冒出来（单项目视图不可能选中归档项目，无需担心）。
+    // 没归档项目时不加此条件：_.nin([]) 在云数据库里匹配不到任何文档，会把全局记录全杀了。
+    const aids = archivedProjectIds();
+    if (aids.length) w.projectId = _.nin(aids);
+  }
+  // 「做没做」四态筛选：三合一后状态挂在 aware 上（原来挂在 want 上）。
+  // 老机器还没跑完迁移时 m 可能仍是 want/obs/now，所以这里三个键都认——
+  // 光认 aware 会让迁移中途的机器把老记录筛掉
+  if ((m === 'aware' || LEGACY_AWARE[m]) && state) {
     if (state === 'todo') w.status = _.nin(['doing', 'done', 'abandon']);
     else if (state === 'doing') w.status = 'doing';
     else if (state === 'done') w.status = 'done';
     else if (state === 'abandon') w.status = 'abandon';
     // state === 'all'：不限制 status（未做 + 在做 + 做了 + 不做 都显示）
   }
+  // 主项（txt）筛选：三合一后「什么事」的大类存在 txt 里，而 ext 只有细节字段，
+  // 所以要单独给一条查询条件（否则大类的二级筛选只能客户端做，分页会混进不匹配的记录）
+  if (txtIs) w.txt = txtIs;
+  else if (txtNotIn && txtNotIn.length) w.txt = _.nin(txtNotIn);
   const tags = (extTags || []).filter(Boolean);
   if (tags.length === 1) w.ext = tags[0];
   else if (tags.length > 1) w.ext = _.all(tags);
@@ -1748,10 +1884,10 @@ function recWhere({ m = null, mNot = null, startTs = null, before = null, state 
 // excludeIds 在**客户端**过滤（省流量，绝大多数情况够用）；
 // notIds 走服务器端 _.nin，只在「满页但全是已看过的」（同毫秒扎堆）时用——
 // 那种情况下客户端过滤会永远拿回同样 20 条，翻不动也停不下来。
-function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, startTs = null, state = null, extTags = null, excludeIds = null, notIds = null, projectId = null } = {}) {
+function loadRecordsPage({ before = null, limit = 20, m = null, mNot = null, startTs = null, state = null, extTags = null, txtIs = null, txtNotIn = null, excludeIds = null, notIds = null, projectId = null } = {}) {
   const take = Math.min(limit || 20, 20);
   return new Promise((resolve) => {
-    recCol().where(recWhere({ m, mNot, startTs, before, state, extTags, notIds, projectId })).orderBy('ts', 'desc').limit(take).get().then(res => {
+    recCol().where(recWhere({ m, mNot, startTs, before, state, extTags, txtIs, txtNotIn, notIds, projectId })).orderBy('ts', 'desc').limit(take).get().then(res => {
       const raw = res.data || [];
       let data = raw;
       if (excludeIds && excludeIds.length) {
@@ -1859,11 +1995,11 @@ function loadRestSerial(W, head) {
 }
 // 记录总数（按 模块 / 时间范围 / 流转状态 / 细节标签 过滤），用于「共 X 条」准确统计。
 // 走 count 接口，不受列表分页影响。
-function countRecords({ m = null, startTs = null, state = null, extTag = null, extTags = null, projectId = null } = {}) {
+function countRecords({ m = null, startTs = null, state = null, extTag = null, extTags = null, txtIs = null, txtNotIn = null, projectId = null } = {}) {
   return new Promise((resolve) => {
     // extTag 是早期的单标签写法，extTags 支持「喜恶 + 沉浸」这类组合（都要命中）
     const tags = (extTags && extTags.length) ? extTags : (extTag ? [extTag] : []);
-    const w = recWhere({ m, startTs, state, extTags: tags, projectId });
+    const w = recWhere({ m, startTs, state, extTags: tags, txtIs, txtNotIn, projectId });
     recCol().where(w).count()
       .then(r => resolve((r && r.total) || 0)).catch(e => { log.warn('records.count', e); resolve(0); });
   });
@@ -1878,11 +2014,11 @@ function countByModule({ startTs = null, projectId = null } = {}) {
     return out;
   });
 }
-// 统计：可做维度下各流转状态的条数 → { todo, doing, done, abandon }
-// extTags：看页「可做」筛了分类时，状态分布也要落在同一批记录上（与觉察筛喜恶同一口径）
-function countByStatus({ startTs = null, extTags = null, projectId = null } = {}) {
+// 统计：觉察下各流转状态的条数 → { todo, doing, done, abandon }（三合一后状态挂在 aware 上）
+// extTags：看页筛了「什么事」的大类时，状态分布也要落在同一批记录上
+function countByStatus({ startTs = null, extTags = null, txtIs = null, txtNotIn = null, projectId = null } = {}) {
   const states = ['todo', 'doing', 'done', 'abandon'];
-  return Promise.all(states.map(s => countRecords({ m: 'want', startTs, state: s, extTags, projectId }))).then(arr => {
+  return Promise.all(states.map(s => countRecords({ m: 'aware', startTs, state: s, extTags, txtIs, txtNotIn, projectId }))).then(arr => {
     const out = { todo: 0, doing: 0, done: 0, abandon: 0 };
     states.forEach((s, i) => { out[s] = arr[i] || 0; });
     return out;
@@ -2141,7 +2277,7 @@ function mainModuleOf(g) {
 // 云端没法表达「数组某一项等于某值」，所以按 ext 命中粗筛、再在本地逐条核对；
 // 核对过的文档用 nin 排除——同名值若同时属于别的组，记录会持续命中粗筛，
 // 不排除的话就会反复取到同一批、原地打转
-function renameInRecords(g, ov, nv) {
+function renameInRecords(g, ov, nv, pid) {
   const _ = db().command;
   const mainOf = mainModuleOf(g);
   const seen = [];
@@ -2149,6 +2285,7 @@ function renameInRecords(g, ov, nv) {
   function step() {
     if (++rounds > 200 || seen.length > 1000) return Promise.resolve(false);   // 兜底
     const base = mainOf ? { m: mainOf, txt: ov } : { ext: ov };
+    if (pid) base.projectId = pid;   // 项目独立池的改名：只动本项目自己的记录
     const where = Object.assign({}, base);
     if (seen.length) where._id = _.nin(seen);
     return recCol().where(where).limit(20).get().then(res => {
@@ -2209,6 +2346,19 @@ function renameOption(g, ov, nv) {
       .catch(e => { log.warn('option.rename', e); resolve(false); });
   });
 }
+// 项目独立池的选项改名：改 project.opt[g] + 持久化 + 把**本项目**历史记录里的同名值同步到云端。
+// 与全局 renameOption 平行——不碰云端 options 集合 / 本地 OPT_LS（那两处是全局池的机器）；
+// 记录改名复用 renameInRecords，用 projectId 限定只动本项目。改名映射仍记进 _renames（记页 chip 同步用）。
+function renameOptionProj(g, ov, nv) {
+  const pid = curProject();
+  const p = pid ? projectById(pid) : null;
+  _renames[g] = _renames[g] || {};
+  _renames[g][ov] = nv;
+  const persist = (p && p.opt)
+    ? (p.opt[g] = (p.opt[g] || []).map(x => x === ov ? nv : x), updateProject(pid, { opt: p.opt }))
+    : Promise.resolve(false);
+  return persist.then(() => renameInRecords(g, ov, nv, pid));
+}
 
 /* 一次性迁移写标记的统一口径（2026-10-05）：**跑过一次就写**，跑没跑完、有没有失败都写。
    以前是「跑完才写」，而这类迁移改的是**值**（某个旧词），用户以后完全可以把那个词再加回来
@@ -2221,57 +2371,128 @@ function renameOption(g, ov, nv) {
    所以它们仍保留「没迁完下次接着迁」的写法。 */
 function markMigDone(key) { try { wx.setStorageSync(key, 1); } catch (e) {} }
 
-// 一次性迁移：分类「可做」→「可试」（2026-10 模块改名“可做”后避免与分类重名）
-// 步骤：① 翻页改所有 m='want' 且 wantKind=可做 的记录；② 选项池（云端+本地）重命名；③ 同步内存 G.records
-const MIG_WANTKIND_KEY = 'self_mig_wantkind_202610';
-function migrateWantKind() {
+/* ---------------- 一次性迁移：觉察 + 此刻 + 可做 → aware（2026-10 三合一） ----------------
+   ① 记录：m 由 obs / now / want 改成 aware。**这条不能省**——读侧全按 m 过滤，
+      不改的话老记录会从列表 / 统计 / 筛选里整体消失，列表行还会把 m 键原样显示出来。
+      查询条件里带 m，而迁移会把 m 改掉，所以不能按 skip 翻页：每轮取一批未迁移的、取空为止
+      （与 migrateNopeLikeIntoObs 同一套写法）。
+   ② 选项池：归类 / 想记的是 / 什么事 三池并进 awareItem。**池子是配置，不是记录**——
+      不并的话用户自己加过的词就丢了（代码默认池只有 8 个）。四个来源都要收：
+      云端 options 集合、本地快照、用户自定义快照（_optCustom）、每个项目的独立池。
+      用户自己的词排在前面，代码默认词垫后。
+   ③ 内存里的记录同步改掉，本会话不用刷新就能看到。
+   字段级的值不改：可试 / 喜欢 / 喜恶 / 程度 / 怎么开始的 都留在 ext 里，
+   新卡不再采集，老记录照旧读得出来（写停读留，口径见 2026-10 的记卡改版）。 */
+const MIG_AWARE_KEY = 'self_mig_aware_202610';
+const AWARE_OLD_MAIN = ['obsWhat', 'genDoing', 'wantItem'];
+
+// 把三个旧大类池的词并起来（去重保序：先 归类，再 想记的是，最后 什么事）
+function mergeMainPools(src) {
+  const out = [];
+  AWARE_OLD_MAIN.forEach(g => (src[g] || []).forEach(v => {
+    const t = String(v == null ? '' : v).trim();
+    if (t && out.indexOf(t) < 0) out.push(t);
+  }));
+  return out;
+}
+
+function migrateAwareMerge() {
   return new Promise((resolve) => {
-    if (wx.getStorageSync(MIG_WANTKIND_KEY)) { resolve(true); return; }
-    let cursor = 0;
+    if (wx.getStorageSync(MIG_AWARE_KEY)) { resolve(true); return; }
+    const _ = db().command;
+    let rounds = 0;
     function step() {
-      return recCol().where({ m: 'want' }).limit(100).skip(cursor).get().then(res => {
+      if (++rounds > 200) return Promise.resolve(false);   // 兜底：异常时不至于无限循环
+      return recCol().where({ m: _.in(['obs', 'now', 'want']) }).limit(100).get().then(res => {
         const docs = res.data || [];
-        const tasks = [];
-        docs.forEach(d => {
-          const es = d.extSrc || [], ex = d.ext || [];
-          const i = es.indexOf('wantKind');
-          if (i >= 0 && ex[i] === '可做') {
-            ex[i] = '可试';
-            tasks.push(recCol().doc(d._id).update({ data: { ext: ex } }));
-          }
-        });
-        return Promise.all(tasks).then(() => {
-          cursor += docs.length;
-          return docs.length === 100 ? step() : true;
-        });
-      }).catch(() => true);
-    }
-    step().then(() => {
-      // 选项池重命名（云端）
-      return renameOption('wantKind', '可做', '可试').then(() => {
-        // 本地 OPT 与内存同步
-        const local = loadLocalOpts();
-        if (local.wantKind) {
-          const li = local.wantKind.indexOf('可做');
-          if (li >= 0) { local.wantKind[li] = '可试'; wx.setStorageSync(OPT_LS, local); }
-        }
-        if (G.OPT && G.OPT.wantKind) {
-          const gi = G.OPT.wantKind.indexOf('可做');
-          if (gi >= 0) { G.OPT.wantKind[gi] = '可试'; persistLocalOpts(); }
-        }
-        // 内存已加载记录同步（本会话编辑/回看一致）
-        (G.records || []).forEach(r => {
-          if (r.m === 'want' && r.extSrc && r.ext) {
-            const i = r.extSrc.indexOf('wantKind');
-            if (i >= 0 && r.ext[i] === '可做') r.ext[i] = '可试';
-          }
-        });
-        markMigDone(MIG_WANTKIND_KEY);
-        resolve(true);
+        if (!docs.length) return true;
+        // 只改 m：ext / extSrc 原样不动，老字段仍在里面
+        return Promise.all(docs.map(d => recCol().doc(d._id).update({ data: { m: 'aware' } }))).then(() => step());
       });
-    })
-      // 跑不完 / 失败也不再重试（口径见 markMigDone）：下次启动重跑会把新加回来的「可做」又改成「可试」
-      .catch(e => { console.warn('[mig] 可做分类改名未跑完（不再重试）：', e); markMigDone(MIG_WANTKIND_KEY); resolve(true); });
+    }
+    step().then(ok => {
+      if (!ok) { resolve(false); return; }   // 没迁完不写标记，下次启动接着迁
+      // ② 旧池词：先本地三个来源，再补云端文档（云端是权威，但本地可能更快更全）
+      const localPools = [OPT, loadLocalOpts() || {}, _optCustom || {}];
+      return optCol().where({ group: _.in(AWARE_OLD_MAIN) }).limit(1000).get()
+        .catch(() => ({ data: [] }))
+        .then(res => {
+          const cloudPool = {};
+          (res.data || []).forEach(d => { (cloudPool[d.group] = cloudPool[d.group] || []).push(d.value); });
+          const words = [];
+          localPools.concat([cloudPool]).forEach(p => {
+            mergeMainPools(p).forEach(v => { if (words.indexOf(v) < 0) words.push(v); });
+          });
+          const cur = (G.OPT && G.OPT.awareItem) ? G.OPT.awareItem.slice() : (OPT.awareItem || []).slice();
+          const merged = words.concat(cur).filter((v, i, a) => a.indexOf(v) === i);
+          if (G.OPT) G.OPT.awareItem = merged;
+          persistLocalOpts();
+          // 只把新冒出来的写回云端，避免整池重写
+          return Promise.all(words.filter(v => cur.indexOf(v) < 0).map(v => addOption('awareItem', v)));
+        })
+        .then(() => {
+          // 项目独立池：各自把三个旧组合并进自己的 awareItem
+          (G.projects || []).forEach(pr => {
+            if (!pr || !pr.opt) return;
+            const pw = mergeMainPools(pr.opt);
+            if (!pw.length) return;
+            const pc = (pr.opt.awareItem || []).slice();
+            pr.opt.awareItem = pw.concat(pc).filter((v, i, a) => a.indexOf(v) === i);
+            updateProject(pr._id, { opt: pr.opt });
+          });
+          // ③ 内存里的记录：m 改掉后要重新 decorate（m 影响显示名 / 颜色 / 细节折叠）
+          G.records = (G.records || []).map(r => (r && LEGACY_AWARE[r.m]) ? decorate(Object.assign({}, r, { m: 'aware' })) : r);
+          markMigDone(MIG_AWARE_KEY);
+          console.log('[mig] 觉察 / 此刻 / 可做 已合并为 aware');
+          resolve(true);
+        });
+    }).catch(e => { console.warn('[mig] 三合一迁移失败（下次启动重试）：', e); resolve(false); });
+  });
+}
+
+/* 一次性迁移：分类「可试」→「可做」（2026-10 三合一后改名）
+   ⚠️ 这条**替换掉了**旧的 migrateWantKind（那一条是把「可做」改成「可试」）。
+   为什么现在能改回来：当初改名的唯一理由是**模块名叫「可做」、分类也叫「可做」，重名**；
+   三合一之后模块没有了，这个名字才空出来。所以顺序不能反——**先合并模块，再改分类名**。
+   改的是「值」，按 renameOption 那套走（它同时改云端池与历史记录），另外三处也要跟：
+   ① 本地快照 + 内存池；② 内存里已加载的记录；③ 每个项目的独立池（renameOptionProj）。
+   「喜欢」不在这里处理：它不动，历史记录留原值，用户自己改。 */
+const MIG_WANTKIND2_KEY = 'self_mig_wantkind2_202610';
+const WANTKIND_RENAME2 = { '可试': '可做' };
+function migrateWantKindV2() {
+  return new Promise((resolve) => {
+    if (wx.getStorageSync(MIG_WANTKIND2_KEY)) { resolve(true); return; }
+    const mapV = (v) => WANTKIND_RENAME2[v] || v;
+    const uniq = (arr) => (arr || []).map(mapV).filter((v, i, a) => a.indexOf(v) === i);
+    let p = Promise.resolve();
+    Object.keys(WANTKIND_RENAME2).forEach(ov => { p = p.then(() => renameOption('wantKind', ov, WANTKIND_RENAME2[ov])); });
+    // 项目独立池：每个项目一份快照，漏了就永远改不到（老项目里仍是「可试」）。
+    // 注意 renameOptionProj 只动「当前项目」，跨项目要直接改各自的快照；
+    // 记录里的值不逐个项目重命名（口径：历史数据不处理，用户手动改）
+    p = p.then(() => {
+      (G.projects || []).forEach(pr => {
+        if (!pr || !pr.opt || !pr.opt.wantKind) return;
+        pr.opt.wantKind = uniq(pr.opt.wantKind);
+        updateProject(pr._id, { opt: pr.opt });
+      });
+    });
+    p.then(() => {
+      const local = loadLocalOpts();
+      if (local.wantKind && local.wantKind.length) { local.wantKind = uniq(local.wantKind); wx.setStorageSync(OPT_LS, local); }
+      if (G.OPT && G.OPT.wantKind) { G.OPT.wantKind = uniq(G.OPT.wantKind); persistLocalOpts(); }
+      (G.records || []).forEach(r => {
+        const es = r.extSrc || [], ex = r.ext || [];
+        for (let i = 0; i < es.length; i++) if (es[i] === 'wantKind' && WANTKIND_RENAME2[ex[i]]) ex[i] = WANTKIND_RENAME2[ex[i]];
+      });
+      markMigDone(MIG_WANTKIND2_KEY);
+      console.log('[mig] 可做分类改名：可试 → 可做');
+      resolve(true);
+    }).catch(e => {
+      // 口径同 markMigDone：跑过一次就写标记，不再重试（重跑会把用户新加回来的「可试」又改掉）
+      console.warn('[mig] 可做分类改名未跑完（不再重试）：', e);
+      markMigDone(MIG_WANTKIND2_KEY);
+      resolve(true);
+    });
   });
 }
 
@@ -2380,8 +2601,9 @@ function migrateJotKind() {
    ③ 「硬着头皮做了之后」(free:after) 在觉察里没有对应项，按约定丢弃。 */
 const MIG_NOPELIKE_KEY = 'self_mig_nopelike_202610';
 const NOPELIKE_SRC_MAP = {
-  nopeKind: 'obsKind',
-  nopeDeg: 'obsDeg',
+  // 喜恶 / 程度两组已经退场（2026-10 三合一），无感 / 悦己 里这两项无处可去，按约定丢弃
+  nopeKind: '',
+  nopeDeg: '',
   nopeMood: 'obsMood',
   'free:nopefeel': 'free:obsfeel',
   'free:likeFeel': 'free:obsfeel',
@@ -2424,7 +2646,7 @@ function toObsExt(extSrc, ext) {
     put(to === undefined ? 'free:desc' : to, v);   // 未登记来源（脏数据）并入描述，不丢内容
   });
   const outSrc = [], outExt = [];
-  srcList('obs').forEach(it => {                   // 按觉察的来源顺序重建，保证 export/import 对齐
+  srcList('aware').forEach(it => {                 // 按觉察的来源顺序重建，保证 export/import 对齐
     const vs = bag[it.src];
     if (vs && vs.length) { outSrc.push(it.src); outExt.push(vs.join('；')); }
   });
@@ -2456,8 +2678,8 @@ function migrateNopeLikeIntoObs() {
           const r = decorateDoc(d);
           const nf = toObsExt(r.extSrc, r.ext);
           ensureRecOpts(nf.extSrc, nf.ext);
-          if (r.txt) ensureOpt('obsWhat', r.txt);
-          return recCol().doc(d._id).update({ data: { m: 'obs', ext: nf.ext, extSrc: nf.extSrc } });
+          if (r.txt) ensureOpt('awareItem', r.txt);
+          return recCol().doc(d._id).update({ data: { m: 'aware', ext: nf.ext, extSrc: nf.extSrc } });
         });
         return Promise.all(tasks).then(() => step());
       });
@@ -2469,7 +2691,7 @@ function migrateNopeLikeIntoObs() {
         if (r.m !== 'nope' && r.m !== 'like') return;
         const nf = toObsExt(r.extSrc, r.ext);
         G.records[i] = decorate({
-          id: r.id, _rid: r._rid, m: 'obs', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
+          id: r.id, _rid: r._rid, m: 'aware', t: r.t, txt: r.txt, ext: nf.ext, extSrc: nf.extSrc, ts: r.ts,
           done: r.done, doneAt: r.doneAt, status: r.status, ref: r.ref, refTxt: r.refTxt,
           startedAt: r.startedAt, refTs: r.refTs, endTs: r.endTs, abandonedAt: r.abandonedAt, dueTs: r.dueTs, calTs: r.calTs
         });
@@ -2665,6 +2887,42 @@ function onRecChange(fn) {
 function emitRecChange() {
   _recCbs.slice().forEach(fn => { try { fn(); } catch (e) { log.warn('store.onRecChange', e); } });
 }
+// 每个项目的选项池独立：新建项目即拷贝全局池（见 addProject）。早期版本 / 旧项目没有 opt 字段，
+// 这里在数据就绪后补一份「当前全局池」快照，使其同样独立（补过一次就写库，之后全局改动不再影响它们）。
+// 只补缺失的，不动已有 opt；每次 ensureAll 都跑，缺失项被逐个补齐（幂等）。
+function migrateProjectOpts() {
+  const projs = G.projects || [];
+  const need = projs.filter(p => !p.opt);
+  if (!need.length) return Promise.resolve();
+  const snap = JSON.parse(JSON.stringify(G.OPT || OPT));
+  need.forEach(p => { p.opt = JSON.parse(JSON.stringify(snap)); });
+  return saveProjects(projs).catch(e => { log.warn('projectOpts.migrate', e); });
+}
+
+/* 一次性迁移：项目维度配置升级为「全序 + 隐藏集合」（2026-10）。
+   旧模型 dims＝「启用的 key」（关掉的不在数组里，重启用时只能追加到末尾）；
+   新模型 dims＝全部维度的展示顺序、dimsOff＝隐藏的 key（关掉的留在原位置，可整体拖动调序）。
+   只转「配过维度」的旧项目（dims 非空）；没配过的（无 dims 字段）本来就是「全部启用 + 基础顺序」。
+   转换时按基础顺序铺平（随记最前），只保留各项目原有的显隐集合——上一轮的 ▲▼ 调序刚上线、
+   基本没人用过，铺平代价远小于模型不统一；之后用户自己拖的顺序以用户为准（迁移只跑一次）。 */
+const MIG_PROJDIMS_KEY = 'self_mig_projdims_202610b';
+function migrateProjectDims() {
+  return new Promise((resolve) => {
+    if (wx.getStorageSync(MIG_PROJDIMS_KEY)) { resolve(true); return; }
+    const base = baseDimOrder();
+    const projs = G.projects || [];
+    const need = projs.filter(p => p.dims && p.dims.length);
+    need.forEach(p => {
+      const on = new Set(p.dims.filter(k => base.indexOf(k) >= 0));
+      p.dims = base.slice();                     // 全序按基础顺序（随记最前）
+      p.dimsOff = base.filter(k => !on.has(k));  // 显隐集合原样保留
+    });
+    if (need.length) saveProjects(projs).catch(e => { log.warn('projDims.migrate', e); });
+    markMigDone(MIG_PROJDIMS_KEY);
+    resolve(true);
+  });
+}
+
 // 返回 true = 数据就绪，false = 这一轮没拉到（云环境没开 / 网络问题）。
 // 以前失败只在 catch 里重置 _loading，页面拿不到任何信号：记页永远停在骨架屏、看页整屏空白；
 // 而且「排在后面的那些调用」会一直轮询 G.loaded 也永远等不到（失败不置 loaded）——现在一并给个结果
@@ -2680,7 +2938,7 @@ function ensureAll() {
   }
   _loading = true;
   _loadFail = false;
-  return Promise.all([loadRecords(), loadOptions(), loadDims(), loadGreets(), loadProjects()]).then(([recs, O, dims, greets]) => {
+  return Promise.all([loadRecords(), loadOptions(), loadDims(), loadGreets(), loadProjects(), loadGlobalDims()]).then(([recs, O, dims, greets]) => {
     G.records = recs;
     G.OPT = O;
     G.dims = dims || [];
@@ -2688,13 +2946,20 @@ function ensureAll() {
     (dims || []).forEach(d => regDim(d));
     G.loaded = true;
     _loading = false;
-    return migrateWantKind()
+    // 顺序有讲究：① 先把 觉察 / 此刻 / 可做 并成 aware（并把三个旧大类池收进 awareItem）；
+    // ② 再改分类名（模块已经并掉，「可做」这个名字才空出来——顺序反了会又撞一次名）；
+    // ③ 无感 / 悦己 并进来（写的是 aware）；④ **最后**才清死组——清早了旧池的文档就没了，
+    // ① 就没词可收，用户自己加过的大类会静默丢失
+    return migrateAwareMerge()
+      .then(() => migrateWantKindV2())
       .then(() => migrateNopeLikeIntoObs())
       .then(() => cleanDeadOptGroups())
       .then(() => migrateTasksToTodo())
       // 喜恶改名放在「无感 / 悦己 并入觉察」之后：那一步会把旧词带进觉察，这里一并改掉
       .then(() => migrateObsKind())
-      .then(() => migrateJotKind());   // 备忘 → 识己 那次迁移已作废（见上方说明），不再调用
+      .then(() => migrateJotKind())   // 备忘 → 识己 那次迁移已作废（见上方说明），不再调用
+      .then(() => migrateProjectOpts())          // 每个项目的选项池独立：给没有 opt 的旧项目补一份全局池快照
+      .then(() => migrateProjectDims());         // 项目维度配置升级为「全序 + 隐藏集合」，旧项目一次性转换（只跑一次）
   }).then(() => {
     _loading = false; _loadFail = false;
     // 首次就绪：通知订阅方（顶部「起 / 睡」胶囊重算一次），订阅随即作废
@@ -2741,12 +3006,13 @@ module.exports = {
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
-  dayLabel, mname, mcolor, isSingle, isNoInput, fieldsOf, groupOwner, getOPT, optsReady, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, divTypeDefault, bookKindDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, bookCat, bookColor, divCat, divColor, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
+  dayLabel, mname, mcolor, isSingle, isNoInput, fieldsOf, groupOwner, getOPT, optsReady, wantKindDefault, todoKindDefault, jotKindDefault, divTypeDefault, bookKindDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, bookCat, bookColor, divCat, divColor, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
   loadRecords, loadRecordsPage, loadAllRecords, countRecords, countByModule, countByStatus, countByTxt, addRecord, updateRecord, deleteRecord, clearAllRecords,
-  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap, noteAddedOpt, takeAddedMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
+  loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKindV2, migrateAwareMerge, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap, noteAddedOpt, takeAddedMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, onLoaded, onRecChange, emitRecChange, reload, regDim, unregDim,
   // 项目维度
-  loadProjects, saveProjects, addProject, updateProject, curProject, setCurProject, onProjectChange, emitProjectChange, projectById, PROJ_COLORS,
+  loadProjects, saveProjects, addProject, updateProject, curProject, setCurProject, onProjectChange, emitProjectChange, projectById, PROJ_COLORS, configurableDims, projectDims, currentProjectDims, dimCfg, setProjectDims, setGlobalDims,
+  activeOptPool, optScope, setProjOpt, renameOptionProj, migrateProjectOpts, recProjName,
   globalData: G
 };

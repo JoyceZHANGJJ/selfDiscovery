@@ -29,8 +29,9 @@
 
 // ---------------- 标签映射（与 utils/store.js 的 COLMAP 同源）----------------
 const COLMAP = {
+  wantKind: '性质',
   obsKind: '喜恶', obsDeg: '程度',
-  obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '精力', 'fx:mood': '心情', obsMood: '心情',
+  obsStart: '怎么开始', 'fx:forgot': '沉浸', 'fx:nrg': '充耗', 'fx:mood': '心情', obsMood: '心情',
   'free:obsfeel': '感受', genFeel: '情绪', genWant: '此刻想做', 'free:nownote': '感受',
   'free:tasknote': '原因', 'free:memonote': '原因', 'free:buynote': '干什么用',
   'free:desc': '描述',
@@ -66,7 +67,7 @@ function withUnit(src, v) {
 // 兼容分支，老记录才仍能正常读出来 —— 这里也必须跟着有，否则同一条老记录
 // 在人读的导出里叫「做了」、在 AI 眼里叫「done」（check_rec_labels() 会守住这条）。
 const MODULE_N = {
-  today: '今日', obs: '觉察', now: '此刻', want: '可做',
+  today: '今日', aware: '觉察',
   todo: '待办', jot: '随记', sleep: '睡', wake: '起', done: '做了', div: '占卜', book: '书·剧'
 };
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
@@ -156,10 +157,12 @@ function moodLevel(v) {
 
 // ---------------- 状态（与 store.recMname / exporter 同口径）----------------
 // 可做：未做 / 在做 / 做了 / 不做
-const WANT_STATE = { doing: '在做', done: '做了', abandon: '不做', '': '未做' };
+const WANT_STATE = { doing: '在做', done: '做了', abandon: '不做' };
 function wantState(r) {
-  if (r.m !== 'want') return '';
-  return WANT_STATE[r.status || ''] || '未做';
+  if (!(r.m === 'aware' || LEGACY_AWARE[r.m])) return '';
+  // 没状态时不一概写「未做」：见 exporter 里同一条口径的说明
+  if (!r.status) return extOf(r, 'wantKind') ? '未做' : '';
+  return WANT_STATE[r.status] || '';
 }
 function isTask(m) { return m === 'todo' || m === 'memo' || m === 'buy'; }
 // 待办：完成 / 放弃
@@ -241,7 +244,7 @@ function buildExt(m, ext, extSrc) {
     return { src: src, lbl: extLabel(src, m), v: fmtVal(src, v) };
   }).filter(d => !HIDE_DETAIL[d.src] && d.src !== DESC_SRC && d.src !== 'jotKind' && d.src !== 'bookKind');
 
-  if (m === 'obs' || m === 'now') {
+  if (m === 'aware') {
     // 感受是一组：程度 + 情绪连写成「有点焦虑」，再与自由感受用 · 连起来。
     // 与编辑器里「档位 + 情绪 chips + 自由输入框」合成一块的口径一致。
     const picks = (src) => list.filter(d => d.src === src).map(d => d.v).filter(Boolean);
@@ -288,16 +291,16 @@ function fmtDur(ms) {
   const d = ms / DUR_DAY;
   return (Math.round(d * 10) / 10) + ' 天';
 }
+// 三合一之前的老键：MODULE_N 里不能登记（check_rec_labels 会判「多了」），在这里兜成「觉察」，
+// 保证导出/AI 跑在迁移没完成的机器上也读得出中文名
+const LEGACY_AWARE = { obs: 1, now: 1, want: 1 };
 function moduleLabel(r) {
-  const n = MODULE_N[r.m] || r.m || '记录';
-  if (r.m === 'want') { const k = extOf(r, 'wantKind'); return k ? n + '·' + k : n; }
+  const n = MODULE_N[r.m] || (LEGACY_AWARE[r.m] ? '觉察' : r.m) || '记录';
+  if (r.m === 'aware') { const k = extOf(r, 'wantKind'); return k ? n + '·' + k : n; }
   if (isTask(r.m)) { const k = extOf(r, 'todoKind'); return k ? n + '·' + k : n; }
   if (r.m === 'jot') { const k = extOf(r, 'jotKind'); return k ? n + '·' + k : n; }
   // 书·剧：类别（小说 / 漫剧）拼进维度名，与 store.recMname 同一口径
   if (r.m === 'book') { const k = extOf(r, 'bookKind'); return k ? n + '·' + k : n; }
-  if (r.m === 'obs') { const k = extOf(r, 'obsKind'); return k ? n + '·' + k : n; }
-  // 「此刻」的喜恶不给维度名：此刻不是「对某件事的感受」，写「此刻·喜欢」读着别扭。
-  // 它在下面 displayExtras 里补。
   return n;
 }
 // 「页面上显示、但 buildExt 刻意排掉」的字段，按本文件的口径补回来。
@@ -327,7 +330,6 @@ function displayExtras(r) {
   }
   const desc = extOf(r, DESC_SRC);
   if (desc) push('描述', desc);
-  if (r.m === 'now') push('喜恶', extOf(r, 'obsKind'));
   if (isTask(r.m)) push('优先级', taskPrio(r));
   return out;
 }
@@ -354,7 +356,7 @@ function readLine(r) {
   //   todoKind —— 类别已进维度名（「待办·购物」），再写一遍读起来像两件事
   //   wantKind / jotKind —— buildExt 本来就排除了
   //   bookKind —— 同理：类别已进维度名（「书·剧·小说」），buildExt 里已排掉
-  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todayMood: 1, todoKind: 1, obsKind: 1, bookKind: 1 };
+  const SKIP_IN_DETAIL = { todoPrio: 1, todayBat: 1, todayMood: 1, todoKind: 1, bookKind: 1 };
   const dl = buildExt(r.m, r.ext, r.extSrc).filter(d => {
     if (d.v === '' || d.v == null) return false;
     if (SKIP_IN_DETAIL[d.src]) return false;
@@ -390,7 +392,7 @@ function readLine(r) {
   if (wnote) parts.push((r.m === 'wake' ? '起床感受' : '晚睡原因') + '：' + wnote);
 
   // 觉察的结束时间（顶层 endTs）：历时。同样与 exporter 的 readLine 逐字同口径。
-  if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+  if ((r.m === 'aware' || LEGACY_AWARE[r.m]) && r.endTs && r.ts && r.endTs > r.ts) {
     const ds = fmtDur(r.endTs - r.ts);
     if (ds) parts.push('历时：' + ds);
   }
@@ -417,7 +419,7 @@ function summary(list) {
   out.push('维度分布：' + dims.map(m => (MODULE_N[m] || m) + ' ' + byM[m] + ' 条').join('，'));
 
   // 可做的流转状态：「未做」堆积说明想做但一直没做——这是最值得单独拎出来的一组
-  const wants = list.filter(r => r.m === 'want');
+  const wants = list.filter(r => r.m === 'aware');
   if (wants.length) {
     const byS = { '未做': 0, '在做': 0, '做了': 0, '不做': 0 };
     wants.forEach(r => { byS[wantState(r)]++; });

@@ -80,3 +80,20 @@
 /* 「已删除 …」撤销条（浮在屏幕上，与记卡无关）：位置与样式统一由全局 .undo-bar 管——
    现在是屏幕正中的小卡片（带弹出动效 + 实心「撤销」药丸），不再贴底部，也不再各页各调。
    注：「已记入 …」那条不在这里——它排进记卡内部、跟着记卡一起收放（见上面的 .sbline） */
+
+/* 「再做一次」的来源提示条：贴在记卡顶部，写清这条是从哪条复制来的（见 index.startAgain）。
+   用主题的 accent-soft 打底，比正文浅一层——它是说明，不是内容 */
+.againbar { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin: 2px 0 10px;
+  padding: 7px 10px; border-radius: 10px; background: var(--accent-soft, #EDF3EE); }
+.againbar .ab-t { font-size: 12px; font-weight: 700; color: var(--accent); }
+.againbar .ab-s { font-size: 12px; color: var(--ink3); }
+
+/* 觉察记卡折叠：默认收起「做没做 / 感受 / 更多」三区，降低首屏信息量（与 mockup 一致的低饱和纸感）。
+   折叠态只留一行引导入口，点 ＋ 展开对应区（见 index.wxml 的 .folds / .fold / .sec） */
+.folds { display: flex; gap: 16px; margin-top: 13px; flex-wrap: wrap; }
+.fold { font-size: 12.5px; color: var(--ink3); padding: 3px 0; }
+.fold .p { color: var(--ink4); margin-right: 2px; }
+.fold:active { color: var(--accent); }
+/* 折叠区与上方入口留出呼吸感；区内首行不再额外加距（避免和入口叠太远） */
+.composer .sec { margin-top: 12px; }
+.composer .sec .extra:first-child { margin-top: 0; }

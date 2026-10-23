@@ -93,12 +93,6 @@
         <view class="tolist-link" bindtap="goList">去清单页管理 ›</view>
       </todo-list>
 
-      <!-- 觉察 · 喜恶：与「可做」的流转状态筛选同一个位置（喜恶是存在 ext 里的细节值，选项取池子） -->
-      <view wx:if="{{filter==='obs' && kinds.length}}" class="filters states">
-        <view class="ft {{kindFilter==='all'?'on':''}}" data-k="all" bindtap="onKindFilter">全部</view>
-        <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
-      </view>
-
       <!-- 随记 · 类别 / 书·剧 · 类别 / 占卜 · 类型：全部 + 各该类别（与觉察的喜恶、待办的类别同一套）。
            三个维度合在这一处而不是各抄一份：筛法完全相同（同一个 kindFilter、
            同一份 kinds、同一个处理函数），抄一份就多一处日后要同步改的地方。
@@ -109,10 +103,11 @@
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
       </view>
 
-      <!-- 可以 维度：一行里两条独立的筛——左半是「分类」（取选项池 wantKind，排在状态前面），
-           右半是流转状态 未做 / 在做 / 做了 / 不做。两者可叠加（如「想做」里「未做」的那些）。
-           「全部」是这一行共用的重置键：点它把分类与状态一起归零 -->
-      <view wx:if="{{filter==='want'}}" class="filters states">
+      <!-- 觉察 维度：一行里两条独立的筛——左半是「什么事」的大类（取选项池 awareItem，
+           末尾固定一个「其它」收住池外的老记录），右半是 未做 / 在做 / 做了 / 不做。
+           两者可叠加（如「加班」里「做了」的那些）。
+           三合一之前这里是两行（觉察筛喜恶 + 可做筛分类），现在一根轴管一件事，行也并了 -->
+      <view wx:if="{{filter==='aware'}}" class="filters states">
         <view class="ft {{stateFilter==='all' && kindFilter==='all' ?'on':''}}" data-s="all" bindtap="onStateFilter">全部</view>
         <view wx:for="{{kinds}}" wx:key="*this" class="ft {{kindFilter===item?'on':''}}" data-k="{{item}}" bindtap="onKindFilter">{{item}}</view>
         <view class="ft {{stateFilter==='todo'?'on':''}}" data-s="todo" bindtap="onStateFilter">未做</view>
@@ -157,7 +152,7 @@
           <!-- 手势：点一下出操作条 / 左滑进记卡改 / 长按复制（行内横滑优先，见 onRowTouchend） -->
           <view wx:for="{{grp.recs}}" wx:for-item="r" wx:key="id" class="rec tl {{r.desc?'has-desc':''}} {{sel===r.id?'sel':''}}" style="--dot:{{r.c}}" data-id="{{r.id}}" catchtap="onRecTap" bindlongpress="onRowLongPress" bindtouchstart="onRowTouchStart" bindtouchend="onRowTouchend" bindtouchcancel="onRowTouchCancel">
             <view class="edge" style="background:{{r.c}}"></view>
-            <view class="hd"><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text wx:if="{{r.doingDays}}" class="tag doing">第{{r.doingDays}}天</text><view class="tvw"><text class="tv">{{r.txt}}</text><text wx:if="{{r.desc}}" class="tdesc">{{r.desc}}</text><text wx:if="{{r.dur}}" class="tdur">{{r.dur}}</text></view><text class="tw">{{r.d}}{{r.t}}</text></view>
+            <view class="hd"><text wx:if="{{r.projName}}" class="mn-proj">{{r.projName}}</text><text class="mn" style="color:{{r.c}}">{{r.m}}</text><text wx:if="{{r.doingDays}}" class="tag doing">第{{r.doingDays}}天</text><text wx:if="{{r.st}}" class="tag st-{{r.stCls}}">{{r.st}}</text><view class="tvw"><text class="tv">{{r.txt}}</text><text wx:if="{{r.desc}}" class="tdesc">{{r.desc}}</text><text wx:if="{{r.dur}}" class="tdur">{{r.dur}}</text></view><text class="tw">{{r.d}}{{r.t}}</text></view>
             <view wx:if="{{r.from}}" class="from">{{r.from}}</view>
             <view class="dt">
               <text wx:for="{{r.dt}}" wx:for-item="d" wx:key="index" class="it"><text class="k" wx:if="{{d.lbl}}">{{d.lbl}}</text>{{d.v}}</text>

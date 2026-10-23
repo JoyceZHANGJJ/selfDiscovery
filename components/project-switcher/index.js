@@ -101,6 +101,7 @@ Component({
       store.updateProject(id, { archived: true }).then(() => {
         if (store.curProject() === id) store.setCurProject('');  // 归档当前项目→回到全局
         this.refresh();
+        store.reload();   // 重新拉记录：归档项目的记录在「全局」视图里立即隐藏
       });
     }
   }

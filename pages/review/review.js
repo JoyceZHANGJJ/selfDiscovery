@@ -320,12 +320,12 @@ Page(pageBase({
 
       // 变化：喜恶 / 感受 / 可做状态的迁移
       const changes = [];
-      const obsRs = rs.filter(r => r.m === 'obs');
-      const kindSeq = seqOf(obsRs.map(r => extVal(r, 'obsKind')));
-      if (kindSeq.length >= 2) changes.push({ l: '喜恶', v: kindSeq.join(' → ') });
-      const feelSeq = seqOf(obsRs.map(r => (extVal(r, 'obsDeg') + extVal(r, 'obsMood'))));
+      // 觉察（三合一）：喜恶 / 程度已退场，两处「变化」合并成一件事——
+      // 感受怎么变的、做没做怎么变的。老记录里的 obsDeg 仍读得出来（+ 连写）
+      const awRs = rs.filter(r => r.m === 'aware' || r.m === 'obs' || r.m === 'now' || r.m === 'want');
+      const feelSeq = seqOf(awRs.map(r => (extVal(r, 'obsDeg') + extVal(r, 'obsMood'))));
       if (feelSeq.length >= 2) changes.push({ l: '感受', v: feelSeq.join(' → ') });
-      const wantSeq = seqOf(rs.filter(r => r.m === 'want').map(r => WANT_ST[r.status || ''] || '未做'));
+      const wantSeq = seqOf(awRs.map(r => WANT_ST[r.status || ''] || '未做'));
       if (wantSeq.length >= 2) changes.push({ l: '可做', v: wantSeq.join(' → ') });
 
       // 要点：最近几次里写过的自由描述
@@ -396,9 +396,10 @@ Page(pageBase({
 
     // 流转：可做（新增 / 做了 / 放弃）、待办（记了 / 完成）
     // 「做了 / 完成 / 放弃」按发生时间归属本期（不是创建时间），这样「这周做了什么」才是真的
-    const wantN = c.filter(r => r.m === 'want').length;
-    const doneWant = all.filter(r => r.m === 'want' && r.status === 'done' && inR(r.doneAt || 0, cur)).length;
-    const abandWant = all.filter(r => r.m === 'want' && r.status === 'abandon' && inR(r.abandonedAt || 0, cur)).length;
+    const isAw = (r) => r.m === 'aware' || r.m === 'obs' || r.m === 'now' || r.m === 'want';
+    const wantN = c.filter(isAw).length;
+    const doneWant = all.filter(r => isAw(r) && r.status === 'done' && inR(r.doneAt || 0, cur)).length;
+    const abandWant = all.filter(r => isAw(r) && r.status === 'abandon' && inR(r.abandonedAt || 0, cur)).length;
     const todoN = c.filter(r => store.isTask(r.m)).length;
     const doneTodo = all.filter(r => store.isTask(r.m) && r.done && inR(r.doneAt || 0, cur)).length;
     const flow = [

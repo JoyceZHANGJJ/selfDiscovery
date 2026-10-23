@@ -6,7 +6,7 @@
         <view class="bk" bindtap="onClose">‹ 返回</view>
         <view class="tt">{{label}}</view>
       </view>
-      <view class="op-sub">{{opts.length}} 项 · 改名可改，删后可撤销，长按行可拖动排序</view>
+      <view class="op-sub"><text wx:if="{{scopeKind==='project'}}">项目「{{scopeName}}」独立池 · </text>{{opts.length}} 项 · 改名可改，删后可撤销，长按行可拖动排序</view>
 
       <scroll-view class="op-list" scroll-y="{{!dragging}}" enhanced show-scrollbar="{{false}}" bindtouchmove="onDragMove" bindtouchend="onDragEnd" bindtouchcancel="onDragEnd">
         <view wx:if="{{opts.length===0}}" class="sh-empty">这组还没有选项 · 在下方加一项即可</view>

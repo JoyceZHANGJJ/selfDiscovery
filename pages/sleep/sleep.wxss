@@ -159,8 +159,14 @@
 .tc-mn { flex: none; font-size: 12px; color: var(--ink3); font-weight: 600; padding-left: 4px; }
 
 /* 两个输入框（编辑态）：与设置页那几个输入框同一套轻样式 */
-.tc-in { margin-top: 14px; background: var(--surface, #FFFFFF); border: 1px solid var(--line); border-radius: var(--r-in); padding: 11px 12px; font-size: 14px; color: var(--ink); }
-.tc-ta { min-height: 58px; }
+.tc-in { width: 100%; box-sizing: border-box; margin-top: 14px; background: var(--surface, #FFFFFF); border: 1px solid var(--line); border-radius: var(--r-in); padding: 11px 12px; font-size: 14px; color: var(--ink); }
+/* input 有默认高度（约 1.4rem）：border-box 后它会变成「含内边距的总高度」，文字被挤没，
+   必须显式给高——43px = 11px 内边距×2 + 一行 14px + 上下边框，与下面 textarea 的 min-height 对齐 */
+.tc-inp { height: 43px; }
+/* textarea 是原生组件、默认宽 300px（窄出一截），显式撑满与 input 对齐；
+   min-height 取 input 的自然高度（11px 内边距×2 + 14px 字号一行 ≈ 43px），两框同高；
+   auto-height 保留——多行输入时仍会自己长高 */
+.tc-ta { min-height: 43px; }
 /* 这两句话**没有上方标题**，placeholder 就是它唯一的标签 → 按正文对待、必须够对比度（--ink4 只 3.2:1，不够） */
 .tc-in-ph { color: var(--ink3); }
 .tc-foot { display: flex; gap: 10px; margin-top: 12px; }

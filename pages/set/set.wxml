@@ -111,16 +111,80 @@
       <view class="srow"><view class="sl">导入记录</view><view class="sr" bindtap="onImportTap">粘贴</view></view>
       <view class="srow"><view class="sl">清空所有记录</view><view class="sr danger" bindtap="onClear">清空</view></view>
 
-      <!-- 项目：已归档的在这里查看 / 恢复（切换器里不再列出归档项，避免置顶 / 挤占） -->
+      <!-- 项目：已归档的在这里查看 / 恢复（切换器里不再列出归档项，避免置顶 / 挤占）。
+           默认收起（见 data.projOpen）：归档项平时很少动，占一整段没必要；点开才看 / 恢复 -->
       <view class="sect-t" style="margin-top:18px">项目</view>
-      <view wx:if="{{projArchived.length}}">
-        <view wx:for="{{projArchived}}" wx:key="_id" class="srow">
-          <view class="sl"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{item.color}};margin-right:8px"></view>{{item.name}}</view>
-          <view class="mini-b" data-id="{{item._id}}" bindtap="restoreProject">恢复</view>
-        </view>
-        <view class="qc-hint">归档的项目不再出现在切换器；其下记录仍在，切回「全局」即可查看。</view>
+      <view class="srow" bindtap="toggleProj">
+        <view class="sl">已归档项目</view>
+        <view class="sr">{{projOpen?'▾':'▸'}}</view>
       </view>
-      <view wx:else class="srow"><view class="sl">已归档项目</view><view class="sv">无</view></view>
+      <view wx:if="{{projOpen}}">
+        <view wx:if="{{projArchived.length}}">
+          <view wx:for="{{projArchived}}" wx:key="_id" class="srow">
+            <view class="sl"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{item.color}};margin-right:8px"></view>{{item.name}}</view>
+            <view class="mini-b" data-id="{{item._id}}" bindtap="restoreProject">恢复</view>
+          </view>
+          <view class="qc-hint">归档的项目不再出现在切换器；其下记录仍在，切回「全局」即可查看。</view>
+        </view>
+        <view wx:else class="srow"><view class="sl">已归档项目</view><view class="sv">无</view></view>
+      </view>
+
+      <!-- 全局维度：不切到具体项目（「全局」范畴）时的维度显隐 + 顺序，与「项目维度」同一套行列表。
+           无配置＝全部启用、按基础顺序（随记最前）。默认收起（见 data.gDimOpen） -->
+      <view class="sect-t" style="margin-top:18px">全局维度</view>
+      <view class="srow" bindtap="toggleGDim">
+        <view class="sl">全局启用的维度</view>
+        <view class="sr">{{gDimOpen?'▾':'▸'}}</view>
+      </view>
+      <view wx:if="{{gDimOpen}}">
+        <view class="pd-block">
+          <view class="pd-name"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#9A8C7A;margin-right:8px"></view>全局</view>
+          <view class="pd-list" catchtouchmove="onDimDragMove" catchtouchend="onDimDragEnd" catchtouchcancel="onDimDragEnd">
+            <view wx:for="{{globalDims}}" wx:for-item="d" wx:key="k"
+                  class="pd-row {{d.on?'':'off'}} {{dimDragging && !dimDragPid && dimDragIdx===index ? 'drag' : ''}}"
+                  data-idx="{{index}}" data-k="{{d.k}}"
+                  bindlongpress="onDimDragStart" bindtap="onGlobalDimToggle"
+                  catchtouchend="onDimDragEnd" catchtouchcancel="onDimDragEnd">
+              <view class="pd-hv">⋮⋮</view>
+              <view class="qa-dot" style="background:{{d.c}}"></view>
+              <view class="pd-row-n">{{d.n}}</view>
+              <view class="pd-row-t {{d.on?'on':''}}">{{d.on?'开':'关'}}</view>
+            </view>
+          </view>
+          <view class="qc-hint">切到「全局」时，记页只显示这里开着的维度；列表顺序即维度标签的顺序（随记默认在最前）。长按行拖动调序，点按行切换显隐；全部关掉会回退为全部启用。</view>
+        </view>
+      </view>
+
+      <!-- 项目维度：每个活跃项目一组「维度行列表」——点按行切换显隐，长按行拖动调序。
+           仅录入端生效——记页维度标签 / 快捷「＋」球按此收窄；已存在的该维度记录仍在「看 / 清单」正常显示。
+           「全局」的维度在上一节「全局维度」配（两者同构）。
+           默认收起（见 data.projDimOpen）：活跃项目多时很占屏；平时设置页重点在其它节，点开才配置 -->
+      <view class="sect-t" style="margin-top:18px">项目维度</view>
+      <view class="srow" bindtap="toggleProjDim">
+        <view class="sl">各项目的维度</view>
+        <view class="sr">{{projDimOpen?'▾':'▸'}}</view>
+      </view>
+      <view wx:if="{{projDimOpen}}">
+        <view wx:if="{{projDimEditors.length}}">
+          <view wx:for="{{projDimEditors}}" wx:key="_id" class="pd-block">
+            <view class="pd-name"><view class="dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{item.color}};margin-right:8px"></view>{{item.name}}</view>
+            <view class="pd-list" catchtouchmove="onDimDragMove" catchtouchend="onDimDragEnd" catchtouchcancel="onDimDragEnd">
+              <view wx:for="{{item.dims}}" wx:for-item="d" wx:key="k"
+                    class="pd-row {{d.on?'':'off'}} {{dimDragging && dimDragPid===item._id && dimDragIdx===index ? 'drag' : ''}}"
+                    data-pid="{{item._id}}" data-idx="{{index}}" data-k="{{d.k}}"
+                    bindlongpress="onDimDragStart" bindtap="onProjDimToggle"
+                    catchtouchend="onDimDragEnd" catchtouchcancel="onDimDragEnd">
+                <view class="pd-hv">⋮⋮</view>
+                <view class="qa-dot" style="background:{{d.c}}"></view>
+                <view class="pd-row-n">{{d.n}}</view>
+                <view class="pd-row-t {{d.on?'on':''}}">{{d.on?'开':'关'}}</view>
+              </view>
+            </view>
+          </view>
+          <view class="qc-hint">切到具体项目后，记页只显示该项目开着的维度，关掉的无法在此项目下新记（历史记录不受影响）。列表顺序即记页维度标签的顺序：长按行拖动调序，点按行切换显隐；全部关掉会回退为全部启用。</view>
+        </view>
+        <view wx:else class="srow"><view class="sl">项目维度</view><view class="sv">暂无活跃项目</view></view>
+      </view>
 
       <!-- 自定义标签：设置页只列出已有的自定义维度（可移除），不再展示节标题与「新增维度」入口。
            新增维度的浮层与逻辑（onAddDimTap / confirmDim）都还在，要恢复入口把那行 srow 加回来即可。

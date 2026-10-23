@@ -67,7 +67,7 @@
 
         <!-- 编辑态：两个输入框 + 记下 / 取消 -->
         <block wx:if="{{tcEdit}}">
-          <input class="tc-in" placeholder="今天怎么样（选填）" placeholder-class="tc-in-ph"
+          <input class="tc-in tc-inp" placeholder="今天怎么样（选填）" placeholder-class="tc-in-ph"
                  value="{{tc.note}}" bindinput="onNote" maxlength="500" confirm-type="done" />
           <textarea class="tc-in tc-ta" placeholder="明天准备做什么呢（选填）" placeholder-class="tc-in-ph"
                     value="{{tc.tomorrow}}" bindinput="onTomorrow" maxlength="500" auto-height />

@@ -12,7 +12,9 @@ Page(pageBase({
     undo: null,
     dragging: false,
     dragIdx: -1,
-    rowH: 58
+    rowH: 58,
+    scopeKind: 'global',   // 选项池编辑范畴：global=全局池；project=某项目独立池（见 store.optScope）
+    scopeName: ''          // 项目范畴时的项目名（标题旁显示）
   },
 
   onLoad(q) {
@@ -30,8 +32,15 @@ Page(pageBase({
       return;
     }
     this.setData({ group, label: store.GLABEL[group] || '管理选项' });
+    this._syncScope();
     this.refresh();
     this.diag();
+  },
+
+  // 当前在编辑哪个池：全局 or 某项目独立池（每个项目的选项池独立，见 store.optScope）
+  _syncScope() {
+    const s = store.optScope();
+    this.setData({ scopeKind: s.kind, scopeName: s.name || '' });
   },
 
   // 诊断：打印当前云环境 + options 集合实际可见条数（模拟器/手机对比用）
@@ -46,6 +55,7 @@ Page(pageBase({
 
   onShow() {
     this.ensureTheme();
+    this._syncScope();
     this.refresh();
   },
 
@@ -71,6 +81,20 @@ Page(pageBase({
     const nv = (this.data._renVal || '').trim();
     if (!nv || nv === ov) { this.refresh(); return; }
     const g = this.group;
+    const scope = store.optScope();
+    if (scope.kind === 'project') {
+      // 项目独立池：改快照 + 只同步**本项目**记录（内存 + 云端），不碰全局那套默认词机器
+      const mainOf = store.mainModuleOf(g);
+      app.globalData.records.forEach(r => {
+        if (r.projectId !== scope.id) return;
+        if (mainOf) { if (r.m === mainOf && r.txt === ov) r.txt = nv; return; }
+        const es = r.extSrc || [], ex = r.ext || [];
+        for (let i = 0; i < es.length; i++) if (es[i] === g && ex[i] === ov) ex[i] = nv;
+      });
+      store.renameOptionProj(g, ov, nv).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
+      this.refresh();
+      return;
+    }
     const O = app.globalData.OPT;
     // 只在本选项组内替换：不同组里的同名项互不影响
     if (O[g]) { const i = O[g].indexOf(ov); if (i >= 0) O[g][i] = nv; }
@@ -95,6 +119,16 @@ Page(pageBase({
   },
   onOptDel(e) {
     const v = e.currentTarget.dataset.v;
+    const g = this.group;
+    const scope = store.optScope();
+    if (scope.kind === 'project') {
+      // 项目独立池：从快照里删掉即可（历史记录不动，只挡「新记」——与维度收窄同一口径）
+      store.setProjOpt(g, store.getOPT(g).filter(x => x !== v))
+        .then(() => wx.showToast({ title: '已存入该项目', icon: 'none' }));
+      this.setData({ undo: { v } });
+      this.refresh();
+      return;
+    }
     const O = app.globalData.OPT;
     if (O[this.group]) O[this.group] = O[this.group].filter(x => x !== v);
     if (O[this.group]) store.setOptOrder(this.group, O[this.group]);
@@ -127,7 +161,9 @@ Page(pageBase({
     const item = arr.splice(this.data.dragIdx, 1)[0];
     arr.splice(target, 0, item);
     this.setData({ opts: arr, dragIdx: target });
-    store.setOptOrder(this.group, arr.map(o => o.v));
+    const vals = arr.map(o => o.v);
+    if (store.optScope().kind === 'project') store.setProjOpt(this.group, vals);
+    else store.setOptOrder(this.group, vals);
   },
   // 松手：结束拖拽，恢复滚动
   onDragEnd() {
@@ -136,12 +172,22 @@ Page(pageBase({
   },
   onOptUndo() {
     const u = this.data.undo; if (!u) return;
+    const g = this.group;
+    const scope = store.optScope();
+    if (scope.kind === 'project') {
+      const arr = store.getOPT(g).slice();
+      if (arr.indexOf(u.v) < 0) arr.push(u.v);
+      store.setProjOpt(g, arr).then(() => wx.showToast({ title: '已存入该项目', icon: 'none' }));
+      this.setData({ undo: null });
+      this.refresh();
+      return;
+    }
     const O = app.globalData.OPT;
-    if (!O[this.group]) O[this.group] = [];
-    if (O[this.group].indexOf(u.v) < 0) O[this.group].push(u.v);
-    const ps = [store.addOption(this.group, u.v)];
-    if (store.isDefault(this.group, u.v)) ps.push(store.clearDelDef(this.group, u.v)); // 还原被删的默认项
-    ps.push(store.markOptCustom(this.group, O[this.group]));
+    if (!O[g]) O[g] = [];
+    if (O[g].indexOf(u.v) < 0) O[g].push(u.v);
+    const ps = [store.addOption(g, u.v)];
+    if (store.isDefault(g, u.v)) ps.push(store.clearDelDef(g, u.v)); // 还原被删的默认项
+    ps.push(store.markOptCustom(g, O[g]));
     Promise.all(ps).then(() => wx.showToast({ title: '已同步云端', icon: 'none' }));
     this.setData({ undo: null });
     this.refresh();
@@ -150,7 +196,22 @@ Page(pageBase({
   onNewAdd() {
     const v = (this.data.newVal || '').trim();
     if (!v) return;
-    const O = app.globalData.OPT, g = this.group;
+    const g = this.group;
+    const scope = store.optScope();
+    if (scope.kind === 'project') {
+      const arr = store.getOPT(g).slice();
+      if (arr.indexOf(v) < 0) {
+        arr.push(v);
+        store.setProjOpt(g, arr);
+        // 记一笔「本次新增」：记页从这返回时，若这一组一个都没选就把刚加的这项选上（见 index.applyAdded）
+        store.noteAddedOpt(g, v);
+        wx.showToast({ title: '已存入该项目', icon: 'none' });
+      }
+      this.setData({ newVal: '' });
+      this.refresh();
+      return;
+    }
+    const O = app.globalData.OPT;
     if (!O[g]) O[g] = [];
     if (O[g].indexOf(v) < 0) {
       O[g].push(v);

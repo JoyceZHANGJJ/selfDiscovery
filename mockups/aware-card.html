@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>觉察 · 记卡（合并方案 UI）</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 48px;
+    background: #EFEDE8; padding: 40px 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    color: #33322D;
+  }
+
+  /* ---------- 左侧控制面板 ---------- */
+  .panel { width: 236px; flex: none; }
+  .panel h1 { font-size: 15px; font-weight: 800; margin: 0 0 4px; letter-spacing: -.01em; }
+  .panel p.sub { font-size: 12px; color: #8B8779; margin: 0 0 22px; line-height: 1.6; }
+  .panel .h { font-size: 11px; color: #A09880; letter-spacing: .08em; margin: 20px 0 8px; }
+  .segs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .segs button {
+    font: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: 8px; cursor: pointer;
+    border: 1px solid #DCD6C8; background: #FBFAF6; color: #5A574F;
+  }
+  .segs button.on { background: #33322D; border-color: #33322D; color: #fff; font-weight: 700; }
+  .dots { display: flex; gap: 10px; }
+  .dots i { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; display: block; border: 2px solid transparent; }
+  .dots i.on { border-color: #33322D; }
+  .legend { margin-top: 26px; font-size: 12px; line-height: 1.85; color: #6E6A5E; }
+  .legend b { color: #33322D; font-weight: 700; }
+  .legend .tag { display: inline-block; font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: #E5E1D6; color: #6E6A5E; margin-right: 4px; }
+  .legend div { margin-bottom: 7px; }
+
+  /* ---------- 手机 ---------- */
+  .phone {
+    --bg:#FAF8F4; --surface:#FFFFFF; --soft:#F5F2EA; --line:#EAE5DC; --line2:#E0DACF;
+    --ink:#33322D; --ink2:#5A574F; --ink3:#8B8779; --ink4:#AAA598;
+    --accent:#7C9A86; --accent-soft:#EDF3EE; --danger:#C0574F;
+    width: 390px; height: 812px; flex: none; border-radius: 44px; background: var(--bg); color: var(--ink);
+    box-shadow: 0 30px 70px rgba(40,38,32,.22), 0 6px 18px rgba(40,38,32,.10), 0 0 0 10px #1E1D1A;
+    display: flex; flex-direction: column; overflow: hidden; position: relative;
+    font-size: 14px; line-height: 1.6;
+  }
+  .phone[data-theme="mint"] { --bg:#FFFFFF; --soft:#F4F5F5; --line:#EDEDED; --line2:#E3E3E3; --ink:#22252A; --ink2:#4A4E54; --ink3:#8A8F94; --ink4:#AAB0B5; --accent:#2F8F7B; --accent-soft:#E6F4F0; }
+  .phone[data-theme="olive"] { --bg:#F8FAF2; --soft:#EEF1E2; --line:#E0E5D2; --line2:#D0D7BD; --ink:#252A20; --ink2:#4A5240; --ink3:#7B8470; --ink4:#A6AE9B; --accent:#6E7B3D; --accent-soft:#EAF0DC; }
+  .phone[data-theme="teal"] { --bg:#FFFFFF; --soft:#EFF5F6; --line:#E3EDEC; --line2:#D6E5E4; --ink:#20282A; --ink2:#465356; --ink3:#7F9092; --ink4:#A6B4B6; --accent:#2E8B9A; --accent-soft:#E6F3F5; }
+
+  .statusbar { height: 48px; flex: none; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 26px 4px; font-size: 13px; font-weight: 700; color: var(--ink); }
+  .statusbar .r { display: flex; gap: 5px; align-items: center; opacity: .85; }
+  .statusbar .bar { width: 3px; background: var(--ink); border-radius: 1px; }
+
+  .scroll { flex: 1; overflow-y: auto; padding: 6px 16px 0; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  .greet-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .greet { font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+  .greet-sub { font-size: 12.5px; color: var(--ink3); margin-top: 3px; }
+  .greet-row .date { font-size: 12px; color: var(--ink3); flex: none; padding-top: 3px; }
+
+  /* 维度标签：8 → 6 */
+  .tagrow { display: flex; gap: 14px; margin: 0 0 12px; overflow-x: auto; scrollbar-width: none; }
+  .tagrow::-webkit-scrollbar { display: none; }
+  .tg { flex: none; font-size: 13.5px; padding: 0 0 4px; border-bottom: 2px solid transparent; color: var(--ink3); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+  .tg .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .5; }
+  .tg.on { border-bottom-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .tg.on .dot { opacity: 1; }
+
+  /* 记卡 */
+  .card {
+    background: radial-gradient(140% 140% at 50% 25%, var(--surface) 35%, var(--bg) 92%);
+    border-radius: 16px; padding: 10px 16px 16px; margin-bottom: 22px;
+    box-shadow: 0 14px 36px rgba(35,35,31,.08), 0 3px 10px rgba(35,35,31,.05);
+  }
+
+  /* 再做一次：来源提示条 */
+  .again { display: none; align-items: center; gap: 8px; margin: 2px 0 12px; padding: 7px 10px; border-radius: 10px; background: var(--accent-soft); font-size: 12px; color: var(--ink2); }
+  .again.show { display: flex; }
+  .again b { color: var(--accent); font-weight: 700; }
+  .again .x { margin-left: auto; color: var(--ink3); cursor: pointer; padding: 0 2px; }
+
+  /* 「什么事」= 大类 + 描述（一个标题管两层，仍是一件事） */
+  .ehead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2px; }
+  .ehead .et { font-size: 11.5px; color: var(--ink3); letter-spacing: .04em; }
+  .ehead .mg { font-size: 11.5px; color: var(--ink4); cursor: pointer; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px 13px; align-items: baseline; }
+  .chip { font-size: 13.5px; line-height: 1.3; padding: 2px 0; color: var(--ink); cursor: pointer; position: relative; }
+  .chip::after { content: ""; position: absolute; left: -4px; right: -4px; top: -4px; bottom: -4px; }
+  .chip.on { color: var(--accent); font-weight: 700; }
+
+  /* 描述：紧跟大类，读作同一件事 */
+  .desc {
+    width: 100%; border: 1px solid transparent; outline: none; resize: none; font-family: inherit;
+    font-size: 13.5px; line-height: 20px; color: var(--ink); background: var(--soft);
+    border-radius: 11px; padding: 7px 11px; margin-top: 8px; min-height: 34px; caret-color: var(--accent);
+  }
+  .desc::placeholder { color: var(--ink4); }
+  .desc:focus { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+
+  .hr { height: 1px; background: var(--line); margin: 13px 0 0; }
+
+  .lab { font-size: 12px; color: var(--ink3); display: flex; align-items: baseline; justify-content: space-between; }
+  .lab .mk { font-size: 11.5px; color: var(--ink4); cursor: pointer; }
+  .row { margin-top: 12px; }
+  .row .lab { margin-bottom: 3px; }
+  .row.nature .chip { color: var(--ink2); }
+  .row.nature .chip.on { color: var(--accent); }
+
+  /* 折叠入口 */
+  .folds { display: flex; gap: 16px; margin-top: 13px; flex-wrap: wrap; }
+  .fold { font-size: 12.5px; color: var(--ink3); cursor: pointer; padding: 3px 0; }
+  .fold:active { color: var(--accent); }
+  .fold .p { color: var(--ink4); margin-right: 2px; }
+
+  .sec { margin-top: 12px; }
+
+  .mini { width: 100%; border: 1px solid transparent; outline: none; resize: none; font-family: inherit;
+    font-size: 13.5px; line-height: 20px; color: var(--ink); background: var(--soft);
+    border-radius: 11px; padding: 7px 11px; margin-top: 7px; min-height: 34px; caret-color: var(--accent); }
+  .mini::placeholder { color: var(--ink4); }
+  .mini:focus { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+
+  .sub { margin-top: 11px; }
+
+  /* 底部操作行 */
+  .savebar { flex: none; display: flex; gap: 10px; padding: 12px 16px 22px; background: var(--bg); }
+  .btn { flex: 1; padding: 11px 0; border-radius: 12px; font-size: 14.5px; font-weight: 700; text-align: center; border: 0; font-family: inherit; cursor: pointer; }
+  .btn.main { background: var(--accent); color: #fff; }
+  .btn.main.off { opacity: .45; }
+  .btn.gh { flex: 0 0 92px; background: var(--soft); color: var(--ink2); border: 1px solid var(--line2); }
+
+  /* ---------- 列表行 ---------- */
+  .sect { margin-top: 6px; }
+  .sect-h { display: flex; align-items: baseline; margin: 0 0 5px; }
+  .rt { font-size: 12.5px; color: var(--ink3); margin-right: 15px; cursor: pointer; }
+  .rt.on { color: var(--ink); font-weight: 700; }
+  .qhint { font-size: 11px; color: var(--ink4); margin-bottom: 6px; }
+  .rec { padding: 10px 10px 10px 12px; border-radius: 10px; position: relative; cursor: pointer; }
+  .rec + .rec { margin-top: 2px; }
+  .rec.sel { background: var(--surface); box-shadow: 0 2px 10px rgba(35,35,31,.06); }
+  .rec .hd { display: flex; align-items: baseline; gap: 6px; }
+  .rec .mn { font-size: 12.5px; font-weight: 700; }
+  .rec .mn2 { font-size: 11.5px; color: var(--ink3); }
+  .rec .st { font-size: 11px; padding: 1px 7px; border-radius: 999px; line-height: 1.5; }
+  .rec .st.todo { color: var(--ink3); background: var(--soft); }
+  .rec .st.doing { color: #fff; background: #C0A05A; }
+  .rec .st.done { color: #fff; background: #7C9A86; }
+  .rec .st.abandon { color: #fff; background: #948AA8; }
+  .rec .tw { margin-left: auto; font-size: 11.5px; color: var(--ink4); }
+  .rec .tvw { margin-top: 4px; font-size: 14px; line-height: 1.45; }
+  .rec .tdesc { font-size: 12.5px; color: var(--ink3); margin-left: 6px; }
+  .rec .dt { margin-top: 5px; font-size: 11.5px; color: var(--ink3); display: flex; gap: 10px; flex-wrap: wrap; }
+  .rec .dt .k { color: var(--ink4); margin-right: 3px; }
+
+  /* ---------- 操作条（点一下记录后出现） ---------- */
+  .actbar {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+    display: none; align-items: center; gap: 10px; padding: 14px 14px 24px;
+    background: var(--ink); color: #fff; border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 24px rgba(35,35,31,.22);
+  }
+  .phone.browsing .actbar { display: flex; }
+  .phone.browsing .savebar { display: none; }
+  .actbar .tx { font-size: 12.5px; color: #E8E6DE; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actbar .flow { font-size: 12.5px; padding: 6px 13px; border-radius: 8px; line-height: 1; cursor: pointer; }
+  .actbar .flow.again { color: #A9CDB6; background: rgba(124,154,134,.24); }
+  .actbar .sep { width: 1px; height: 18px; background: rgba(255,255,255,.2); margin-left: auto; }
+  .actbar .edit { font-size: 12.5px; margin-left: 2px; cursor: pointer; }
+  .actbar .del { font-size: 12.5px; color: #F0A9A5; margin-left: 14px; cursor: pointer; }
+
+  @media (max-width: 760px) {
+    body { flex-direction: column; gap: 24px; padding: 20px 12px; align-items: center; }
+    .panel { width: 100%; max-width: 390px; }
+    .phone { width: 100%; max-width: 390px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>觉察 · 记卡</h1>
+  <p class="sub">合并后的录入界面（觉察 + 此刻 + 可做）</p>
+
+  <div class="h">状态</div>
+  <div class="segs" id="states">
+    <button data-s="empty" class="on">空卡</button>
+    <button data-s="filled">已填</button>
+    <button data-s="done">做了</button>
+    <button data-s="again">再做一次</button>
+    <button data-s="list">列表 · 操作条</button>
+  </div>
+
+  <div class="h">主题</div>
+  <div class="dots" id="themes">
+    <i data-t="sand" class="on" style="background:#7C9A86"></i>
+    <i data-t="mint" style="background:#2F8F7B"></i>
+    <i data-t="olive" style="background:#6E7B3D"></i>
+    <i data-t="teal" style="background:#2E8B9A"></i>
+  </div>
+
+  <div class="legend">
+    <div><span class="tag">1</span><b>什么事</b>＝大类（点选）+ 描述（可留空），一个标题管住。</div>
+    <div><span class="tag">2</span><b>这件事对我</b>：性质单独一根轴（想做 / 可做 / 得做），不填也行。</div>
+    <div><span class="tag">3</span><b>四态还在</b>：未做 / 在做 / 做了 / 不做，不选＝不跟踪；在列表行上挂成小标。</div>
+    <div><span class="tag">4</span><b>做了</b>才问 沉浸 和 充耗——这两样都是"做完才有"的事。</div>
+    <div><span class="tag">5</span><b>再做一次</b>：点记录出操作条，只有「做了」的记录才有这个按钮。</div>
+  </div>
+</div>
+
+<div class="phone" id="phone" data-theme="sand">
+  <div class="statusbar">
+    <span>9:41</span>
+    <span class="r">
+      <span class="bar" style="height:4px"></span>
+      <span class="bar" style="height:7px"></span>
+      <span class="bar" style="height:10px"></span>
+      <span style="margin-left:8px;font-weight:600">100%</span>
+    </span>
+  </div>
+
+  <div class="scroll">
+    <div class="greet-row">
+      <div>
+        <div class="greet">晚上好</div>
+        <div class="greet-sub">今天有什么想记下来的？</div>
+      </div>
+      <div class="date">10月23日</div>
+    </div>
+
+    <div class="tagrow">
+      <span class="tg"><i class="dot" style="color:#B08968"></i>今日</span>
+      <span class="tg on"><i class="dot" style="color:#7C9A86"></i>觉察</span>
+      <span class="tg"><i class="dot" style="color:#9A8C7A"></i>待办</span>
+      <span class="tg"><i class="dot" style="color:#948AA8"></i>随记</span>
+      <span class="tg"><i class="dot" style="color:#7B5EA8"></i>占卜</span>
+      <span class="tg"><i class="dot" style="color:#3F7A8A"></i>书·剧</span>
+    </div>
+
+    <div class="card">
+      <div class="again" id="again">
+        <span>↻</span><span><b>再做一次</b>：来自 10-21「学吉他」那条</span>
+        <span class="x" id="againX">✕</span>
+      </div>
+
+      <!-- 什么事：大类 chips（必选，从池里点）+ 描述（自由，可留空） -->
+      <div class="ehead">
+        <span class="et">什么事</span>
+        <span class="mg">✎ 管理</span>
+      </div>
+      <div class="chips" id="cat">
+        <span class="chip">陪家人</span>
+        <span class="chip">加班</span>
+        <span class="chip">写代码</span>
+        <span class="chip">学吉他</span>
+        <span class="chip">早睡</span>
+      </div>
+      <textarea class="desc" rows="1" id="desc" placeholder="补一句也成，可不填"></textarea>
+
+      <div class="hr"></div>
+
+      <div class="row nature">
+        <div class="lab"><span>这件事对我</span></div>
+        <div class="chips" id="nature">
+          <span class="chip">想做</span>
+          <span class="chip">可做</span>
+          <span class="chip">得做</span>
+        </div>
+      </div>
+
+      <div class="folds" id="folds">
+        <span class="fold" data-f="doing"><span class="p">＋</span>做没做</span>
+        <span class="fold" data-f="feel"><span class="p">＋</span>感受</span>
+        <span class="fold" data-f="more"><span class="p">＋</span>更多</span>
+      </div>
+
+      <!-- 做没做 -->
+      <div class="sec" id="sec-doing" hidden>
+        <div class="lab"><span>做没做</span><span class="mk" data-close="doing">收起</span></div>
+        <div class="chips" id="status">
+          <span class="chip">未做</span>
+          <span class="chip">在做</span>
+          <span class="chip">做了</span>
+          <span class="chip">不做</span>
+        </div>
+
+        <div class="sub" id="st-doing" hidden>
+          <div class="lab"><span>进行中感受</span></div>
+          <textarea class="mini" rows="1" placeholder="做的过程中冒出来的感受，随便写"></textarea>
+        </div>
+
+        <div class="sub" id="st-done" hidden>
+          <div class="lab"><span>沉浸</span></div>
+          <div class="chips" id="forgot">
+            <span class="chip">忘了时间</span>
+            <span class="chip">没有</span>
+            <span class="chip">不确定</span>
+          </div>
+          <div class="sub">
+            <div class="lab"><span>这次做完，充耗如何</span></div>
+            <div class="chips" id="energy">
+              <span class="chip">耗电</span>
+              <span class="chip">没变化</span>
+              <span class="chip">充电</span>
+            </div>
+          </div>
+          <div class="sub">
+            <div class="lab"><span>做了的感受</span></div>
+            <textarea class="mini" rows="2" placeholder="那一刻的感受、收获了什么，随便写"></textarea>
+          </div>
+        </div>
+
+        <div class="sub" id="st-abandon" hidden>
+          <div class="lab"><span>为什么不做了</span></div>
+          <textarea class="mini" rows="1" placeholder="为什么不想做了？随便写"></textarea>
+        </div>
+      </div>
+
+      <!-- 感受 -->
+      <div class="sec" id="sec-feel" hidden>
+        <div class="lab"><span>感受</span><span class="mk" data-close="feel">收起</span></div>
+        <div class="chips" id="feel">
+          <span class="chip">开心</span>
+          <span class="chip">平静</span>
+          <span class="chip">焦虑</span>
+          <span class="chip">低落</span>
+        </div>
+        <textarea class="mini" rows="1" placeholder="有什么想抒发的？"></textarea>
+      </div>
+
+      <!-- 更多：只剩「打算」这一组 -->
+      <div class="sec" id="sec-more" hidden>
+        <div class="lab"><span>更多</span><span class="mk" data-close="more">收起</span></div>
+
+        <div class="sub">
+          <div class="lab"><span>原因</span></div>
+          <textarea class="mini" rows="1" placeholder="刚看到别人晒成果，有点不甘心"></textarea>
+        </div>
+        <div class="sub">
+          <div class="lab"><span>怎么做</span></div>
+          <textarea class="mini" rows="1" placeholder="要怎么做？"></textarea>
+        </div>
+        <div class="sub">
+          <div class="lab"><span>希望最终变成什么样</span></div>
+          <textarea class="mini" rows="1" placeholder="变成每天稳定的习惯"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- 最近（记页下半段） -->
+    <div class="sect">
+      <div class="sect-h">
+        <span class="rt on">最近</span><span class="rt">待办</span><span class="rt">已完成</span>
+      </div>
+      <div class="qhint">点一下出操作条 · 长按复制 · 行尾左滑直接改</div>
+
+      <div class="rec sel" id="rec1">
+        <div class="hd">
+          <span class="mn" style="color:#7C9A86">觉察</span>
+          <span class="mn2">·想做</span>
+          <span class="st done">做了 · 第3次</span>
+          <span class="tw">10-22 21:04</span>
+        </div>
+        <div class="tvw"><span class="tv">学吉他</span><span class="tdesc">练了半小时爬格子</span></div>
+        <div class="dt">
+          <span><span class="k">沉浸</span>忘了时间</span>
+          <span><span class="k">充耗</span>充电</span>
+          <span><span class="k">感受</span>平静</span>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="hd">
+          <span class="mn" style="color:#7C9A86">觉察</span>
+          <span class="mn2">·得做</span>
+          <span class="st doing">在做 · 第3天</span>
+          <span class="tw">10-21 09:12</span>
+        </div>
+        <div class="tvw"><span class="tv">陪家人</span><span class="tdesc">每周至少一次，别总推到周末</span></div>
+      </div>
+
+      <div class="rec">
+        <div class="hd">
+          <span class="mn" style="color:#7C9A86">觉察</span>
+          <span class="mn2">·想做</span>
+          <span class="st todo">未做</span>
+          <span class="tw">10-20 22:40</span>
+        </div>
+        <div class="tvw"><span class="tv">早睡</span></div>
+        <div class="dt"><span><span class="k">原因</span>连着几天两点睡，白天像丢了魂</span></div>
+      </div>
+
+      <div class="rec">
+        <div class="hd">
+          <span class="mn" style="color:#7C9A86">觉察</span>
+          <span class="mn2">·得做</span>
+          <span class="st abandon">不做</span>
+          <span class="tw">10-19 18:02</span>
+        </div>
+        <div class="tvw"><span class="tv">加班</span><span class="tdesc">连着三天，扛不住了</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actbar">
+    <span class="tx">学吉他</span>
+    <span class="flow again">再做一次</span>
+    <span class="sep"></span>
+    <span class="edit">改</span>
+    <span class="del">删除</span>
+  </div>
+
+  <div class="savebar">
+    <button class="btn gh" id="cancel">取消</button>
+    <button class="btn main off" id="save">记下</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var phone = document.getElementById('phone');
+  var desc = document.getElementById('desc');
+  var again = document.getElementById('again');
+  var save = document.getElementById('save');
+  var folds = document.getElementById('folds');
+
+  function bindChips(id) {
+    var box = document.getElementById(id);
+    if (!box) return;
+    box.addEventListener('click', function (e) {
+      var c = e.target.closest('.chip');
+      if (!c) return;
+      var was = c.classList.contains('on');
+      Array.prototype.forEach.call(box.children, function (x) { x.classList.remove('on'); });
+      c.classList.toggle('on', !was);
+      if (box.id === 'status') syncStatus();
+      refresh();
+    });
+  }
+  ['cat', 'nature', 'status', 'energy', 'feel', 'forgot'].forEach(bindChips);
+
+  function picked(id) {
+    var box = document.getElementById(id);
+    var on = box && box.querySelector('.chip.on');
+    return on ? on.textContent.trim() : '';
+  }
+
+  function syncStatus() {
+    var s = picked('status');
+    document.getElementById('st-doing').hidden = s !== '在做';
+    document.getElementById('st-done').hidden = s !== '做了';
+    document.getElementById('st-abandon').hidden = s !== '不做';
+  }
+
+  // 大类是必选的（描述不顶替大类）——与现有 doSave 的口径一致
+  function refresh() {
+    save.classList.toggle('off', !picked('cat'));
+  }
+
+  function open(f) {
+    document.getElementById('sec-' + f).hidden = false;
+    var t = folds.querySelector('[data-f="' + f + '"]');
+    if (t) t.style.display = 'none';
+  }
+  function close(f) {
+    document.getElementById('sec-' + f).hidden = true;
+    var t = folds.querySelector('[data-f="' + f + '"]');
+    if (t) t.style.display = '';
+  }
+  folds.addEventListener('click', function (e) {
+    var b = e.target.closest('.fold');
+    if (b) open(b.dataset.f);
+  });
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-close]');
+    if (c) close(c.dataset.close);
+  });
+
+  document.getElementById('againX').addEventListener('click', function () {
+    again.classList.remove('show');
+    desc.value = '';
+    refresh();
+  });
+  document.getElementById('cancel').addEventListener('click', function () { setState('empty'); });
+
+  function clearAll() {
+    phone.classList.remove('browsing');
+    ['cat', 'nature', 'status', 'energy', 'feel', 'forgot'].forEach(function (id) {
+      var box = document.getElementById(id);
+      if (box) Array.prototype.forEach.call(box.children, function (x) { x.classList.remove('on'); });
+    });
+    desc.value = '';
+    again.classList.remove('show');
+    ['doing', 'feel', 'more'].forEach(function (f) { close(f); });
+    syncStatus();
+    refresh();
+  }
+  function pick(id, val) {
+    var box = document.getElementById(id);
+    Array.prototype.forEach.call(box.children, function (x) {
+      x.classList.toggle('on', x.textContent.trim() === val);
+    });
+  }
+
+  function setState(s) {
+    clearAll();
+    if (s === 'filled') {
+      pick('cat', '陪家人');
+      desc.value = '排队时一直在刷手机，说不上话';
+      pick('nature', '得做');
+      open('doing');
+    } else if (s === 'done') {
+      pick('cat', '学吉他');
+      desc.value = '练了半小时爬格子，手指有点疼';
+      pick('nature', '想做');
+      open('doing');
+      pick('status', '做了');
+      syncStatus();
+      pick('forgot', '忘了时间');
+      pick('energy', '充电');
+      open('feel');
+      pick('feel', '平静');
+    } else if (s === 'again') {
+      again.classList.add('show');
+      pick('cat', '学吉他');
+      desc.value = '练了半小时爬格子';
+      pick('nature', '想做');
+      open('doing');
+      pick('status', '未做');
+      syncStatus();
+    } else if (s === 'list') {
+      phone.classList.add('browsing');
+      var sc = document.querySelector('.scroll');
+      sc.scrollTop = sc.scrollHeight;
+    }
+    refresh();
+  }
+
+  document.getElementById('states').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    Array.prototype.forEach.call(this.children, function (x) { x.classList.remove('on'); });
+    b.classList.add('on');
+    setState(b.dataset.s);
+  });
+
+  document.getElementById('themes').addEventListener('click', function (e) {
+    var d = e.target.closest('i');
+    if (!d) return;
+    Array.prototype.forEach.call(this.children, function (x) { x.classList.remove('on'); });
+    d.classList.add('on');
+    phone.setAttribute('data-theme', d.dataset.t);
+  });
+
+  setState('empty');
+})();
+</script>
+</body>
+</html>

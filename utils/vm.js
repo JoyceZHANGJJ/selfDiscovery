@@ -14,6 +14,9 @@ function baseVM(r) {
   return {
     id: r.id,
     m: store.recMname(r),
+    // 全局视图下、记录属于某项目时给出项目名（见 store.recProjName）；行首「项目 | 维度」的
+    // 浅色细线分隔由 wxml/wxss 渲染（.mn-proj），这里只出数据。单项目视图 / 全局记录为 ''。
+    projName: store.recProjName(r),
     // 颜色：待办按类别（备忘 / 购物 / 自己的类别）、随记按类别（念头 / 灵感 …）各取一色；
     // 其余维度用模块色
     c: task ? store.taskColor(r) : (r.m === 'jot' ? store.jotColor(store.jotCat(r)) : store.mcolor(r.m)),

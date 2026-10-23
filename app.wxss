@@ -278,6 +278,12 @@ textarea.mini-in { padding: 7px 11px; height: auto; min-height: 34px; line-heigh
 /* 维度名（觉察/无感…）：11px 下 700 在手机上不够明显，提到 800（与问候/小节标题同级强调）；
    标题折成两行时别跟着首行基线吊在上边——独立垂直居中（与勾选框一致） */
 .rec .mn { font-size: 11px; font-weight: 800; align-self: center; }
+/* 全局视图记录行首的「项目名」前缀：降为元信息层级——比维度名小一号（10px vs 11px）、
+   浅灰常规字重，让彩色维度名保持主角；分隔线用 CSS 画的 1rpx 细线而不用「｜」字符：
+   字符竖线在 800 字重里天然偏粗、基线还随字体漂，CSS 线 + flex 居中既细又稳。
+   （全局记录 / 单项目视图不渲染此元素，见 vm.js 的 projName） */
+.rec .mn-proj { font-size: 10px; font-weight: 500; color: var(--ink3); align-self: center;
+  flex-shrink: 0; white-space: nowrap; padding-right: 6rpx; border-right: 1rpx solid var(--line); }
 /* 待办行的优先级：一面小旗子（旗杆 + 三角旗面）。原来画的是「色点 + 文字」，
    字一多整行就吵，改成只留旗子——档位靠**颜色**区分（紧急重要＝红褐 / 重要不紧急＝橙 /
    紧急不重要＝蓝，见 store.prioColor），确切说法在记录详情里（详情仍显示「优先级：…」）。
@@ -606,3 +612,10 @@ textarea.mini-in { height: auto; min-height: 44px; line-height: 21px; padding: 1
   from { opacity: 0; transform: translateY(8px) scale(.9); }
   to { opacity: 1; transform: none; }
 }
+
+/* 觉察的「做没做」小标（记页最近 / 看页时间线共用，所以放全局）：
+   做了=绿、不做=灰紫、未做=浅灰。色相沿用原「可做」的流转色，一眼扫出这条推进到哪了。
+   注：.tag 基础类在各页自己的 wxss 里，这里把尺寸 / 圆角 / 配色全写全，不依赖它 */
+.tag.st-done { font-size: 11px; color: #fff; background: #7C9A86; padding: 1px 7px; border-radius: 999px; margin-right: 6px; line-height: 1.5; }
+.tag.st-abandon { font-size: 11px; color: #fff; background: #948AA8; padding: 1px 7px; border-radius: 999px; margin-right: 6px; line-height: 1.5; }
+.tag.st-todo { font-size: 11px; color: #8B8779; background: rgba(139,135,121,.14); padding: 1px 7px; border-radius: 999px; margin-right: 6px; line-height: 1.5; }

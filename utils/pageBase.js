@@ -149,7 +149,10 @@ function pageBase(extra) {
         const desc = di >= 0 ? (r.ext || [])[di] || '' : '';
         const head = [isPick ? r.txt : '', desc || (isPick ? '' : (r.txt || ''))].filter(Boolean).join('·');
         const parts = store.buildExt(r.m, r.ext, r.extSrc).map(d => (d.lbl ? d.lbl + '：' : '') + d.v);
-        if (r.m === 'want' && r.status) {   // 可做的流转状态不在细节里，单独补一项
+        // 觉察（含三合一之前的老键）：做没做的状态不在细节里，单独补一项。
+        // 没状态就不补——"不跟踪"不该在复制出来的文本里写成「状态：未做」，
+        // 那会让人以为这条记录被标过"没做"
+        if ((r.m === 'aware' || r.m === 'obs' || r.m === 'now' || r.m === 'want') && r.status) {
           const st = r.status === 'doing' ? '在做' : (r.status === 'done' ? '做了' : (r.status === 'abandon' ? '不做' : '未做'));
           parts.push('状态：' + st);
         }

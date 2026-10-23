@@ -18,7 +18,11 @@ const app = getApp();
    所以这张表只登记「需要补」的维度。查表而不是 if 链，是为了让「不补」成为
    默认答案：将来加新维度时，不写进来就不会莫名其妙多出一片空白，
    而真需要补的（跟着二级筛变的那种）忘了写，检查会报出来（见 tools/check-syntax.py）。 */
-const STAT_PADS = { obs: 4 };
+const STAT_PADS = { aware: 4 };
+// 三合一之前的老维度键（迁移没跑完的机器上仍可能出现）
+const LEGACY_M = { obs: 1, now: 1, want: 1 };
+// 大类不在池里的记录（老记录 / 手填过的大类）：二级筛里给一个「其它」兜住，否则这些记录筛不出来
+const AWARE_OTHER = '其它';
 
 /* 「按类别 / 类型数数量」的那三个维度：各取哪个选项池。
    loadStats（云端计数）与 catStatsVM（客户端计数 / 呈现）都查这一张——
@@ -122,10 +126,10 @@ Page(pageBase({
 
   recVM(r) {
     const dt = store.buildExt(r.m, r.ext, r.extSrc);
-    const doingDays = (r.m === 'want' && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
+    const doingDays = ((r.m === 'aware' || LEGACY_M[r.m]) && r.status === 'doing' && r.startedAt) ? Math.max(1, Math.floor((Date.now() - r.startedAt) / 86400000)) : 0;
     // 做了 的历时：可做→做了（status=done）或历史遗留 m='done' 记录
     let fromLine = '', durLine = '';
-    const isDoneView = (r.m === 'done') || (r.m === 'want' && r.status === 'done');
+    const isDoneView = (r.m === 'done') || ((r.m === 'aware' || LEGACY_M[r.m]) && r.status === 'done');
     if (isDoneView) {
       const refTxt = r.refTxt || '';
       const endTs = r.doneAt || r.ts;                        // 完成时间：want-done 用 doneAt；遗留 done 用 ts
@@ -144,18 +148,27 @@ Page(pageBase({
       if (ds) durLine = ds === '片刻' ? durLabel + ds : durLabel + ' ' + ds;
     }
     // 觉察：有结束时间则显示「历时」（从创建到结束）
-    if (r.m === 'obs' && r.endTs && r.ts && r.endTs > r.ts) {
+    if ((r.m === 'aware' || LEGACY_M[r.m]) && r.endTs && r.ts && r.endTs > r.ts) {
       const ds = date.fmtDur(r.endTs - r.ts);
       if (ds) durLine = ds === '片刻' ? '历时片刻' : '历时 ' + ds;
     }
     // 不做 的历时：从创建到放弃（惦记了多久）
-    if (r.m === 'want' && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
+    if ((r.m === 'aware' || LEGACY_M[r.m]) && r.status === 'abandon' && r.abandonedAt && r.ts && r.abandonedAt >= r.ts) {
       const ds = date.fmtDur(r.abandonedAt - r.ts);
       if (ds) durLine = ds === '片刻' ? '惦记了片刻' : '惦记了 ' + ds;
     }
     const v = vm.baseVM(r);
     v.dt = dt;
     v.doingDays = doingDays;
+    // 觉察的「做没做」小标：口径与记页 recVM 逐字一致（有状态就显示；没状态但标了性质显示未做；
+    // 纯感受记录不显示）。「在做」由「第 N 天」表达，这里不重复
+    if (r.m === 'aware' || LEGACY_M[r.m]) {
+      const sv = r.status || '';
+      const hasKind = (r.extSrc || []).indexOf('wantKind') >= 0;
+      if (sv === 'done') { v.st = '做了'; v.stCls = 'done'; }
+      else if (sv === 'abandon') { v.st = '不做'; v.stCls = 'abandon'; }
+      else if (!sv && hasKind) { v.st = '未做'; v.stCls = 'todo'; }
+    }
     v.dur = durLine;
     v.from = fromLine;
     v.doneAtText = r.doneAt ? ('完成 · ' + date.hhmm(r.doneAt)) : '已完成';
@@ -192,8 +205,11 @@ Page(pageBase({
     if (filter === 'today') return { all: true, onlySum: true, total: list.length, bars: [], pads: [] };
     if (useClient) return this.buildStatsFromList(filter, list, rawList);
     const stat = this.data.stat || {};
-    // 「可做」维度：统计各流转状态（未做 / 在做 / 做了 / 不做）
-    if (filter === 'want') {
+    // 觉察（三合一）：统计条＝**做没做的四态**（未做 / 在做 / 做了 / 不做），
+    // 与「最常记的事」（按大类 txt 聚合）并列——前者回答「我这件事推进到哪了」，
+    // 后者回答「我都在琢磨什么」。原来这是两张统计（觉察的归类 / 可做的流转），
+    // 合并后终于能在同一屏里对照：想做里多少做了、得做里多少不做
+    if (filter === 'aware' || LEGACY_M[filter]) {
       const cnt = stat.bySt || { todo: 0, doing: 0, done: 0, abandon: 0 };
       const defs = [
         { n: '未做', k: 'todo', c: '#C0A05A' },
@@ -204,7 +220,15 @@ Page(pageBase({
       const mx = Math.max(1, cnt.todo, cnt.doing, cnt.done, cnt.abandon);
       const total = cnt.todo + cnt.doing + cnt.done + cnt.abandon;
       const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
-      return { all: false, title: '可做 · 流转', lead: `共 ${total} 条`, bars, extra: '' };
+      const tops = stat.tops || [];
+      const e = stat.ext || {};
+      const fg = e['忘了时间'] || 0, chg = e['充电'] || 0, tire = e['耗电'] || 0;
+      const extra = total ? `忘了时间 ${fg}/${total}（${Math.round(fg / total * 100)}%）· 充电 ${chg} · 耗电 ${tire}` : '';
+      return {
+        all: false, title: '觉察 · 做没做',
+        lead: tops.length ? `最常记的事：${tops[0].txt} · ${tops[0].n} 次（共 ${total} 条）` : `共 ${total} 条`,
+        bars, extra
+      };
     }
     // 「随记」：与待办一个口径——只数数量，不做「最常记的」文本 Top（随记多是
     // 一次性的一句话，比拼哪句话记得多没什么参考价值）；数量按类别分（可增删，取选项池）
@@ -238,19 +262,13 @@ Page(pageBase({
     const total = stat.total || 0;
     const mxv = tops.length ? tops[0].n : 1;
     const bars = tops.slice(0, 4).map(t => ({ n: t.txt, c: store.mcolor(filter), n2: t.n, w: Math.round(t.n / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
-    let extra = '';
-    if (filter === 'obs' && total) {
-      const e = stat.ext || {};
-      const fg = e['忘了时间'] || 0, chg = e['充电'] || 0, tire = e['耗电'] || 0;
-      extra = `忘了时间 ${fg}/${total}（${Math.round(fg / total * 100)}%）· 充电 ${chg} · 耗电 ${tire}`;
-    }
-    return { all: false, title: store.mname(filter), lead: tops.length ? `${labelMap[filter]}：${tops[0].txt} · ${tops[0].n} 次` : '这个模块还没有记录', bars, extra };
+    const labelMap = { aware: '最常记的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
+    return { all: false, title: store.mname(filter), lead: tops.length ? `${labelMap[filter]}：${tops[0].txt} · ${tops[0].n} 次` : '这个模块还没有记录', bars, extra: '' };
   },
 
   // 客户端统计（搜索态专用：list 是搜索后的全量结果）
   buildStatsFromList(filter, list, rawList) {
-    if (filter === 'want') {
+    if (filter === 'aware' || LEGACY_M[filter]) {
       const cnt = { todo: 0, doing: 0, done: 0, abandon: 0 };
       list.forEach(r => {
         const st = r.status || '';
@@ -267,7 +285,13 @@ Page(pageBase({
       ];
       const mx = Math.max(1, cnt.todo, cnt.doing, cnt.done, cnt.abandon);
       const bars = defs.map(d => ({ n: d.n, c: d.c, n2: cnt[d.k], w: Math.round(cnt[d.k] / mx * 100) + '%' }));
-      return { all: false, title: '可做 · 流转', lead: `共 ${list.length} 条`, bars, extra: '' };
+      // 充耗 / 沉浸：与上面四条同一批记录（搜索态就在客户端数，口径与服务端那份逐字一致）
+      const n = list.length;
+      const fg = list.filter(r => (r.ext || []).indexOf('忘了时间') >= 0).length;
+      const chg = list.filter(r => (r.ext || []).indexOf('充电') >= 0).length;
+      const tire = list.filter(r => (r.ext || []).indexOf('耗电') >= 0).length;
+      const extra = n ? `忘了时间 ${fg}/${n}（${Math.round(fg / n * 100)}%）· 充电 ${chg} · 耗电 ${tire}` : '';
+      return { all: false, title: '觉察 · 做没做', lead: `共 ${n} 条`, bars, extra };
     }
     // 「随记」：与 buildStats 同一套（搜索态就在客户端数各类别的条数），
     // 同样不跟二级类别走——用没过类别筛的那份（rawList），跟「全部」时一个数字
@@ -307,9 +331,10 @@ Page(pageBase({
     const keys = Object.keys(acc).sort((a, b) => acc[b] - acc[a]).slice(0, 4);
     const mxv = keys.length ? acc[keys[0]] : 1;
     const bars = keys.map(k => ({ n: k, c: store.mcolor(filter), n2: acc[k], w: Math.round(acc[k] / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
+    const labelMap = { aware: '最常记的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
     let extra = '';
-    if (filter === 'obs' && list.length) {
+    // 觉察（含老键）：充耗/沉浸的条数——与上面「做没做」四条同一批记录
+    if ((filter === 'aware' || LEGACY_M[filter]) && list.length) {
       const fg = list.filter(r => (r.ext || []).indexOf('忘了时间') >= 0).length;
       const chg = list.filter(r => (r.ext || []).indexOf('充电') >= 0).length;
       const tire = list.filter(r => (r.ext || []).indexOf('耗电') >= 0).length;
@@ -370,7 +395,7 @@ Page(pageBase({
   rebuild() {
     const all = this.data.recs;
     const q = this.data.q.trim().toLowerCase();
-    const isWant = this.data.filter === 'want';
+    const isWant = this.data.filter === 'aware' || !!LEGACY_M[this.data.filter];
     // 「可以」下「做了」即 want 记录 status=done；统计/标题用模块名
     const effM = this.data.filter;
     const list = all.filter(r => {
@@ -385,9 +410,10 @@ Page(pageBase({
         else f1b = true; // all：未做 + 在做 + 做了 + 不做
         // 分类筛：与流转状态是两条独立的筛，可叠加（同一行里左边选分类、右边选状态）
         if (f1b && this.data.kindFilter !== 'all') f1b = store.wantCat(r) === this.data.kindFilter;
-      } else if (this.data.filter === 'obs' && this.data.kindFilter !== 'all') {
-        // 觉察：喜恶（存在 ext 里的细节值）——搜索态是客户端过滤，非搜索态云端已按它筛过，这里不重复
-        f1b = (r.ext || []).indexOf(this.data.kindFilter) >= 0;
+      } else if (isWant && this.data.kindFilter !== 'all') {
+        // 觉察的二级筛＝「什么事」的大类。大类是主项、存在 txt 里（不在 ext），所以比 txt；
+        // 搜索态是客户端过滤，非搜索态云端已按它筛过，这里不重复
+        f1b = this.data.kindFilter === AWARE_OTHER ? !store.getOPT('awareItem').some(v => v === r.txt) : (r.txt === this.data.kindFilter);
       } else if (this.data.filter === 'todo' && this.data.kindFilter !== 'all') {
         // 待办：类别筛（同上：搜索态客户端过滤，非搜索态云端已按它筛过）
         f1b = store.taskCat(r) === this.data.kindFilter;
@@ -456,7 +482,7 @@ Page(pageBase({
     // 正在看某个「喜恶」/ 某个待办类别 / 某个随记类别 / 某本书·剧类别时，标题也带上它——
     // 避免列表筛过了、标题却说整个模块
     // 「可做」也带分类（它与流转状态是两条筛，标题只写分类：状态那行 chip 自己就亮着）
-    const kn = (['obs', 'todo', 'want'].indexOf(effM) >= 0 || !!CAT_STAT[effM])
+    const kn = (['aware', 'todo'].indexOf(effM) >= 0 || !!LEGACY_M[effM] || !!CAT_STAT[effM])
       && this.data.kindFilter !== 'all' ? ' · ' + this.data.kindFilter : '';
     const filterName = effM === 'all' ? '全部' : (store.mname(effM) + kn);
     // 统计块的标题与列表标题分家：**按类别分布统计的那几个维度不跟二级筛走**
@@ -469,11 +495,11 @@ Page(pageBase({
       // 子筛选取项池：觉察是「喜恶」，待办 / 随记 / 书·剧是「类别」，可做是「分类」——
       // 用户在选项管理里增删后这里自动跟上
       kinds: effM === 'todo' ? store.getOPT('todoKind')
-        : (effM === 'want' ? store.getOPT('wantKind')
+        : (effM === 'aware' || LEGACY_M[effM] ? store.getOPT('awareItem').concat([AWARE_OTHER])
         // 其余按类别分布统计的那三个维度（随记 / 书·剧 / 占卜）统一查 CAT_STAT：
         // 「筛选行显示哪些类别」与「统计按哪些类别分组」必须来自同一张表，
         // 否则会出现「筛选行有『雷诺曼』、统计里却没有这一行」
-        : (CAT_STAT[effM] ? store.getOPT(CAT_STAT[effM]) : store.getOPT('obsKind'))),
+        : (CAT_STAT[effM] ? store.getOPT(CAT_STAT[effM]) : [])),
       filterName, statName,
       days: groups,
       tasks: this.buildTasks(tasks),
@@ -530,7 +556,8 @@ Page(pageBase({
   effQuery() {
     let m = this.data.filter === 'all' ? null : this.data.filter;
     let state = null;
-    if (this.data.filter === 'want') {
+    const isAwareF = this.data.filter === 'aware' || !!LEGACY_M[this.data.filter];
+    if (isAwareF) {
       state = this.data.stateFilter === 'doing' ? 'doing'
             : (this.data.stateFilter === 'todo' ? 'todo'
             : (this.data.stateFilter === 'done' ? 'done'
@@ -544,14 +571,20 @@ Page(pageBase({
     // 判据是「这一行到底有没有二级筛选」：有就必须交给云端。
     // 写成枚举的话，将来给某个维度加了二级筛却忘了加进这个名单，
     // 症状是「筛选看着生效了，可翻页后混进别的记录」——很难一眼看出是查询漏了条件。
-    const subF = this.data.filter === 'obs' || this.data.filter === 'todo'
-      || this.data.filter === 'want' || !!CAT_STAT[this.data.filter];
-    const extTags = (subF && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
+    const subF = isAwareF || this.data.filter === 'todo' || !!CAT_STAT[this.data.filter];
+    // 觉察的大类存在 txt 里（不在 ext），所以走 txtIs / txtNotIn；其余维度仍是 extTags
+    let extTags = null, txtIs = null, txtNotIn = null;
+    if (subF && this.data.kindFilter !== 'all') {
+      if (isAwareF) {
+        if (this.data.kindFilter === AWARE_OTHER) txtNotIn = store.getOPT('awareItem');
+        else txtIs = this.data.kindFilter;
+      } else extTags = [this.data.kindFilter];
+    }
     // 「全部」的时间线不看待办、也不看「睡」，所以查询里就把它们排掉：
     // 否则一页 20 条被待办占满，时间线只显示几条、页面短到滚不动，上拉加载更多点了没反应
     // （memo / buy 是合并前的老数据，一并排掉，避免迁移没跑完时混进时间线）
     const mNot = (this.data.filter === 'all') ? ['todo', 'memo', 'buy', 'sleep', 'wake'] : null;
-    return { m, state, extTags, mNot };
+    return { m, state, extTags, txtIs, txtNotIn, mNot };
   },
   // 重置并加载第一页 + 统计总数
   resetLoad() {
@@ -668,11 +701,22 @@ Page(pageBase({
       store.countByModule({ startTs, projectId: store.curProject() }).then(byMod => set({ byMod }));
       return;
     }
-    if (f === 'want') {
-      // 筛了分类时状态分布也落在同一批记录上（与觉察筛喜恶同一口径；
-      // 状态不是分类分布，跟着筛才和上面的列表对得上——随记那套「不跟筛走」只适用于类别分布）
-      const tags = this.data.kindFilter !== 'all' ? [this.data.kindFilter] : null;
-      store.countByStatus({ startTs, extTags: tags, projectId: store.curProject() }).then(bySt => set({ bySt }));
+    if (f === 'aware' || LEGACY_M[f]) {
+      /* 觉察（三合一）：一次取齐四样东西——
+         ① 做没做的四态分布（跟大类筛走：列表筛过了，数字得对得上）；
+         ② 最常记的事（**不跟**大类筛：它就是"各事各多少条"，再被当前大类筛一遍只剩自己）；
+         ③④⑤ 沉浸 / 充电 / 耗电的条数（充耗是同一次「做了」留下的，跟筛走）。 */
+      const q = { startTs, projectId: store.curProject(), txtIs, txtNotIn };
+      Promise.all([
+        store.countByStatus(q),
+        store.countByTxt({ m: 'aware', startTs, projectId: store.curProject() }),
+        store.countRecords(Object.assign({ m: 'aware', extTags: ['忘了时间'] }, q)),
+        store.countRecords(Object.assign({ m: 'aware', extTags: ['充电'] }, q)),
+        store.countRecords(Object.assign({ m: 'aware', extTags: ['耗电'] }, q))
+      ]).then(([bySt, tops, fg, chg, tire]) => set({
+        bySt, tops: tops || [],
+        ext: { '忘了时间': fg || 0, '充电': chg || 0, '耗电': tire || 0 }
+      }));
       return;
     }
     // 随记 / 书·剧 / 占卜：按「类别 / 类型」数数量（取值自选项池，可增删）——和待办一样
@@ -697,20 +741,9 @@ Page(pageBase({
       });
       return;
     }
-    // 觉察筛了喜恶时，统计也跟着落在同一个筛选里
-    //（不然列表是筛过的、数字却是全模块的）
-    const tags = (f === 'obs' && this.data.kindFilter !== 'all') ? [this.data.kindFilter] : null;
-    const jobs = [store.countRecords({ m: f, startTs, extTags: tags, projectId: store.curProject() }), store.countByTxt({ m: f, startTs, extTags: tags, projectId: store.curProject() })];
-    if (f === 'obs') {
-      const withTag = (t) => (tags ? tags.concat([t]) : [t]);
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('忘了时间'), projectId: store.curProject() }));
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('充电'), projectId: store.curProject() }));
-      jobs.push(store.countRecords({ m: 'obs', startTs, extTags: withTag('耗电'), projectId: store.curProject() }));
-    }
-    Promise.all(jobs).then(([total, tops, fg, chg, tire]) => {
-      const stat = { total: total || 0, tops: tops || [] };
-      if (f === 'obs') stat.ext = { '忘了时间': fg || 0, '充电': chg || 0, '耗电': tire || 0 };
-      set(stat);
+    const jobs = [store.countRecords({ m: f, startTs, projectId: store.curProject() }), store.countByTxt({ m: f, startTs, projectId: store.curProject() })];
+    Promise.all(jobs).then(([total, tops]) => {
+      set({ total: total || 0, tops: tops || [] });
     });
   },
   // 搜索：全量拉取后客户端过滤（搜索需覆盖全部记录，不走游标分页）
@@ -1008,7 +1041,7 @@ Page(pageBase({
   },
 
   /* 记录操作条统一入口（与记页共用 rec-actions 组件；看页行为：流转/改/结束 跳到记页（结束时间待「保存修改」时才记），恢复/删 本地直接处理）
-     type: start | complete | abandon | restore | end | edit | del */
+     type: start | complete | abandon | restore | again | edit | del */
   onRecAction(e) {
     const type = e.detail.type;
     const id = this.data.sel; if (id == null) return;
@@ -1029,7 +1062,7 @@ Page(pageBase({
       return;
     }
     if (type === 'start' || type === 'complete' || type === 'abandon') {
-      if (r.m !== 'want') return;
+      if (!(r.m === 'aware' || LEGACY_M[r.m])) return;
       app.globalData.editRec = r;
       if (type === 'start') app.globalData.editStart = true;
       if (type === 'complete') app.globalData.editComplete = true;
@@ -1039,7 +1072,7 @@ Page(pageBase({
       return;
     }
     if (type === 'restore') {
-      if (r.m !== 'want' || r.status !== 'abandon') return;
+      if (!(r.m === 'aware' || LEGACY_M[r.m]) || r.status !== 'abandon') return;
       const now = Date.now();
       const apply = (rec) => {
         rec.status = '';
@@ -1058,13 +1091,11 @@ Page(pageBase({
       this.setData({ recs: this.data.recs.slice(), sel: null, selRec: null }, () => this.rebuild());
       return;
     }
-    if (type === 'end') {
-      if (r.m !== 'obs') return;
-      // 不在这里落结束时间：只标记待结束，跳到记页编辑态并聚焦「感受」输入框、弹键盘，
-      // 等点「保存修改」时才记录结束时间并写云
-      app.globalData.editRec = r;
-      app.globalData.editEnding = true;
-      app.globalData.editEndFocus = true;
+    if (type === 'again') {
+      /* 「再做一次」：不在这里建记录，把这条交给记页去**预填**（点「记下」才落库），
+         与记页内点这个按钮的效果完全一致——两页共用一个动作，别各写一份 */
+      if (!(r.m === 'aware' || LEGACY_M[r.m]) || r.status !== 'done') return;
+      app.globalData.againRec = r;
       this.setData({ sel: null, selRec: null });
       wx.switchTab({ url: '/pages/index/index' });
       return;
