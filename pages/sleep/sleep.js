@@ -59,7 +59,8 @@ Page(pageBase({
     this.ensureTheme();
     this.layoutBrand();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 2, theme: store.curTheme() });
+      // selected 必须与 app.json 的 tabBar.list 顺序一致：积跬步=0 / 记=1 / 看=2 / 作息=3 / 设置=4
+      this.getTabBar().setData({ selected: 3, theme: store.curTheme() });
     }
     this.setTabHidden(!!this.data.ed);   // 编辑面板开着时（从后台回来）tab 栏要保持收起
     this._startClock();

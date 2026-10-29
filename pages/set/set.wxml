@@ -90,6 +90,20 @@
       </view>
       <view class="qc-hint">从「待办类别 + 随记类别」里选，最多 {{quickMax}} 个（面板里多了会自动换行）。新增类别去记页相应维度的「✎ 管理」。</view>
 
+      <!-- 维度：记 / 看 / 回看 三处维度行的可见性与顺序，都在这里统一配置。
+           右侧手柄拖动排序；右侧「显示 / 隐藏」切换该维度是否出现在维度行。
+           隐藏的维度在记 / 看不再有标签，回看也不再单列它的统计。 -->
+      <view class="sect-t" style="margin-top:18px">维度</view>
+      <view class="qc-hint" style="margin:0 2px 8px">设置记 / 看 / 回看 里维度标签的「显示」与「顺序」。拖动右侧手柄排序，点右侧「显示 / 隐藏」切换显隐。</view>
+      <view class="modlist">
+        <view wx:for="{{modList}}" wx:key="k" class="mod-row {{modDrag && dragIndex===index ? 'mod-drag' : ''}}" style="{{modDrag && dragIndex===index ? 'transform:translateY(' + dragY + 'px);' : ''}}">
+          <view class="mod-dot" style="background:{{item.c}}"></view>
+          <view class="mod-name {{item.hidden ? 'off' : ''}}">{{item.n}}</view>
+          <view class="mod-hide {{item.hidden ? 'on' : ''}}" data-k="{{item.k}}" bindtap="onModToggle">{{item.hidden ? '显示' : '隐藏'}}</view>
+          <view class="mod-handle" data-i="{{index}}" catchtouchstart="onModHandleStart" catchtouchmove="onModHandleMove" catchtouchend="onModHandleEnd">⠿</view>
+        </view>
+      </view>
+
       <!-- 作息：统计的基准点。「睡」按它算多少夜在它之后 / 之前入睡（默认 0 点），
            「起」按它算多少个早上在它之前 / 之后起（默认 6 点）。时分都能改（原生时间选择器）。
            本地存储（与主题同一套做法），改完「作息」页下次 onShow 整页重算 -->
@@ -141,7 +155,7 @@
     <view class="sh-h"><view class="st">导入记录</view><view class="sx" bindtap="closeImport" aria-label="关闭">✕</view></view>
     <view class="sh-sub">粘贴导出的文本，一行一条</view>
     <view class="sh-list">
-      <textarea class="ta" adjust-position="{{false}}" cursor-spacing="20" value="{{importText}}" bindinput="onImportInput" maxlength="-1" placeholder="日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）"></textarea>
+      <textarea class="ta" adjust-position="{{false}}" cursor-spacing="20" show-confirm-bar="{{false}}" value="{{importText}}" bindinput="onImportInput" maxlength="-1" placeholder="日期 时间 | 维度 | 内容 | 细节（细节用顿号分隔）"></textarea>
       <view class="hint" style="font-size:11.5px;color:var(--ink3);padding:6px 0">只新增，不覆盖已有记录。</view>
     </view>
     <view class="sh-foot">

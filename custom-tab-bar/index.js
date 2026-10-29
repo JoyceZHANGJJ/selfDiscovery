@@ -4,13 +4,14 @@ const tabicons = require('../utils/tabicons.js');
 
 // 底部 tab：ic = 图标名（画法全在 utils/tabicons.js，同一视框 / 同一描边 / 同一视觉尺寸）。
 // 顺序与 app.json 的 tabBar.list 必须一致（switchTab 按下标查 pagePath），selected 索引不能错位。
-// 记 / 看 / 作息 是每天都要看的（作息一天两回：起床、入睡），回看是周 / 月的复盘，往后放。
+// 积跬步（目标树）放最前——进门先想清楚「要往哪走」；记 / 看 / 作息 是每天都要看的
+// （作息一天两回：起床、入睡）；设置收尾。
 const TABS = [
+  { pagePath: '/pages/jikui/jikui', text: '积跬步', ic: 'jikui' },
   { pagePath: '/pages/index/index', text: '记', ic: 'write' },
   { pagePath: '/pages/look/look', text: '看', ic: 'look' },
   // 「作息」：半明半暗的圆——一页里装着「起 / 睡」两半，昼夜各半正好是这个 tab 的意思
   { pagePath: '/pages/sleep/sleep', text: '作息', ic: 'rest' },
-  { pagePath: '/pages/review/review', text: '回看', ic: 'review' },
   { pagePath: '/pages/set/set', text: '设置', ic: 'set' }
 ];
 

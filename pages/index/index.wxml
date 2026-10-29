@@ -136,7 +136,7 @@
           <!-- 今日的「能量说明」：这句话写长了要能折行、跟着内容自己变高，所以用 textarea（auto-height）——
                其余类别（备忘 / 购物 / 随记）仍是一行的 input：一句话就够，不需要换行。
                注：textarea 没有键盘上的「完成」键（回车＝换行），保存走底部「记下 / 保存修改」 -->
-          <textarea wx:if="{{tag==='today'}}" class="big-in plain-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{todayLocked && !editing}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindinput="onMainInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+          <textarea wx:if="{{tag==='today'}}" class="big-in plain-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{todayLocked && !editing}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" show-confirm-bar="{{false}}" id="fldmain" bindinput="onMainInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
           <input wx:else class="big-in plain-in" placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" disabled="{{tag==='today' && todayLocked && !editing}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" always-embed="{{true}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" />
           <view wx:for="{{composer.items}}" wx:key="index" wx:for-item="it" class="extra">
             <!-- 一行式（准确率）：标题 + 短输入框 + 单位挤在同一行。
@@ -176,7 +176,7 @@
               </block>
               <block wx:else>
                 <view wx:if="{{it.type==='free'}}" class="qrow"><view class="ql">{{it.label}}</view></view>
-                <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+                <textarea wx:if="{{it.type==='free'}}" class="mini-in" auto-height placeholder="{{it.ph}}" value="{{it.val}}" bindinput="onFreeInput" data-k="{{it.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{it.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" show-confirm-bar="{{false}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
               </block>
             </block>
           </view>
@@ -191,12 +191,12 @@
         <!-- 归类 / 什么事：都不给主输入框，只从上面的选项池点选（要靠「✎ 管理」增删），
              这样它始终是可归类的名词，不会被写成一整句话。
              可做的文字输入走下面「具体的描述」那个框——只填它时，它就是「事」（见 doSave） -->
-        <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+        <textarea wx:if="{{composer.mainInput}}" class="big-in" auto-height placeholder="{{composer.mainPh}}" value="{{composer.mainVal}}" bindinput="onMainInput" bindconfirm="doSave" confirm-type="done" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" show-confirm-bar="{{false}}" id="fldmain" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
 
         <!-- 具体的描述：与「归类」配对（点可归类、描述不可归类），自由记录、可跳过，不带标题。
              maxlength="-1"：textarea 不写这个属性时微信默认只给 140 字，写长了会被无声截断 -->
         <view wx:if="{{composer.hasDesc}}" class="extra descrow">
-          <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+          <textarea class="mini-in" auto-height placeholder="{{composer.descPh}}" value="{{composer.descVal}}" bindinput="onDescInput" id="flddesc" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" show-confirm-bar="{{false}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
         </view>
 
         <view class="extra-h">细节 · 都可跳过</view>
@@ -229,7 +229,7 @@
               <text wx:if="{{item.unit}}" class="unit">{{item.unit}}</text>
             </view>
           </view>
-          <textarea wx:elif="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
+          <textarea wx:elif="{{item.type==='free'}}" class="mini-in" auto-height placeholder="{{item.ph}}" value="{{item.val}}" bindinput="onFreeInput" data-k="{{item.key}}" data-idx="{{index}}" id="fld{{index}}" focus="{{item.type==='free' && index===focusIdx}}" adjust-position="{{true}}" cursor-spacing="{{kbGap}}" show-confirm-bar="{{false}}" bindfocus="onFieldFocus" bindblur="onFieldBlur" bindkeyboardheightchange="onFieldKb" maxlength="-1"></textarea>
         </view>
         </block>
         </block>

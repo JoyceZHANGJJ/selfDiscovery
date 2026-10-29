@@ -82,7 +82,7 @@
               <view class="c-t">提示词正文</view>
               <view class="c-clear" bindtap="resetDefault">恢复默认</view>
             </view>
-            <textarea class="ta" auto-height adjust-position="{{false}}" cursor-spacing="20"
+            <textarea class="ta" auto-height adjust-position="{{false}}" cursor-spacing="20" show-confirm-bar="{{false}}"
                       maxlength="-1" value="{{cur.body}}" bindinput="onBodyInput"
                       placeholder="写你要用的提示词。例：&#10;【硬性】不要用「可能」「也许」这类词下判断。"></textarea>
             <input class="mini-in lb" placeholder="这次为什么改（选填，会留在历史版本里）"
@@ -147,7 +147,7 @@
           <view class="c-t">提示词</view>
           <view class="c-clear" bindtap="onClearInput">清空</view>
         </view>
-        <textarea class="ta" auto-height adjust-position="{{false}}" cursor-spacing="20"
+        <textarea class="ta" auto-height adjust-position="{{false}}" cursor-spacing="20" show-confirm-bar="{{false}}"
                   maxlength="-1" value="{{rules}}" bindinput="onRulesInput"
                   placeholder="写要试的那一段。例：&#10;【硬性】actions 里的「执行时机」必须写出具体钟点（如 21:30），不要写「晚上」。"></textarea>
 

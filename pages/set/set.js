@@ -41,7 +41,12 @@ Page(pageBase({
     favCount: 0,       // 常用主题已勾数量
     favMax: store.FAVTHEMES_MAX,   // 常用主题上限（store 里单一来源）
     slAnchor: '00:00', // 「睡」的基准点（HH:MM，原生时间选择器用；见 store 的 ANCHOR_*）
-    wkAnchor: '06:00'  // 「起」的基准点（同上）
+    wkAnchor: '06:00', // 「起」的基准点（同上）
+    // 维度显隐 / 排序：记 / 看 / 回看 三处维度行的可见性与顺序（store.moduleViewList 本地读取，不依赖云）
+    modList: [],       // 完整维度列表（含隐藏），带 k / n / c / hidden，按用户顺序
+    modDrag: false,    // 是否正在拖动排序
+    dragIndex: -1,     // 正在拖的那一项下标
+    dragY: 0           // 拖动项相对其插槽中心的纵向位移（px，让被拖项跟着手指走）
   },
 
   g: null,
@@ -54,6 +59,7 @@ Page(pageBase({
     // selected 按 app.json 的 tabBar.list 下标：记0 / 看1 / 作息2 / 回看3 / 设置4
     if (tb) tb.setData({ selected: 4, hidden: this._anyOverlay(), theme: wx.getStorageSync('theme') || 'mint' });
     this._rehideTabBar();   // 后台回来那一瞬间 tabBar 有自己的复位时序，过一拍再收一次
+    this.buildModList();    // 维度显隐 / 排序：本地读取，不依赖云端就绪
     this.buildThemeOpts();   // 主题表 / 当前 / 常用：右上圆点那边改过主题时，切回设置页要能看到最新的
     // 作息的两个基准点是本地存储，进页时把选择器回填成当前值（HH:MM 文本，picker mode="time" 要的格式）
     this.setData({
@@ -217,6 +223,62 @@ Page(pageBase({
     const v = store.setAnchor(kind, (+m[1]) * 60 + (+m[2]));
     this.setData(kind === 'sleep' ? { slAnchor: store.minTxt(v) } : { wkAnchor: store.minTxt(v) });
     wx.showToast({ title: (kind === 'sleep' ? '睡' : '起') + '的基准点 ' + store.minTxt(v), icon: 'none', duration: 800 });
+  },
+
+  /* 维度显隐 / 排序：记 / 看 / 回看 三处维度行的可见性与顺序，都从这里统一配置 */
+  buildModList() { this.setData({ modList: store.moduleViewList() }); },
+  // 切换单个维度显隐（隐藏＝在记 / 看维度行不再有标签，回看也不再单列它的统计）
+  onModToggle(e) {
+    const k = e.currentTarget.dataset.k;
+    const it = (this.data.modList || []).find(m => m.k === k);
+    if (!it) return;
+    store.setModuleHidden(k, !it.hidden);
+    this.buildModList();
+  },
+  /* 拖动排序：拖动只发生在右侧手柄（catchtouch*，拖动时不触发页面滚动），
+     其余区域（名称 / 显隐按钮）仍可正常滚动与点击。 */
+  onModHandleStart(e) {
+    this._mhx = e.touches[0].clientY;     // 按下时的 Y（阈值判定起点）
+    this._mhi = +e.currentTarget.dataset.i;
+    this._mDrag = false;
+    this._measureModRows();   // 先量好首行位置 / 行高，拖动一开始就能算插槽
+  },
+  _measureModRows() {
+    wx.createSelectorQuery().select('.mod-row').boundingClientRect(rect => {
+      if (rect) { this._mTop = rect.top; this._mH = rect.height || 52; }
+    }).exec();
+  },
+  onModHandleMove(e) {
+    const y = e.touches[0].clientY;
+    if (!this._mDrag) {
+      // 位移超过阈值才真正进入拖动，避免「点一下手柄」就被当成拖
+      if (Math.abs(y - (this._mhx || y)) < 6) return;
+      this._mDrag = true;
+      this._mDragI = this._mhi;
+      this.setData({ modDrag: true, dragIndex: this._mhi });
+    }
+    const n = (this.data.modList || []).length;
+    if (!n) return;
+    const h = this._mH || 52;          // 行高（量不到时按 52 兜底，至少能拖）
+    let over = Math.floor((y - (this._mTop || 0)) / h);
+    if (over < 0) over = 0; if (over > n - 1) over = n - 1;
+    // 跨过插槽中点：把被拖项在数组里挪到新位置（视图行随之重排）
+    if (over !== this._mDragI) {
+      const list = this.data.modList.slice();
+      const it = list.splice(this._mDragI, 1)[0];
+      list.splice(over, 0, it);
+      this._mDragI = over;
+      this.setData({ modList: list, dragIndex: over });
+    }
+    // 被拖项跟着手指：相对其当前插槽中心偏移
+    const ty = y - (this._mTop || 0) - this._mDragI * h - h / 2;
+    this.setData({ dragY: ty });
+  },
+  onModHandleEnd() {
+    if (!this._mDrag) { this._mDrag = false; return; }
+    this._mDrag = false;
+    store.setModuleOrder((this.data.modList || []).map(m => m.k));   // 持久化新顺序
+    this.setData({ modDrag: false, dragIndex: -1, dragY: 0 });
   },
 
   /* 数据：导出 / 导入 / 清空 */

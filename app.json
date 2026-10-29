@@ -1,5 +1,6 @@
 {
   "pages": [
+    "pages/jikui/jikui",
     "pages/index/index",
     "pages/look/look",
     "pages/review/review",
@@ -24,10 +25,10 @@
     "selectedColor": "#7C9A86",
     "backgroundColor": "#FAF8F4",
     "list": [
+      { "pagePath": "pages/jikui/jikui", "text": "积跬步" },
       { "pagePath": "pages/index/index", "text": "记" },
       { "pagePath": "pages/look/look", "text": "看" },
       { "pagePath": "pages/sleep/sleep", "text": "作息" },
-      { "pagePath": "pages/review/review", "text": "回看" },
       { "pagePath": "pages/set/set", "text": "设置" }
     ]
   },

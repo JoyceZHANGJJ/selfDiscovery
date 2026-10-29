@@ -63,6 +63,9 @@ App({
       db.collection('usercfg').count()
         .catch(err => console.warn('[云自检] usercfg 集合不可用（集合可能未创建）；'
           + '请在云开发控制台新建该集合，否则问候语/自定义维度/选项顺序只存本地：', err && err.errMsg || err));
+      db.collection('jikui').count()
+        .catch(err => console.warn('[云自检] jikui 集合不可用（集合可能未创建）；'
+          + '请在云开发控制台新建名为 jikui 的集合，否则积跬步的愿景/待办只存本机、无法跨设备同步：', err && err.errMsg || err));
     } catch (e) {
       console.error('[云自检] 云能力初始化异常：', e);
     }

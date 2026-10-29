@@ -45,7 +45,8 @@ const COLMAP = {
   'free:divCard': '抽到的牌', 'free:divRead': '解读', 'free:review': '回顾',
   'free:divAcc': '准确率',
   bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
-  'free:bookWhy': '记入原因'
+  'free:bookWhy': '记入原因',
+  turnMood: '情绪', turnUnknown: '转念', 'free:turnNew': '转念'
 };
 // 带单位的字段（与 utils/store.js 的 UNIT_SUFFIX 同源，check_rec_labels 守着两边一致）。
 // 存储里只存数字，回读时在这里补单位：不补的话 AI 看到「准确率：80」，
@@ -67,7 +68,7 @@ function withUnit(src, v) {
 // 在人读的导出里叫「做了」、在 AI 眼里叫「done」（check_rec_labels() 会守住这条）。
 const MODULE_N = {
   today: '今日', obs: '觉察', now: '此刻', want: '可做',
-  todo: '待办', jot: '随记', sleep: '睡', wake: '起', done: '做了', div: '占卜', book: '书·剧'
+  todo: '待办', jot: '随记', sleep: '睡', wake: '起', done: '做了', div: '占卜', book: '书·剧', turn: '转念'
 };
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
 

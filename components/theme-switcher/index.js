@@ -70,9 +70,22 @@ Component({
     // 取胶囊位置，把控件定位在它左侧（矩形走 ui.capsuleRect()，与会话内其它取胶囊处同一份）
     position() {
       const mb = ui.capsuleRect();
-      if (!mb) { this.setData({ style: 'position:fixed;top:24px;right:92px;z-index:60;' }); return; }
-      const right = mb.windowWidth - mb.left + 8;
-      this.setData({ style: 'position:fixed;top:' + mb.top + 'px;right:' + right + 'px;height:' + mb.height + 'px;z-index:60;' });
+      let right, top, height;
+      if (!mb) { right = 92; top = 24; height = 32; }
+      else { right = mb.windowWidth - mb.left + 8; top = mb.top; height = mb.height; }
+      this.setData({ style: 'position:fixed;top:' + top + 'px;right:' + right + 'px;height:' + height + 'px;z-index:60;' });
+      // 把自身占位（右缘距右边 + 自身宽度）抛给宿主页面，
+      // 便于页面右侧的其它悬浮控件（如积跬步的「全部事项」胶囊）精确排在它左边，而不是各量各的
+      this._emitPlaced(right);
+    },
+    // 测量自身宽度并触发 placed 事件；量不到时用 100 作保守回退
+    _emitPlaced(right) {
+      const q = wx.createSelectorQuery().in(this);
+      q.select('.tsw').boundingClientRect();
+      q.exec(res => {
+        const w = res && res[0] && res[0].width;
+        this.triggerEvent('placed', { right: right, width: w || 100 });
+      });
     },
     applyTheme() {
       this.setData({ name: store.themeOf(store.curTheme()).n });

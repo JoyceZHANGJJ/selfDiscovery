@@ -1,0 +1,231 @@
+<view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
+  <view class="statusbar-mask"></view>
+  <view class="screen">
+    <!-- 顶栏：仅保留状态栏占位（内容从它下方开始，避免进入状态栏）；标题已去除 -->
+    <view class="jk-head"></view>
+
+    <!-- 目录入口：悬浮胶囊，与微信胶囊同高对齐（位于起睡胶囊左侧），点开事项导航 -->
+    <view class="jk-dirpill {{navOpen ? 'cur' : ''}}" style="top:{{dirTop}}px;right:{{dirRight}}px;height:{{dirH}}px;" bindtap="openNav" aria-label="全部事项">全部事项</view>
+
+    <view class="jk-body">
+      <!-- 空状态 -->
+      <view wx:if="{{goalsView.length === 0}}" class="jk-empty">
+        <view class="jk-empty-t">还没有事项</view>
+        <view class="jk-empty-p">从"新建事项"开始，比如：我想每天读 30 分钟书。</view>
+        <view class="jk-empty-btn" bindtap="newGoal">＋ 创建你的第一个事项</view>
+      </view>
+
+      <block wx:for="{{goalsView}}" wx:key="gid" wx:for-item="g">
+        <view id="jkg-{{g.gid}}" class="jk-goal {{g.expanded ? '' : 'collapsed'}} {{g.completed ? 'done' : ''}} {{g.isOverview ? 'ov' : ''}}">
+          <!-- 头部：概览态整卡可点进入单事项；单事项态由三角 / 标题 / 操作各自处理 -->
+          <view class="jk-goal-head {{g.isOverview ? 'ov' : ''}}" bindtap="onHeadTap" data-gid="{{g.gid}}">
+            <view class="jk-goal-row">
+              <view wx:if="{{g.isOverview}}" class="jk-chev ov">▸</view>
+              <view wx:else class="jk-chev" bindtap="toggleGoal" data-gid="{{g.gid}}">{{g.expanded ? '▾' : '▸'}}</view>
+              <input wx:if="{{g.editingTitle}}" class="jk-goal-input" value="{{goalDraft}}" focus="{{true}}"
+                bindinput="onGoalDraftInput" bindconfirm="finishGoalEdit" bindblur="finishGoalEdit"
+                data-gid="{{g.gid}}" placeholder="事项标题" maxlength="50" />
+              <block wx:else>
+                <view wx:if="{{g.isOverview}}" class="jk-goal-title">{{g.title}}</view>
+                <view wx:else class="jk-goal-title" bindtap="editGoal" data-gid="{{g.gid}}">{{g.title}}</view>
+              </block>
+              <view class="jk-prog">
+                <view class="jk-bar"><view class="jk-bar-i" style="width:{{g.progress.pct}}%"></view></view>
+                <text class="jk-prog-t">{{g.progress.done}}/{{g.progress.total}}</text>
+              </view>
+              <view wx:if="{{!g.isOverview}}" class="jk-g-acts">
+                <view class="jk-ib" bindtap="editGoalDesc" data-gid="{{g.gid}}">≡</view>
+                <view class="jk-ib {{g.completed ? 'done' : ''}}" bindtap="onGoalToggle" data-gid="{{g.gid}}">{{g.goalBtn}}</view>
+                <view class="jk-ib del" bindtap="delGoal" data-gid="{{g.gid}}">✕</view>
+              </view>
+            </view>
+            <view class="jk-goal-meta">
+              <text class="jk-status {{g.completed ? 'done' : ''}} {{g.notStarted ? 'idle' : ''}}">{{g.statusText}}</text>
+              <text class="jk-elapsed">{{g.elapsedLabel}}</text>
+            </view>
+            <view wx:if="{{g.desc}}" class="jk-goal-desc">{{g.desc}}</view>
+          </view>
+
+          <!-- 概览态：只展示该事项下「生效中」的第一个待办 -->
+          <view wx:if="{{g.isOverview}}" class="jk-goal-body ov">
+            <view wx:if="{{g.firstTodo}}" class="jk-node" style="padding-left:8px">
+              <view class="jk-row">
+                <view class="jk-twirl" style="visibility:hidden"></view>
+                <view class="jk-check {{g.firstTodo.isRepeat ? 'repeat' : ''}} {{g.firstTodo.status === 1 ? 'done' : ''}}" bindtap="toggleDone" data-gid="{{g.gid}}" data-tid="{{g.firstTodo.tid}}">{{g.firstTodo.isRepeat ? '↻' : '✓'}}</view>
+                <view class="jk-label">{{g.firstTodo.title}}</view>
+                <view class="jk-ov-go" catchtap="enterGoal" data-gid="{{g.gid}}">全部 ›</view>
+              </view>
+            </view>
+            <view wx:else class="jk-ov-empty">暂无进行中的待办</view>
+          </view>
+
+          <!-- 单事项态：展开该事项的全部待办 -->
+          <view wx:else>
+            <view wx:if="{{g.expanded}}" class="jk-goal-body">
+              <block wx:for="{{g.todosView}}" wx:key="key" wx:for-item="t">
+                <!-- 待办节点 -->
+                <view wx:if="{{t.kind === 'todo'}}" class="jk-node {{t.status === 1 ? 'done' : ''}}" style="padding-left:{{t.depth * 20 + 8}}px">
+                  <view class="jk-row">
+                    <view class="jk-twirl {{t.hasChildren ? 'has' : ''}}" bindtap="toggleNode" data-gid="{{g.gid}}" data-tid="{{t.tid}}">{{t.collapsed ? '▸' : '▾'}}</view>
+                    <view wx:if="{{t.isRepeat}}" class="jk-check repeat" bindtap="toggleDone" data-gid="{{g.gid}}" data-tid="{{t.tid}}">↻</view>
+                    <text wx:if="{{t.isRepeat}}" class="jk-repc {{t.repeatCount > 0 ? 'on' : ''}}">{{t.repeatCount}}</text>
+                    <view wx:else class="jk-check {{t.status === 1 ? 'done' : ''}}" bindtap="toggleDone" data-gid="{{g.gid}}" data-tid="{{t.tid}}">✓</view>
+                    <input wx:if="{{t.editing}}" class="jk-label-input" value="{{draft}}" focus="{{true}}"
+                      bindinput="onDraftInput" bindconfirm="finishTodoEdit" bindblur="finishTodoEdit"
+                      data-gid="{{g.gid}}" data-tid="{{t.tid}}" placeholder="待办标题" maxlength="200" />
+                    <view wx:else class="jk-label" bindtap="editTodo" data-gid="{{g.gid}}" data-tid="{{t.tid}}">{{t.title}}</view>
+                    <view class="jk-acts">
+                      <view class="jk-ib" bindtap="newChild" data-gid="{{g.gid}}" data-tid="{{t.tid}}">├</view>
+                      <view class="jk-ib" bindtap="newSib" data-gid="{{g.gid}}" data-tid="{{t.tid}}">＋</view>
+                      <view class="jk-ib" bindtap="openDetail" data-gid="{{g.gid}}" data-tid="{{t.tid}}">⊙</view>
+                      <view class="jk-ib del" bindtap="delTodo" data-gid="{{g.gid}}" data-tid="{{t.tid}}">✕</view>
+                    </view>
+                  </view>
+                  <view wx:if="{{t.showExpect}}" class="jk-refl expect"><text class="jk-refl-tag">预期结果</text>{{t.expect}}</view>
+                  <view wx:if="{{t.showActual}}" class="jk-refl actual"><text class="jk-refl-tag">实际结果</text>{{t.actual}}</view>
+                  <view wx:if="{{t.isRepeat && t.repeatCount > 0}}" class="jk-refl repeat">
+                    <text class="jk-refl-tag">不定次重复 · 已完成 {{t.repeatCount}} 次</text>
+                    <view class="jk-comp-list">
+                      <view wx:for="{{t.completionsView}}" wx:key="date" wx:for-item="c" class="jk-comp-item">
+                        <text class="jk-comp-date">{{c.date}}</text>
+                        <text wx:if="{{c.actual}}" class="jk-comp-actual">{{c.actual}}</text>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+                <!-- 内联添加输入（子 / 并列） -->
+                <view wx:else class="jk-addrow" style="padding-left:{{t.indent * 20 + 53}}px">
+                  <input class="jk-addin" value="{{draft}}" focus="{{true}}"
+                    bindinput="onDraftInput" bindconfirm="confirmAdd" data-gid="{{g.gid}}" placeholder="输入待办，回车确认" />
+                </view>
+              </block>
+
+              <!-- 根级新增：仅在该事项一个待办都没有时展示（有待办时靠行尾「＋」添加，避免重复入口） -->
+              <view wx:if="{{g.todosView.length === 0}}" class="jk-addrow root" style="padding-left:53px">
+                <input class="jk-addin" value="{{draft}}" focus="{{active && active.type === 'addRoot' && active.gid === g.gid}}"
+                  bindfocus="newRoot" bindinput="onDraftInput" bindconfirm="confirmAdd"
+                  data-gid="{{g.gid}}" placeholder="＋ 给这个事项加一个待办" />
+              </view>
+            </view>
+          </view>
+        </view>
+      </block>
+    </view>
+
+    <view class="jk-foot">数据已同步到云端，换设备也能看到。刷新或重开，进度都在。</view>
+  </view>
+
+  <!-- 目录浮层（事项导航下拉）：依托「☰」按钮、紧贴顶栏下方、左缘与按钮对齐；点哪个事项切到哪个 -->
+  <view wx:if="{{navOpen}}" class="jk-nav-mask" bindtap="closeNav">
+    <view class="jk-nav-caret"></view>
+    <view class="jk-nav {{navDragging ? 'nav-dragging' : ''}}" catchtap="noop">
+      <view class="jk-nav-head">
+        <text class="jk-nav-title">事项</text>
+        <view class="jk-nav-close" bindtap="closeNav" aria-label="收起">✕</view>
+      </view>
+      <view class="jk-nav-list">
+        <!-- 总览入口：回到「每个事项 + 第一步」的概览态 -->
+        <view class="jk-nav-item nav-all {{activeGid ? '' : 'cur'}}" bindtap="backToOverview">
+          <view class="jk-nav-dot all"></view>
+          <view class="jk-nav-info">
+            <text class="jk-nav-name">全部事项</text>
+            <text class="jk-nav-sub">总览 · 每个事项的第一步</text>
+          </view>
+        </view>
+        <view wx:if="{{navList.length === 0 && doneNav.length === 0}}" class="jk-nav-empty">还没有事项，点下面新建一个吧</view>
+        <view wx:for="{{navList}}" wx:key="gid" wx:for-item="n"
+          class="jk-nav-item jk-nav-act {{n.gid === activeGid ? 'cur' : ''}} {{n.gid === dragGid ? 'dragging' : ''}}"
+          style="{{n.gid === dragGid ? 'transform:translateY(' + dragY + 'px);' : ''}}"
+          bindtap="selectGoal" data-gid="{{n.gid}}">
+          <view class="jk-nav-dot"></view>
+          <view class="jk-nav-info">
+            <text class="jk-nav-name">{{n.title}}</text>
+            <text class="jk-nav-sub">{{n.statusText}} · {{n.elapsedLabel}}</text>
+          </view>
+          <view class="jk-nav-pct">{{n.pct}}%</view>
+          <view class="jk-nav-handle" catchtap="noop"
+            bindtouchstart="onNavDragStart" catchtouchmove="onNavDragMove" bindtouchend="onNavDragEnd"
+            data-index="{{index}}" data-gid="{{n.gid}}" aria-label="拖动排序">⠿</view>
+        </view>
+
+        <view wx:if="{{doneNav.length > 0}}" class="jk-nav-done-h" bindtap="toggleDoneNav">
+          <text>已结束（{{doneNav.length}}）</text>
+          <text class="jk-nav-caret">{{doneOpen ? '▾' : '▸'}}</text>
+        </view>
+        <view wx:if="{{doneOpen}}" wx:for="{{doneNav}}" wx:key="gid" wx:for-item="n" class="jk-nav-item done {{n.gid === activeGid ? 'cur' : ''}}" bindtap="selectGoal" data-gid="{{n.gid}}">
+          <view class="jk-nav-dot done"></view>
+          <view class="jk-nav-info">
+            <text class="jk-nav-name">{{n.title}}</text>
+            <text class="jk-nav-sub">{{n.statusText}} · {{n.elapsedLabel}}</text>
+          </view>
+          <view class="jk-nav-reopen" catchtap="onGoalToggle" data-gid="{{n.gid}}">重开</view>
+        </view>
+      </view>
+      <view class="jk-nav-add" bindtap="navAddGoal" aria-label="新建事项">＋ 新建事项</view>
+    </view>
+  </view>
+
+  <!-- 待办详情弹层：预期结果 / 实际结果 -->
+  <view wx:if="{{detailOpen}}" class="jk-overlay" bindtap="cancelDetail">
+    <view class="jk-modal" catchtap="noop">
+      <view class="jk-modal-h">待办详情</view>
+
+      <view class="jk-field-label">预期结果</view>
+      <textarea class="jk-ta" value="{{expectVal}}" maxlength="500" auto-height focus="{{true}}" show-confirm-bar="{{false}}"
+        bindinput="onExpectInput" placeholder="开始前，你期望这一步达成什么？"></textarea>
+      <view class="jk-count"><text>{{expectCount}}</text>/500</view>
+
+      <!-- 不定次重复开关 -->
+      <view class="jk-repeat-row">
+        <view class="jk-repeat-txt">
+          <text class="jk-repeat-name">不定次重复</text>
+          <text class="jk-repeat-sub">勾选后「↻」可一直点完成，记录每次的时间与结果（事项结束后停止）</text>
+        </view>
+        <view class="jk-switch {{repeatOn ? 'on' : ''}}" bindtap="onRepeatToggle"><view class="jk-knob"></view></view>
+      </view>
+
+      <!-- 完成历史：重复 + 编辑模式（只读） -->
+      <block wx:if="{{detailOpen.repeat && !detailOpen.willComplete}}">
+        <view class="jk-field-label">完成记录（{{detailOpen.repeatCount}} 次）</view>
+        <view wx:if="{{detailOpen.completionsView.length === 0}}" class="jk-hist-empty">还没有完成记录，去点「↻」完成一次吧</view>
+        <view wx:else class="jk-comp-list modal">
+          <view wx:for="{{detailOpen.completionsView}}" wx:key="date" wx:for-item="c" class="jk-comp-item">
+            <text class="jk-comp-date">{{c.date}}</text>
+            <text wx:if="{{c.actual}}" class="jk-comp-actual">{{c.actual}}</text>
+            <text wx:else class="jk-comp-actual muted">（未填实际结果）</text>
+          </view>
+        </view>
+      </block>
+
+      <!-- 实际结果：非重复始终可填；重复只在「完成」时填本次 -->
+      <block wx:if="{{!detailOpen.repeat || detailOpen.willComplete}}">
+        <view class="jk-field-label">实际结果</view>
+        <textarea class="jk-ta" value="{{actualVal}}" maxlength="500" auto-height show-confirm-bar="{{false}}"
+          bindinput="onActualInput" placeholder="{{detailOpen.repeat ? '这次完成，实际发生了什么？' : '完成后，实际发生了什么？'}}"></textarea>
+        <view class="jk-count"><text>{{actualCount}}</text>/500</view>
+      </block>
+
+      <view class="jk-ops">
+        <view class="jk-btn" bindtap="cancelDetail">取消</view>
+        <view class="jk-btn primary" bindtap="confirmDetail">{{detailOpen.willComplete ? '完成并保存' : '保存'}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 愿望说明弹层：只编辑说明（标题在卡片上点头部直接改） -->
+  <view wx:if="{{goalDetailOpen}}" class="jk-overlay" bindtap="cancelGoalDetail">
+    <view class="jk-modal" catchtap="noop">
+      <view class="jk-modal-h">事项说明</view>
+
+      <textarea class="jk-ta" value="{{goalDesc}}" maxlength="500" auto-height focus="{{true}}" show-confirm-bar="{{false}}"
+        bindinput="onGoalDescInput" placeholder="写点关于这个事项的说明"></textarea>
+      <view class="jk-count"><text>{{goalDescCount}}</text>/500</view>
+
+      <view class="jk-ops">
+        <view class="jk-btn" bindtap="cancelGoalDetail">取消</view>
+        <view class="jk-btn primary" bindtap="confirmGoalDetail">保存</view>
+      </view>
+    </view>
+  </view>
+  <theme-switcher id="tsw" bind:placed="onTswPlaced" />
+</view>

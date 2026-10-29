@@ -19,6 +19,12 @@ const MODULES = [
   { k: 'today', n: '今日', c: '#B08968' },
   { k: 'obs', n: '觉察', c: '#7C9A86' },
   { k: 'now', n: '此刻', c: '#5E9A94' },
+  /* 转念：情绪 → 当前想法 → 转念。一条「转念」记录的是「我当下被哪一种情绪缠住、
+     脑子里转的是哪句话、后来又换了个什么角度想开了（或暂时想不开，选「不知道」）」。
+     它是觉察的一个专门分支——情绪七分类（烦 / 怒 / 忧 / 思 / 悲 / 恐 / 惊）取自中医七情，
+     比觉察里笼统的「情绪 chips」更聚焦；「转念内容」是自由文本，写不出时就选「不知道」，
+     两者互斥（见 index 的 onChip / onFreeInput）。不进待办 / 清单，只进记录流与时间线。 */
+  { k: 'turn', n: '转念', c: '#C25B4E' },
   { k: 'want', n: '可做', c: '#C0A05A' },
   // 待办：备忘 / 购物 合并而来。一条待办的 m 都是 todo，
   // 「是备忘还是购物」看 ext 里的「类别」（todoKind），颜色也按类别给（见 catColor / taskColor）
@@ -52,6 +58,62 @@ const MODULES = [
 // 「静默」维度：有记录、能统计，但不参与任何"记录流"展示（维度栏 / 时间线 / 复盘各维度 /
 // 记页最近 / 待办清单）。新增展示入口时记得用它过滤，否则它会被当成普通内容维度露出来
 function isQuiet(k) { const m = MODULES.find(x => x.k === k); return !!(m && m.quiet); }
+
+/* 维度显隐 / 排序：用户在「设置」里自定义维度行（记 / 看 / 回看）的可见性与顺序。
+   存储一份有序的 [{ k, hidden }]（只记可配置维度：非 quiet）。读取时：
+   · 丢掉已不存在的 k（防止旧配置残留指向被移除的维度）；
+   · 把 MODULES 里新增的、配置里没有的维度补到末尾（默认显示），
+     这样加新维度不用改设置页，也不会把用户已调的顺序打乱。 */
+const MODCFG_LS = 'self_modcfg_v1';
+function loadModCfg() {
+  try { const v = wx.getStorageSync(MODCFG_LS); return (v && Array.isArray(v)) ? v : null; } catch (e) { return null; }
+}
+function saveModCfg(arr) {
+  try { wx.setStorageSync(MODCFG_LS, arr); } catch (e) {}
+}
+// 合并：配置顺序 + 隐藏标记 + 补齐缺失维度（核心，两个视图函数共用）
+function _modCfgMerged() {
+  const defs = MODULES.filter(m => !m.quiet);          // 可配置维度（与记 / 看 维度行同一套口径）
+  const raw = loadModCfg() || [];
+  const hiddenMap = {};
+  raw.forEach(e => { if (e && e.k) hiddenMap[e.k] = !!e.hidden; });
+  const known = {}; defs.forEach(d => { known[d.k] = true; });
+  // 按配置顺序保留还在的维度
+  const ordered = [];
+  raw.forEach(e => { if (e && e.k && known[e.k]) ordered.push({ k: e.k, hidden: !!hiddenMap[e.k] }); });
+  // 配置里没有的新维度补到末尾（默认显示）
+  defs.forEach(d => { if (!(d.k in hiddenMap)) ordered.push({ k: d.k, hidden: false }); });
+  return ordered;
+}
+// 设置页用：完整列表（含隐藏），带 n / c，按用户顺序
+function moduleViewList() {
+  const map = {}; MODULES.forEach(m => { map[m.k] = m; });
+  return _modCfgMerged().map(e => {
+    const m = map[e.k];
+    return { k: e.k, n: m ? m.n : e.k, c: m ? m.c : '#7C9A86', hidden: e.hidden };
+  });
+}
+// 记 / 看 / 回看 维度行与聚合用：只返回显示的，按用户顺序，带 n / c（不含 quiet / 隐藏）
+function modulesView() {
+  return moduleViewList().filter(m => !m.hidden);
+}
+// 切换某个维度显隐（持久化）
+function setModuleHidden(k, hidden) {
+  const merged = _modCfgMerged();
+  const arr = merged.map(e => ({ k: e.k, hidden: e.k === k ? !!hidden : e.hidden }));
+  saveModCfg(arr);
+}
+// 重排顺序（keys 为完整顺序，含显示与隐藏；只保留已知维度，缺失的补末尾）
+function setModuleOrder(keys) {
+  const merged = _modCfgMerged();
+  const hiddenMap = {}; merged.forEach(e => { hiddenMap[e.k] = e.hidden; });
+  const known = {}; MODULES.filter(m => !m.quiet).forEach(d => { known[d.k] = true; });
+  const arr = [];
+  (keys || []).forEach(k => { if (known[k]) arr.push({ k, hidden: !!hiddenMap[k] }); });
+  // 配置里缺的（理论上不会，因为 _modCfgMerged 已补齐）兜底补回
+  MODULES.filter(m => !m.quiet).forEach(d => { if (!arr.some(x => x.k === d.k)) arr.push({ k: d.k, hidden: !!hiddenMap[d.k] }); });
+  saveModCfg(arr);
+}
 
 const OPT = {
   // 觉察：归类 / 喜恶 / 程度 / 感受 里带「无感 · 悦己」味道的词，是 2026-10 合并维度时
@@ -122,7 +184,8 @@ const GLABEL = {
   doneFeel: '做了的感受', doneGain: '收获', obsMood: '感受', todoItem: '要记住什么', todoKind: '类别', todoPrio: '优先级', jotKind: '类别', likeItem: '什么事', jotItem: '想记点什么',
   todayItem: '能量说明', todayBat: '剩余能量', todayMood: '心情指数',
   divItem: '占卜的问题', divType: '类型', divSpan: '时间范围',
-  bookItem: '名称', bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度'
+  bookItem: '名称', bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
+  turnIdea: '当前想法', turnMood: '情绪', turnUnknown: '转念', turnNew: '转念'
 };
 
 // 已废弃的选项组：无感 / 悦己 并入觉察后不再使用。加载时忽略云端的旧文档与本地残留，
@@ -152,7 +215,11 @@ function isGraphGroup(g) { return !!GRAPH_GROUPS[g]; }
    与 GRAPH_GROUPS 同理——没有可增删的条目，给管理入口只是送进空白页；
    判据统一查 isFixedGroup，别在各处写死组名。和 GRAPH_GROUPS 的区别是它走普通 chips 渲染
    （不是 5 格条），选项存在代码里的固定表，见 fixedGroupOpts */
-const FIXED_OPT_GROUPS = { bookStatus: ['连载中', '已完结'] };
+// 转念：情绪固定词表（怒 / 忧 / 思 / 悲 / 恐 / 惊 / 厌 / 闷 / 扰 / 怅 / 腻）与「不知道」都是写死的——
+// 它们是这套记法的固定词表，不在「✎ 管理」里增删（给了也是空白页）。
+// 情绪用固定组而非选项池：这是封闭的、不该被用户加出新的「情绪」（那会变成另一个意思）；
+// 「不知道」同理，它是转念里一个固定的兜底选项，不是可扩展的词。
+const FIXED_OPT_GROUPS = { bookStatus: ['连载中', '已完结'], turnMood: ['怒', '忧', '思', '悲', '恐', '惊', '厌', '闷', '扰', '怅', '腻'], turnUnknown: ['不知道怎么转念'] };
 function isFixedGroup(g) { return !!FIXED_OPT_GROUPS[g]; }
 function fixedGroupOpts(g) { return FIXED_OPT_GROUPS[g] || []; }
 
@@ -678,9 +745,21 @@ const FIELDS = {
     // 固定放最后一位，导出/导入的按顺序对齐不受影响
     { free: 'desc', label: '', ph: '再补一句也行，可不填', ta: true }
   ] },
+  /* 转念：情绪固定七选一（烦 / 怒 / 忧 / 思 / 悲 / 恐 / 惊，见 FIXED_OPT_GROUPS，不在「✎ 管理」里增删）
+     → 当前想法（主输入框，记卡里那句被情绪缠住的话）→ 转念（二选一，互斥）：
+     要么点「不知道」（turnUnknown 固定组，写不出新角度时的兜底），要么在「转念内容」里写下想通的话
+     （free:turnNew）。两者互斥由 index 的 onChip / onFreeInput 保证——选了「不知道」就清空输入框，
+     写了输入框就取消「不知道」的选择，存的时候只会落一个。
+     写顺序＝存储顺序（导出 / 导入按位对齐），所以转念两兄弟固定排在情绪之后。
+     turnUnknown 标 below：转念这一组要留在「当前想法」输入框下方（和书·剧评分留在名称下方同一套路），
+     否则在 plain 布局里它会跑到类别行（情绪）那一层、挤到主输入框上面去。 */
+  turn: { main: 'turnIdea', items: [
+    { g: 'turnMood', single: true, noInput: true },
+    { g: 'turnUnknown', single: true, noInput: true, below: true, label: '转念' },
+    { free: 'turnNew', label: '', ph: '写下转念后想到的话（或点上面的「不知道怎么转念」）', ta: true }
+  ] },
   want: { main: 'wantItem', items: [
-    { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },
-    // 「原因」（原「是什么让你想做」）：紧跟在分类下方，写是什么让你想做（可跳过）。
+    { g: 'wantKind', single: true, noInput: true, hideDetail: true, required: true },    // 「原因」（原「是什么让你想做」）：紧跟在分类下方，写是什么让你想做（可跳过）。
     // 记录里那一栏也叫「原因」（见 COLMAP），创建与回看一个叫法。
     // 注意 srcList 是「按标签匹配」导入的，插在中间不会打乱旧文本的详情对齐
     { free: 'trigger', label: '原因', ph: '刚看到别人晒成果，有点不甘心' },
@@ -878,7 +957,8 @@ const COLMAP = {
   // 就是一句光秃秃的话，和上面「今天发生了什么」那句混在一起分不清哪句是哪天的事
   'free:tomorrow': '明天的计划',
   bookKind: '类别', bookStatus: '状态', bookProg: '进度', bookWow: '精彩程度', bookLove: '喜爱程度',
-  'free:bookWhy': '记入原因'
+  'free:bookWhy': '记入原因',
+  turnMood: '情绪', turnUnknown: '转念', 'free:turnNew': '转念'
 };
 const FALLBACK = { obs: '感受', want: '原因', nope: '感受', now: '感受', like: '当时感受' };
 
@@ -1581,6 +1661,7 @@ function db() { return wx.cloud.database(); }
 function recCol() { return db().collection('records'); }
 function optCol() { return db().collection('options'); }
 function cfgCol() { return db().collection('usercfg'); }
+function jkCol() { return db().collection('jikui'); }
 // usercfg 按 type 存「一篇配置」：有则改、无则加——原来这段 upsert 写了 5 遍（第三批 · 去重）
 // 返回 true / false，表示云端这一笔是否写成功（调用方通常只用来留痕）
 function saveCfg(type, data) {
@@ -1596,6 +1677,23 @@ function loadCfg(type) {
     const docs = res.data || [];
     return (docs[0] && docs[0].data != null) ? docs[0].data : null;
   });
+}
+// 积跬步：整棵「愿望 / 待办树」存到专属的 jikui 集合（不再塞进 usercfg）。
+// 每个用户一篇文档（where({}) 只会返回本人 _openid 下的那条），tree 字段装整棵树；
+// 复用上面的 upsert 思路：有则改、无则加，按微信用户 _openid 自动隔离，换设备可同步。
+function saveJikui(goals) {
+  const data = { tree: goals, updatedAt: Date.now() };
+  return jkCol().where({}).get().then(res => {
+    const docs = res.data || [];
+    if (docs.length) return jkCol().doc(docs[0]._id).update({ data }).then(() => true).catch(() => false);
+    return jkCol().add({ data }).then(() => true).catch(() => false);
+  }).catch(() => false);
+}
+function loadJikui() {
+  return jkCol().where({}).limit(1).get().then(res => {
+    const docs = res.data || [];
+    return (docs[0] && docs[0].tree != null) ? docs[0].tree : null;
+  }).catch(() => null);
 }
 
 // 记录按微信用户（_openid）隔离：云数据库默认「仅创建者可读写」，
@@ -2630,6 +2728,7 @@ module.exports = {
   SCALES, WOWS, LOVES, scaleOf, scaleKind, scaleName, scaleScore, SCALE_NO_CSS,
   FIXED_OPT_GROUPS, isFixedGroup, fixedGroupOpts, bookStatusDefault,
   isQuiet, sleepNightKey, sleepMin, sleepAnchor, wakeMin, minTxt, sleepNightLabel, sleepRecOf, sleepStats, sleepNow, sleepUndo, sleepRemove,
+  moduleViewList, modulesView, setModuleHidden, setModuleOrder,
   getAnchor, setAnchor, anchorTxt, ANCHOR_DEFAULT, wakeRecOf, wakeStats, wakeNow, wakeUndo, wakeRemove, wakeDayLabel,
   slotTaken, moveRec,
   dayLabel, mname, mcolor, isSingle, isNoInput, fieldsOf, groupOwner, getOPT, optsReady, wantKindDefault, todoKindDefault, jotKindDefault, obsStartDefault, divTypeDefault, bookKindDefault, todoPrioDefault, agoOf, datePrefix, taskTime, extLabel, srcList, mapExtSrc, buildExt, decorate, isTask, doneLabel, recMname, catColor, jotColor, taskCat, taskColor, jotCat, wantCat, bookCat, bookColor, divCat, divColor, taskPrio, prioColor, prioShow, prioRank, PRIO_DEFAULT, DUE_STEPS, DUE_TIMES, DUE_CUSTOM, duePresetTs, duePresetOf, dueChips, dueLabel, dueTimeKey, dueFrom, dueOver, dueRank, dueDayEnd, setDue, sortUndone, winDays, QUICKCATS_MAX, getQuickCats, setQuickCats, FAVTHEMES_MAX, getFavThemes, setFavThemes,
@@ -2637,5 +2736,6 @@ module.exports = {
   loadOptions, addOption, removeOption, renameOption, setOptOrder, mainModuleOf, migrateWantKind, migrateNopeLikeIntoObs, cleanDeadOptGroups, migrateTasksToTodo, migrateObsKind, migrateJotKind, takeRenameMap, noteAddedOpt, takeAddedMap,   // migrateTodoRecords（备忘 → 识己）已作废删除
   isDefault, addDelDef, clearDelDef, markOptCustom,
   loadDims, saveDims, loadGreets, saveGreets, ensureAll, onLoaded, onRecChange, emitRecChange, reload, regDim, unregDim,
+  saveJikui, loadJikui,
   globalData: G
 };

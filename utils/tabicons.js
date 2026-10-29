@@ -30,8 +30,9 @@ const BODY = {
   // 作息：半明半暗的圆（右半实心）——原来 ◐ 的意思，重画成同一套粗细与外径
   rest: (c) => '<circle cx="12" cy="12" r="8.5"/>'
     + '<path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="' + c + '" stroke="none"/>',
-  // 回看：同心圆（原来的 ◎）。外圈与「作息」那颗一样大，两个圆的大小差就够表达层级了
-  review: () => '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.6"/>',
+  // 积跬步：一棵小目标树（顶节点 + 两个子节点 + 连线）——和「把愿望拆成一步步」的语义直接对应
+  jikui: () => '<circle cx="12" cy="5.6" r="2.5"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>'
+    + '<path d="M12 8.1 6.6 16M12 8.1 17.4 16"/>',
   // 设置：齿轮（Lucide 那枚，本来画满整个视框）。缩到与圆同大时描边会跟着变细，
   // 所以组内把 stroke-width 反着放大（2.09 × .86 ≈ 1.8）——五个图标笔画才一样粗
   set: () => '<g transform="translate(12 12) scale(.86) translate(-12 -12)" stroke-width="2.09">'
@@ -42,8 +43,8 @@ const BODY = {
 // 与 wxss 里的兜底色一致（主题读不到时不至于画成黑色）
 const DEF = { accent: '#7C9A86', ink3: '#8B8779' };
 
-// 5 个图标的顺序 = 底部 tab 的顺序（记 / 看 / 作息 / 回看 / 设置）
-const NAMES = ['write', 'look', 'rest', 'review', 'set'];
+// 图标的顺序 = 底部 tab 的顺序（积跬步 / 记 / 看 / 作息 / 设置）
+const NAMES = ['jikui', 'write', 'look', 'rest', 'set'];
 
 function svg(name, color) {
   const body = BODY[name] || BODY.look;

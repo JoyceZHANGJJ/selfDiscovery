@@ -83,10 +83,14 @@ Page(pageBase({
   onShow() {
     this.ensureTheme();
     this.layoutBrand();
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 1, theme: store.curTheme() });
+    // selected 必须与 app.json 的 tabBar.list 顺序一致：积跬步=0 / 记=1 / 看=2 / 作息=3 / 设置=4
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 2, theme: store.curTheme() });
     this.setData({ sel: null, selRec: null, delUndo: null });
     // 兜底：若此前停留在已下架的「做了」维度，回到「全部」
     if (this.data.filter === 'done') this.setData({ filter: 'all', stateFilter: 'all', dimScrollId: 'ft-all' });
+    // 兜底：若当前选中维度被用户在设置里隐藏了，回到「全部」（否则维度行没有这个标签、统计也对不上）
+    const visKeys = store.modulesView().map(m => m.k);
+    if (this.data.filter !== 'all' && visKeys.indexOf(this.data.filter) < 0) this.setData({ filter: 'all', stateFilter: 'all', dimScrollId: 'ft-all' });
     store.ensureAll().then(ok => {
       // 基础数据（记录 / 选项池）没拉到：不用再等分页了，直接给失败态
       if (!ok) { this.setData({ loadFail: true, ready: true, loading: false }); return; }
@@ -111,10 +115,9 @@ Page(pageBase({
   /* 主题 / 程序名（ensureTheme / layoutBrand / playBrand）已收敛到 utils/pageBase.js */
 
   modulesVM() {
-    // 维度筛选里不列「做了」——它与「可做 → 做了」状态筛选重复，列出来入口歧义。
-    // 「今日」要列：一日一记，筛它就能只翻自己那些天（统计只报总数、时间线与「全部」同样式）。
-    // 「睡」不列（isQuiet）：它不进记录流，只在「睡」tab 里看（见 store.MODULES 的注释）
-    return store.MODULES.filter(m => m.k !== 'done' && !m.quiet);
+    // 维度筛选行：尊重用户在「设置」里配的可见性与顺序（store.modulesView 已排除 quiet / 隐藏，按用户顺序返回）。
+    // 注：「做了」维度早已下架不在 MODULES 里；「睡」是 quiet，也不出现
+    return store.modulesView();
   },
 
   recVM(r) {
@@ -221,8 +224,9 @@ Page(pageBase({
     if (filter === 'div') {
       return this.divStatsVM(stat.byCat || {}, stat.total || 0);
     }
-    // 「全部」：各觉察维度条数（不含备忘/购物，与下面清单口径区分开）
-    const allMods = store.MODULES.filter(m => !store.isTask(m.k) && !m.quiet);
+    // 「全部」：各觉察维度条数（不含备忘/购物，与下面清单口径区分开）。
+    // 已隐藏的维度不进「全部」统计——隐藏＝在记录流里彻底不露面（见 store.modulesView）
+    const allMods = store.modulesView().filter(m => !store.isTask(m.k));
     if (filter === 'all') {
       const byMod = stat.byMod || {};
       const counts = allMods.map(m => ({ n: m.n, c: m.c, n2: byMod[m.k] || 0 }));
@@ -235,7 +239,7 @@ Page(pageBase({
     const total = stat.total || 0;
     const mxv = tops.length ? tops[0].n : 1;
     const bars = tops.slice(0, 4).map(t => ({ n: t.txt, c: store.mcolor(filter), n2: t.n, w: Math.round(t.n / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品', turn: '最常记的' };
     let extra = '';
     if (filter === 'obs' && total) {
       const e = stat.ext || {};
@@ -291,9 +295,9 @@ Page(pageBase({
       src.forEach(r => { const c = store.divCat(r); if (c && cats.indexOf(c) >= 0) byCat[c] = (byCat[c] || 0) + 1; });
       return this.divStatsVM(byCat, src.length);
     }
-    // 「全部」统计不计备忘/购物、也不计「睡」（静默维度，只有它的 tab 里统计）
+    // 「全部」统计不计备忘/购物、也不计「睡」（静默维度，只有它的 tab 里统计）；已隐藏维度亦不计入
     const awareList = filter === 'all' ? list.filter(r => !store.isTask(r.m) && !store.isQuiet(r.m)) : list;
-    const allMods = store.MODULES.filter(m => !store.isTask(m.k) && !m.quiet);
+    const allMods = store.modulesView().filter(m => !store.isTask(m.k));
     if (filter === 'all') {
       const counts = allMods.map(m => ({ n: m.n, c: m.c, n2: awareList.filter(r => r.m === m.k).length }));
       const mx = Math.max(1, ...counts.map(c => c.n2));
@@ -304,7 +308,7 @@ Page(pageBase({
     const keys = Object.keys(acc).sort((a, b) => acc[b] - acc[a]).slice(0, 4);
     const mxv = keys.length ? acc[keys[0]] : 1;
     const bars = keys.map(k => ({ n: k, c: store.mcolor(filter), n2: acc[k], w: Math.round(acc[k] / mxv * 100) + '%' }));
-    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品' };
+    const labelMap = { obs: '觉察最多的归类', now: '最常记的', want: '最常想做的事', done: '做得最多的事', todo: '记得最多的事', jot: '最常记的', div: '占卜得最多的问题', book: '记得最多的作品', turn: '最常记的' };
     let extra = '';
     if (filter === 'obs' && list.length) {
       const fg = list.filter(r => (r.ext || []).indexOf('忘了时间') >= 0).length;

@@ -379,7 +379,7 @@ Page(pageBase({
 
     // 各维度条数 + 与上期的增减（条宽按本期最大值归一）：按维度整体统计（待办 / 随记各算一条）；
     // 要看它们各自的类别分布，看下面的「记得最多的」
-    const raw = store.MODULES.filter(m => !m.quiet).map(m => {
+    const raw = store.modulesView().map(m => {
       const v = c.filter(r => r.m === m.k).length;
       const p = pv.filter(r => r.m === m.k).length;
       const d = v - p;
@@ -419,7 +419,7 @@ Page(pageBase({
       return Object.keys(acc).map(k => acc[k]).sort((a, b) => b.n - a.n);
     };
     const tops = [];
-    store.MODULES.filter(m => !m.quiet).forEach(m => {
+    store.modulesView().forEach(m => {
       // 「今日」不进「记得最多的」：它一日一记、主项是能量条，那句话只是附属（还经常不写），
       // 按内容排只会冒出「（未填）×N」这种没信息量的行；能量看下面的「剩余能量」趋势，这里不重复
       if (m.k === 'today') return;

@@ -148,7 +148,8 @@ Page(pageBase({
     this._kbH = 0;
     this._clearBarFollow();   // 键盘状态从零开始（上一次离开时的跟随位置不能留）
     this._refreshTodayMax();  // 跨天回来时，「今日」的日期上限要跟着今天走
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 0, theme: store.curTheme() });
+    // selected 必须与 app.json 的 tabBar.list 顺序一致：积跬步=0 / 记=1 / 看=2 / 作息=3 / 设置=4
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) this.getTabBar().setData({ selected: 1, theme: store.curTheme() });
     // 「自定义」月历浮层开着时 tab 栏要保持收起（从后台切回来 / 切 tab 回来的那一瞬
     // tabBar 有自己的复位时序，只设一次会被盖回来——所以过一拍再收一次，见 pageBase.setTabHidden）
     if (this.data.dueOpen) this.setTabHidden(true, 300);
@@ -354,8 +355,8 @@ Page(pageBase({
   },
 
   modulesVM() {
-    // 静默维度（睡）不出现在记页的维度标签里：它不在这一页记，只有顶部那个「睡」按钮和「睡」tab
-    return store.MODULES.filter(m => !m.quiet);
+    // 维度标签行：尊重用户在「设置」里配的可见性与顺序（store.modulesView 已排除 quiet / 隐藏，按用户顺序返回）
+    return store.modulesView();
   },
 
   checkEdit() {
@@ -685,11 +686,11 @@ Page(pageBase({
     });
     // 今日那句改成同时提能量和心情：下面两条 5 格条是并列的，
     // 只说「能量」的话，填的人会以为心情那栏没处写、或者干脆不填。
-    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '今天发生了哪些影响能量和心情的事呢？', div: '占卜的问题是？', book: '书名或剧名 · 回车就记下' };
+    const MAINPH = { todo: '要记住什么 · 回车就记下', jot: '想记点什么 · 回车就记下', today: '今天发生了哪些影响能量和心情的事呢？', div: '占卜的问题是？', book: '书名或剧名 · 回车就记下', turn: '此刻脑海里转的是哪句话（当前想法）' };
     // 待办 / 随记 / 今日 / 占卜 / 书·剧：主项不给标题、不走「细节 · 都可跳过」那套，只留必要的行。
     // 今日：电池（类别）摆在主输入框上方、印象（主输入框）在下方，无细节分割线（见 index.wxml 的 plain 分支）
     // 书·剧同理：类别在上、名称在中、评分与进度在下
-    const plain = store.isTask(tag) || tag === 'jot' || tag === 'today' || tag === 'div' || tag === 'book';
+    const plain = store.isTask(tag) || tag === 'jot' || tag === 'today' || tag === 'div' || tag === 'book' || tag === 'turn';
     // 待办 / 随记 / 书·剧的「类别」（todoKind / jotKind / bookKind）摆在主输入框**上方**：先定类别，再写内容。
     // 其余细节行（如待办的「原因」「放弃原因」）仍在输入框下方。
     // below：书·剧的评分与进度要留在名称下方——它们评的是「这一本」，名字没写就无从评起，
@@ -902,6 +903,8 @@ Page(pageBase({
     // 档位是情绪的修饰，情绪被取消时把档位一并清掉（否则会存下没头没尾的程度）。
     // 觉察与此刻的情绪都是 obsMood，联动同一套；取值行见 buildComposer 的 showDeg
     if (g === 'obsMood' && !arr.length) this.st.pick['obsDeg'] = [];
+    // 转念：「不知道」与「转念内容」互斥——选了「不知道」就把已写的转念内容清空（重算后输入框随之清空）
+    if (this.st.tag === 'turn' && g === 'turnUnknown') this.st.free['turnNew'] = '';
     this.recompute();
   },
 
@@ -954,6 +957,13 @@ Page(pageBase({
     const k = e.currentTarget.dataset.k, idx = e.currentTarget.dataset.idx;
     this.st.free[k] = e.detail.value;
     if (idx != null) this.setData({ ['composer.items[' + idx + '].val']: e.detail.value });
+    // 转念：「转念内容」与「不知道」互斥——写了内容就取消「不知道」的选中。
+    // 只做定向 setData 取消 chip 高亮、不整页重算，否则输入框会失焦、字打不下去
+    if (this.st.tag === 'turn' && k === 'turnNew' && e.detail.value.trim()) {
+      this.st.pick['turnUnknown'] = [];
+      const ci = (this.data.composer.items || []).findIndex(it => it.group === 'turnUnknown');
+      if (ci >= 0) this.setData({ ['composer.items[' + ci + '].opts[0].on']: false });
+    }
   },
   /* 「具体的描述」：只存进 st.free，不渲染在细节列表里，所以不用回写 composer.items */
   onDescInput(e) { this.st.free[store.DESC_KEY] = e.detail.value; },
@@ -1259,6 +1269,11 @@ Page(pageBase({
     // 名称必填在上面那条 rec.txt 校验里；两条 5 格量与进度都是可跳过的
     if (this.st.tag === 'book' && (!this.st.pick['bookKind'] || !this.st.pick['bookKind'].length)) {
       wx.showToast({ title: '请选择类别', icon: 'none' });
+      return;
+    }
+    // 转念：情绪为必选（固定七选一，见 FIXED_OPT_GROUPS；进入时不给默认，必须自己点一个）
+    if (this.st.tag === 'turn' && (!this.st.pick['turnMood'] || !this.st.pick['turnMood'].length)) {
+      wx.showToast({ title: '先选一下当下的情绪', icon: 'none' });
       return;
     }
     const ext = [], extSrc = [];

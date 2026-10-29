@@ -1,0 +1,264 @@
+/* 积跬步页面：复用整站设计令牌（--bg / --ink / --accent / --line / --surface / --accent-soft …）
+   低饱和纸感，与「记 / 看」同套观感；未列出的令牌都带兜底色，主题切换不会掉色。 */
+
+.app { background: var(--bg); }
+
+/* 顶栏：吸顶。内容区固定为导航栏标准高度 44px 并「垂直居中」，
+   使目录图标与「积跬步」标题的视觉中线 = 原生胶囊中线（status-h + 22px）；
+   右侧预留原生胶囊宽度（~96px）避免被盖。分割线贴着内容下方。 */
+/* 顶栏占位：仅用于把内容推到状态栏之下，不再显示标题（避免内容进入状态栏） */
+.jk-head { height: var(--status-h, 20px); }
+
+/* 目录入口悬浮胶囊：与微信胶囊同高对齐，位于起睡胶囊（theme-switcher）左侧。
+   实底 + 细边 + 轻投影，观感与右侧原生胶囊 / 起睡胶囊一致，内容从它脚下穿过时被挡住 */
+.jk-dirpill {
+  position: fixed; z-index: 60;
+  display: flex; align-items: center;
+  padding: 0 14px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line), 0 1px 4px rgba(0, 0, 0, .06);
+  border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+  line-height: 1; white-space: nowrap;
+}
+.jk-dirpill:active { background: var(--accent-soft, #E6F4F0); color: var(--accent); }
+.jk-dirpill.cur { box-shadow: inset 0 0 0 1px var(--accent), 0 1px 4px rgba(0, 0, 0, .06); color: var(--accent); }
+
+.jk-body { padding: 16px 14px calc(80px + env(safe-area-inset-bottom, 0px)); }
+
+/* 空状态 */
+.jk-empty {
+  text-align: center; padding: 64px 20px; color: var(--ink3);
+  border: 1.5px dashed var(--line2, #E2DCD1); border-radius: var(--r-card, 16px);
+  background: var(--surface, #fff);
+}
+.jk-empty-t { color: var(--ink); font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+.jk-empty-p { font-size: 13px; margin-bottom: 16px; }
+.jk-empty-btn {
+  display: inline-block; font-size: 13px; font-weight: 600; color: #fff;
+  background: var(--accent); border-radius: var(--r-btn, 12px); padding: 9px 16px;
+}
+
+/* 目标卡片 */
+.jk-goal {
+  background: var(--surface, #fff); border: 1px solid var(--line); border-radius: var(--r-card, 16px);
+  margin-bottom: 16px; overflow: hidden;
+  box-shadow: 0 1px 2px rgba(35,35,31,.05), 0 8px 24px rgba(35,35,31,.06);
+}
+.jk-goal-head { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.jk-goal-row { display: flex; align-items: center; gap: 10px; }
+.jk-chev { width: 24px; height: 24px; flex: none; color: var(--ink3); font-size: 13px; display: grid; place-items: center; }
+.jk-goal-title { flex: 1; font-size: 17px; font-weight: 700; color: var(--ink); min-width: 0; line-height: 1.3; }
+.jk-goal-input {
+  flex: 1; font-size: 17px; font-weight: 700; color: var(--ink);
+  background: var(--accent-soft, #E6F4F0); border-radius: 6px; padding: 2px 6px; min-width: 0;
+}
+.jk-prog { display: flex; align-items: center; gap: 6px; flex: none; }
+.jk-bar { width: 48px; height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.jk-bar-i { display: block; height: 100%; background: var(--accent); }
+.jk-prog-t { font-size: 11.5px; color: var(--ink3); }
+.jk-g-acts { display: flex; gap: 2px; flex: none; }
+
+/* 愿望元信息行：状态 + 历时 */
+.jk-goal-meta { display: flex; align-items: center; gap: 10px; padding-left: 34px; }
+.jk-status { font-size: 11.5px; font-weight: 600; color: var(--ink3); padding: 1px 8px; border-radius: 99px; background: var(--accent-soft, #E6F4F0); }
+.jk-status.done { color: #fff; background: var(--accent); }
+.jk-status.idle { color: var(--ink4, #A9A498); background: transparent; border: 1px dashed var(--line2, #E2DCD1); }
+.jk-elapsed { font-size: 12px; color: var(--ink3); }
+/* 已完成的愿望：整卡描主题色边、标题弱化 */
+.jk-goal.done { border-color: var(--accent); }
+.jk-goal.done .jk-goal-title { color: var(--ink4, #A9A498); }
+.jk-ib.done { color: var(--accent); }
+.jk-ib.done:active { background: var(--accent-soft, #E6F4F0); }
+
+/* 通用图标按钮：加大命中区（::after 补一圈），不放大控件本身 */
+.jk-ib { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font-size: 14px; color: var(--ink3); position: relative; }
+.jk-ib::after { content: ''; position: absolute; left: -4px; right: -4px; top: -4px; bottom: -4px; }
+.jk-ib:active { background: var(--accent-soft, #E6F4F0); color: var(--accent); }
+.jk-ib.del:active { background: #F7E9E7; color: #B4544E; }
+
+.jk-goal-body { padding: 10px 12px 12px; }
+.jk-node { position: relative; }
+
+/* 待办行 */
+.jk-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--r-in, 14px); transition: background .12s ease; }
+.jk-row:active { background: var(--soft, #F4F5F5); }
+.jk-twirl { width: 20px; height: 20px; flex: none; border-radius: 6px; font-size: 11px; color: var(--ink3); display: grid; place-items: center; visibility: hidden; }
+.jk-twirl.has { visibility: visible; }
+.jk-twirl:active { background: var(--accent-soft, #E6F4F0); }
+.jk-check {
+  width: 21px; height: 21px; flex: none; border-radius: 50%;
+  border: 2px solid var(--line2, #E2DCD1); background: var(--surface, #fff);
+  display: grid; place-items: center; color: #fff; font-size: 12px;
+}
+.jk-check.done { background: var(--accent); border-color: var(--accent); }
+.jk-label { flex: 1; font-size: 15px; color: var(--ink); min-width: 0; word-break: break-word; }
+.jk-label-input { flex: 1; font-size: 15px; color: var(--ink); background: var(--accent-soft, #E6F4F0); border-radius: 6px; padding: 1px 5px; min-width: 0; }
+.jk-node.done .jk-label { color: var(--ink4, #A9A498); }
+.jk-acts { display: flex; gap: 2px; flex: none; }
+
+/* 预期结果 / 实际结果 */
+.jk-refl {
+  margin: 4px 0 8px 53px; padding: 9px 12px; font-size: 13px; line-height: 1.5;
+  color: var(--ink2); background: var(--soft, #F4F5F5);
+  border-radius: var(--r-in, 14px);
+}
+.jk-refl.actual { color: var(--accent-ink, #3C6B54); background: var(--accent-soft, #E6F4F0); }
+.jk-refl.repeat { background: var(--accent-soft, #E6F4F0); }
+.jk-refl-tag { display: block; font-size: 10.5px; color: var(--ink3); margin-bottom: 4px; letter-spacing: .5px; }
+
+/* 不定次重复：完成记录列表 */
+.jk-comp-list { display: flex; flex-direction: column; gap: 5px; }
+.jk-comp-list.modal { margin-top: 2px; }
+.jk-comp-item { display: flex; flex-direction: column; gap: 1px; font-size: 12.5px; line-height: 1.45; }
+.jk-comp-date { color: var(--ink3); font-size: 11.5px; }
+.jk-comp-actual { color: var(--ink2); word-break: break-word; white-space: pre-wrap; }
+.jk-comp-actual.muted { color: var(--ink4, #A9A498); font-style: italic; }
+
+/* 重复待办的完成控件：↻ + 次数徽标 */
+.jk-check.repeat { background: var(--accent-soft, #E6F4F0); border-color: var(--accent); color: var(--accent); font-size: 13px; }
+.jk-repc { font-size: 12px; font-weight: 700; color: var(--ink4, #A9A498); min-width: 16px; text-align: center; }
+.jk-repc.on { color: var(--accent); }
+
+/* 弹层内：不定次重复开关 */
+.jk-repeat-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 12px; padding: 8px 12px; background: var(--soft, #F4F5F5); border-radius: 10px; }
+.jk-repeat-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jk-repeat-name { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.jk-repeat-sub { font-size: 11px; color: var(--ink3); line-height: 1.4; }
+.jk-switch { flex: none; width: 44px; height: 26px; border-radius: 99px; background: var(--line2, #E2DCD1); position: relative; transition: background .18s; }
+.jk-switch.on { background: var(--accent); }
+.jk-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: left .18s; }
+.jk-switch.on .jk-knob { left: 21px; }
+.jk-hist-empty { font-size: 12.5px; color: var(--ink4, #A9A498); padding: 6px 2px 2px; font-style: italic; }
+
+/* 弹层内字段标签（预期结果 / 实际结果） */
+.jk-field-label { font-size: 12.5px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+/* 愿望说明（卡片内展示） */
+.jk-goal-desc {
+  font-size: 13px; color: var(--ink2); line-height: 1.5;
+  padding: 8px 14px 10px 34px; white-space: pre-wrap; word-break: break-word;
+}
+
+/* 内联添加输入 */
+.jk-addrow { display: flex; padding: 4px 0; }
+.jk-addin {
+  flex: 1; border: 1px solid var(--line2, #E2DCD1); border-radius: 12px;
+  padding: 8px 12px; font-size: 14px; background: var(--surface, #fff); color: var(--ink); min-width: 0;
+}
+.jk-addin:focus { border-color: var(--accent); }
+
+.jk-foot { text-align: center; font-size: 11.5px; color: var(--ink4, #A9A498); padding: 8px 20px 20px; }
+
+/* 目录浮层（愿望导航下拉）：透明遮罩（点外部关闭，无暗色背景）+ 依托「☰」的纸感小卡 */
+.jk-nav-mask { position: fixed; inset: 0; z-index: 50; }   /* 透明，仅用于点外部关闭 */
+.jk-nav {
+  position: fixed; top: calc(var(--status-h, 20px) + 47px); left: 16px;
+  width: min(72vw, 300px); max-height: 60vh; overflow-y: auto;
+  -webkit-overflow-scrolling: touch; z-index: 51; box-sizing: border-box;
+  background: var(--surface, #fff); border: 1px solid var(--line);
+  border-radius: var(--r-card, 16px);
+  box-shadow: 0 1px 2px rgba(35,35,31,.06), 0 12px 32px rgba(35,35,31,.14);
+  padding: 6px; animation: jkDrop .16s ease;
+}
+/* 连接三角：标准 border 三角技法画成的“真三角”，贴在面板上沿、盖住该处顶边框，
+   读起来就是从下拉框长出来的尖角（不再是旋转方块叠加） */
+.jk-nav-caret {
+  position: fixed; z-index: 52;
+  top: calc(var(--status-h, 20px) + 40px); left: 26px;
+  width: 0; height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 8px solid var(--surface, #fff);
+}
+@keyframes jkDrop { from { opacity: .5; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.jk-nav-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 6px; }
+.jk-nav-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+.jk-nav-close { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--ink3); font-size: 14px; position: relative; }
+.jk-nav-close::after { content: ''; position: absolute; left: -4px; right: -4px; top: -4px; bottom: -4px; }
+.jk-nav-close:active { background: var(--accent-soft, #E6F4F0); color: var(--accent); }
+.jk-nav-list { overflow: visible; padding: 2px 4px; }
+.jk-nav-empty { text-align: center; color: var(--ink4, #A9A498); font-size: 13px; padding: 22px 8px; }
+.jk-nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 12px; position: relative; }
+/* 透明覆盖层仅用于扩大整行点击区；必须 pointer-events:none，否则会盖住右侧手柄、拦截其 touchstart 导致无法拖动 */
+.jk-nav-item::after { content: ''; position: absolute; left: 0; right: 0; top: -1px; bottom: -1px; pointer-events: none; }
+.jk-nav-item:active { background: var(--soft, #F4F5F5); }
+.jk-nav-item.cur { background: var(--accent-soft, #E6F4F0); }
+.jk-nav-item.cur .jk-nav-name { color: var(--accent-ink, #3C6B54); }
+/* 拖动排序中：禁止面板滚动，避免换序时页面跳动 */
+.jk-nav.nav-dragging { overflow: hidden; }
+/* 拖拽手柄：⠿ 抓取图标，仅作拖动热区，不触发行点击 */
+.jk-nav-handle {
+  flex: none; width: 26px; height: 26px; margin-left: 2px;
+  display: grid; place-items: center; color: var(--ink4, #A9A498);
+  font-size: 16px; line-height: 1; position: relative; z-index: 3;
+}
+.jk-nav-handle::after { content: ''; position: absolute; left: -6px; right: -6px; top: -10px; bottom: -10px; }
+.jk-nav-handle:active { color: var(--accent); }
+/* 正在被拖动的事项：浮起、高亮、跟随手指 */
+.jk-nav-item.dragging {
+  position: relative; z-index: 6;
+  background: var(--surface, #fff);
+  box-shadow: 0 6px 18px rgba(35,35,31,.18);
+  border-radius: 12px;
+}
+.jk-nav-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+.jk-nav-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.jk-nav-name { font-size: 15px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jk-nav-sub { font-size: 11.5px; color: var(--ink3); }
+.jk-nav-pct { font-size: 12px; font-weight: 700; color: var(--accent); flex: none; }
+.jk-nav-add {
+  margin: 8px 8px 10px; background: var(--accent); color: #fff; text-align: center;
+  font-size: 15px; font-weight: 600; padding: 12px; border-radius: 14px;
+}
+.jk-nav-add:active { opacity: .88; }
+
+/* 抽屉里的「已结束」分区 */
+.jk-nav-done-h {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 10px 6px; margin-top: 6px; border-top: 1px solid var(--line);
+  font-size: 13px; font-weight: 600; color: var(--ink3); position: relative;
+}
+.jk-nav-done-h::after { content: ''; position: absolute; left: 0; right: 0; top: -1px; bottom: -1px; }
+.jk-nav-done-h:active { opacity: .7; }
+.jk-nav-caret { font-size: 12px; color: var(--ink3); }
+.jk-nav-item.done .jk-nav-name { color: var(--ink4, #A9A498); }
+.jk-nav-item.done .jk-nav-dot { background: var(--line2, #E2DCD1); }
+.jk-nav-reopen {
+  flex: none; font-size: 12px; font-weight: 600; color: var(--accent);
+  padding: 5px 10px; border: 1px solid var(--accent); border-radius: 99px; position: relative;
+}
+.jk-nav-reopen::after { content: ''; position: absolute; left: -4px; right: -4px; top: -4px; bottom: -4px; }
+.jk-nav-reopen:active { background: var(--accent-soft, #E6F4F0); }
+
+/* 感想弹层 */
+.jk-overlay {
+  position: fixed; inset: 0; background: rgba(28,28,30,.42);
+  display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px;
+}
+.jk-modal { width: 100%; max-width: 420px; background: var(--surface, #fff); border-radius: var(--r-card, 16px); padding: 20px; box-sizing: border-box; box-shadow: 0 14px 40px rgba(35,35,31,.18), 0 4px 12px rgba(35,35,31,.10); }
+.jk-modal-h { font-size: 16px; font-weight: 600; color: var(--ink); margin-bottom: 12px; }
+.jk-ta {
+  width: 100%; min-height: 60px; border: 1px solid var(--line2, #E2DCD1); border-radius: 10px;
+  padding: 10px 12px; font-size: 14px; color: var(--ink); background: var(--soft, #F4F5F5); box-sizing: border-box;
+}
+.jk-count { font-size: 11.5px; color: var(--ink4, #A9A498); text-align: right; margin: 4px 2px 12px; }
+.jk-ops { display: flex; justify-content: flex-end; gap: 10px; }
+.jk-btn { font-size: 14px; font-weight: 500; color: var(--ink2); background: var(--surface, #fff); border: 1px solid var(--line2, #E2DCD1); border-radius: var(--r-btn, 12px); padding: 9px 16px; }
+.jk-btn.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+.jk-btn.primary:active { opacity: .85; }
+
+/* 概览态：整卡可点进入，仅露「生效中第一个待办」 */
+.jk-goal.ov { transition: box-shadow .15s ease; }
+.jk-goal-head.ov { padding-right: 12px; }
+.jk-chev.ov { color: var(--ink4, #A9A498); }
+.jk-goal-body.ov { padding: 4px 12px 12px; }
+.jk-ov-node { position: relative; }
+.jk-ov-go { font-size: 12.5px; font-weight: 600; color: var(--accent); flex: none; padding: 0 2px; margin-left: 4px; }
+.jk-ov-go:active { opacity: .6; }
+.jk-ov-empty { font-size: 13px; color: var(--ink4, #A9A498); padding: 4px 8px 2px; font-style: italic; }
+
+/* 目录「全部事项」入口（回概览） */
+.jk-nav-dot.all { background: var(--ink4, #A9A498); }
+.jk-nav-item.nav-all { margin-bottom: 2px; }
+.jk-nav-item.nav-all.cur { background: var(--accent-soft, #E6F4F0); }
+.jk-nav-item.nav-all.cur .jk-nav-name { color: var(--accent-ink, #3C6B54); }

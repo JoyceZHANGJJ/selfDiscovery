@@ -26,3 +26,14 @@
 .qctag.on { color: #fff; background: var(--accent); border-color: var(--accent); }
 .qc-hint { font-size: 11.5px; color: var(--ink3); margin: 8px 2px 0; line-height: 1.6; }
 /* 主题选择的 .th-* 样式已收敛到 app.wxss（选择与「常用」勾选直接铺在设置页的「外观」节里） */
+
+/* 维度显隐 / 排序 */
+.modlist { padding: 2px 0; }
+.mod-row { display: flex; align-items: center; height: 52px; padding: 0 6px; border-bottom: 1px solid var(--line); box-sizing: border-box; background: var(--soft); }
+.mod-row.mod-drag { position: relative; z-index: 20; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.16); }
+.mod-dot { width: 9px; height: 9px; border-radius: 50%; margin-right: 10px; flex: 0 0 auto; }
+.mod-name { flex: 1; font-size: 14px; color: var(--ink); min-width: 0; }
+.mod-name.off { color: var(--ink3); }
+.mod-hide { font-size: 12.5px; color: var(--accent); padding: 6px 12px; border: 1px solid var(--line2); border-radius: 99px; margin-right: 8px; flex: 0 0 auto; }
+.mod-hide.on { color: var(--ink3); }
+.mod-handle { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; color: var(--ink3); flex: 0 0 auto; user-select: none; -webkit-user-select: none; }
