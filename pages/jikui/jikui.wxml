@@ -1,11 +1,11 @@
 <view class="app" style="--status-h:{{statusH}}px;{{themeStyle}}">
   <view class="statusbar-mask"></view>
   <view class="screen">
-    <!-- 顶栏：仅保留状态栏占位（内容从它下方开始，避免进入状态栏）；标题已去除 -->
-    <view class="jk-head"></view>
+    <!-- 顶部占位：高度 = 胶囊下沿，正文由 .jk-body 的 16px 上内边距起始，与卡片间距一致；标题已去除 -->
+    <view class="jk-head" style="height:{{headH}}px"></view>
 
-    <!-- 目录入口：悬浮胶囊，与微信胶囊同高对齐（位于起睡胶囊左侧），点开事项导航 -->
-    <view class="jk-dirpill {{navOpen ? 'cur' : ''}}" style="top:{{dirTop}}px;right:{{dirRight}}px;height:{{dirH}}px;" bindtap="openNav" aria-label="全部事项">全部事项</view>
+    <!-- 目录入口：悬浮胶囊，贴左缘、与微信胶囊同高对齐，点开事项导航 -->
+    <view class="jk-dirpill {{navOpen ? 'cur' : ''}}" style="top:{{dirTop}}px;left:{{dirLeft}}px;height:{{dirH}}px;" bindtap="openNav" aria-label="全部事项">全部事项</view>
 
     <view class="jk-body">
       <!-- 空状态 -->
@@ -55,6 +55,10 @@
                 <view class="jk-label">{{g.firstTodo.title}}</view>
                 <view class="jk-ov-go" catchtap="enterGoal" data-gid="{{g.gid}}">全部 ›</view>
               </view>
+              <!-- 首条待办若有备注，以纯文本行简洁露出（无背景色块，与标题左缘对齐） -->
+              <view wx:if="{{g.firstTodo.expect}}" class="jk-note">
+                <text class="jk-note-t">备注</text><text class="jk-note-v">{{g.firstTodo.expect}}</text>
+              </view>
             </view>
             <view wx:else class="jk-ov-empty">暂无进行中的待办</view>
           </view>
@@ -81,7 +85,7 @@
                       <view class="jk-ib del" bindtap="delTodo" data-gid="{{g.gid}}" data-tid="{{t.tid}}">✕</view>
                     </view>
                   </view>
-                  <view wx:if="{{t.showExpect}}" class="jk-refl expect"><text class="jk-refl-tag">预期结果</text>{{t.expect}}</view>
+                  <view wx:if="{{t.showExpect}}" class="jk-note"><text class="jk-note-t">备注</text><text class="jk-note-v">{{t.expect}}</text></view>
                   <view wx:if="{{t.showActual}}" class="jk-refl actual"><text class="jk-refl-tag">实际结果</text>{{t.actual}}</view>
                   <view wx:if="{{t.isRepeat && t.repeatCount > 0}}" class="jk-refl repeat">
                     <text class="jk-refl-tag">不定次重复 · 已完成 {{t.repeatCount}} 次</text>
@@ -165,14 +169,14 @@
     </view>
   </view>
 
-  <!-- 待办详情弹层：预期结果 / 实际结果 -->
+  <!-- 待办详情弹层：备注 / 实际结果 -->
   <view wx:if="{{detailOpen}}" class="jk-overlay" bindtap="cancelDetail">
     <view class="jk-modal" catchtap="noop">
       <view class="jk-modal-h">待办详情</view>
 
-      <view class="jk-field-label">预期结果</view>
+      <view class="jk-field-label">备注</view>
       <textarea class="jk-ta" value="{{expectVal}}" maxlength="500" auto-height focus="{{true}}" show-confirm-bar="{{false}}"
-        bindinput="onExpectInput" placeholder="开始前，你期望这一步达成什么？"></textarea>
+        bindinput="onExpectInput" placeholder="写点备注，比如做法、条件、想记下的话"></textarea>
       <view class="jk-count"><text>{{expectCount}}</text>/500</view>
 
       <!-- 不定次重复开关 -->
@@ -227,5 +231,5 @@
       </view>
     </view>
   </view>
-  <theme-switcher id="tsw" bind:placed="onTswPlaced" />
+  <theme-switcher id="tsw" />
 </view>

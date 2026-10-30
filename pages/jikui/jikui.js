@@ -47,6 +47,10 @@ function countProgress(todos) {
   return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
 }
 
+// 待办是否「未完成 / 生效中」：不定次重复的待办永远算未完成——
+// 它们不会彻底完成，只累积完成记录，所以无论 status 是否残留为 1，都仍然可以再点一次
+function isOpenTodo(t) { return !!t.repeat || t.status === 0; }
+
 Page(pageBase({
   data: {
     goalsView: [],
@@ -56,8 +60,8 @@ Page(pageBase({
     goalDetailOpen: null,  // { gid }：愿望说明弹层开着的那条
     goalDesc: '',      // 愿望说明
     goalDescCount: 0,
-    detailOpen: null,   // { gid, tid, willComplete }：待办详情弹层（预期结果 / 实际结果）开着的那条
-    expectVal: '',      // 预期结果（开始前设想，可随时编辑）
+    detailOpen: null,   // { gid, tid, willComplete }：待办详情弹层（备注 / 实际结果）开着的那条
+    expectVal: '',      // 备注（可随时编辑；字段名仍为 expect，避免数据迁移）
     actualVal: '',      // 实际结果（完成后记录，由「感受」改名而来）
     expectCount: 0,
     actualCount: 0,
@@ -70,7 +74,8 @@ Page(pageBase({
     dragIndex: -1,     // 拖动中该项在 navList 里的当前下标
     dragY: 0,          // 拖动项跟随手指的纵向位移（px）
     navDragging: false, // 目录下拉是否处于拖动排序中（用于禁止面板滚动）
-    dirTop: 24, dirH: 32, dirRight: 220  // 目录悬浮胶囊定位（由胶囊矩形 + 起睡胶囊宽度推出）
+    dirTop: 24, dirH: 32, dirLeft: 14, // 目录悬浮胶囊定位：贴左缘、与微信胶囊同高
+    headH: 56                          // 顶部占位高度：= 胶囊下沿，正文由 .jk-body 的 16px 上内边距起始
   },
 
   onLoad() {
@@ -99,20 +104,15 @@ Page(pageBase({
 
   onReady() { this._positionDir(); },
 
-  // 目录悬浮胶囊定位：只算 top/height（与微信胶囊同高对齐）；
-  // 水平位置（dirRight）由 theme-switcher 的 placed 事件给出（起睡胶囊右缘 + 自身宽度 + 间隙），
-  // 不再自行测量组件宽度（渲染时序里常量不到，会把胶囊顶到起睡/原生胶囊上被遮挡）
+  // 目录悬浮胶囊定位：水平固定贴左（dirLeft），纵向与微信胶囊同高对齐；
+  // 顶部占位 headH 只到胶囊下沿为止，不再额外加间隙——首卡上方的留白交给
+  // .jk-body 的 padding-top（16px），与卡片之间的 margin-bottom（16px）完全一致
   _positionDir() {
     const mb = ui.capsuleRect();
-    if (!mb) { this.setData({ dirTop: 24, dirH: 32 }); return; }
-    this.setData({ dirTop: mb.top, dirH: mb.height });
-  },
-  // 起睡胶囊（theme-switcher）定位完成后回调：把「全部事项」摆到它左边 10px
-  onTswPlaced(e) {
-    const d = (e && e.detail) || {};
-    const tswRight = (typeof d.right === 'number') ? d.right : 92;
-    const tswW = (typeof d.width === 'number' && d.width > 0) ? d.width : 100;
-    this.setData({ dirRight: tswRight + tswW + 10 });
+    const statusH = this.data.statusH || 20;
+    const top = (mb && typeof mb.top === 'number') ? mb.top : statusH + 4;
+    const h = (mb && mb.height) ? mb.height : 32;
+    this.setData({ dirTop: top, dirH: h, headH: top + h });
   },
 
   // 切走时收掉内联输入 / 弹层，避免回来时卡在一个空的输入框
@@ -177,6 +177,8 @@ Page(pageBase({
           if (n.expect == null) n.expect = '';
           if (n.repeat == null) n.repeat = 0;
           if (!Array.isArray(n.completions)) n.completions = [];
+          // 旧数据里可能残留「已完成的重复待办」：重复待办永远未完成，统一复位
+          if (n.repeat && n.status === 1) { n.status = 0; n.completedAt = 0; }
           walk(n.children || []);
         }
       };
@@ -252,12 +254,14 @@ Page(pageBase({
     const out = [];
     const self = this;
     const flat = (todos, depth) => {
-      // 未完成优先：同层内 status 0 排在前（PRD FR-12）
-      const sorted = todos.slice().sort((a, b) => (a.status === 1 ? 1 : 0) - (b.status === 1 ? 1 : 0));
+      // 未完成优先：同层内「未完成 / 可重复」（isOpenTodo）排在前（PRD FR-12）
+      const sorted = todos.slice().sort((a, b) => (isOpenTodo(a) ? 0 : 1) - (isOpenTodo(b) ? 0 : 1));
       for (const t of sorted) {
         const completions = t.completions || [];
         out.push({
-          kind: 'todo', key: t.id, tid: t.id, title: t.title, status: t.status,
+          kind: 'todo', key: t.id, tid: t.id, title: t.title,
+          // 重复待办的 status 一律按 0 渲染：它们不会彻底完成，不应显示为「已完成」
+          status: t.repeat ? 0 : t.status,
           expect: t.expect, actual: t.actual, depth,
           isRepeat: !!t.repeat,
           repeatCount: completions.length,
@@ -277,13 +281,15 @@ Page(pageBase({
     flat(g.todos || [], 0);
     return out;
   },
-  // 取事项下「生效中」的第一个待办：树序前序遍历，第一个 status === 0（未完成 / 进行中的习惯）即返回
+  // 取事项下「生效中」的第一个待办：树序前序遍历，第一个 isOpenTodo（未完成，或可重复完成）即返回。
+  // 排序与 _flatTodos 保持一致（未完成 / 可重复优先），保证「概览露出的那条」= 展开后列表的第一条
   _firstActiveTodoView(g) {
     let found = null;
     const walk = (todos) => {
       if (found) return;
-      for (const t of (todos || [])) {
-        if (t.status === 0) { found = t; return; }
+      const sorted = (todos || []).slice().sort((a, b) => (isOpenTodo(a) ? 0 : 1) - (isOpenTodo(b) ? 0 : 1));
+      for (const t of sorted) {
+        if (isOpenTodo(t)) { found = t; return; }
         if (t.children && t.children.length) { walk(t.children); if (found) return; }
       }
     };
@@ -293,9 +299,10 @@ Page(pageBase({
     return {
       tid: found.id,
       title: found.title,
-      status: found.status,
+      status: found.repeat ? 0 : found.status,
       isRepeat: !!found.repeat,
-      repeatCount: completions.length
+      repeatCount: completions.length,
+      expect: found.expect || ''   // 概览里也要能看到首条待办的备注
     };
   },
 
@@ -380,6 +387,7 @@ Page(pageBase({
 
   /* ---------- 目录浮层（愿望导航下拉） ---------- */
   // 点顶栏「目录」按钮：展开下拉，列出所有愿望
+  // 打开目录
   openNav() { this.setData({ navOpen: true }); },
   closeNav() { this.setData({ navOpen: false }); },
   // 点下拉里的某个愿望：切到它（单视图）、展开并收起下拉
@@ -524,7 +532,7 @@ Page(pageBase({
     f.node._collapsed = !f.node._collapsed; this._save(); this.rebuild();
   },
 
-  /* ---------- 待办详情：预期结果 / 实际结果 / 不定次重复 ---------- */
+  /* ---------- 待办详情：备注 / 实际结果 / 不定次重复 ---------- */
   // 点「✓ / ↻」：
   //  - 重复待办：只要所属愿望没「结束」，就能一直点「↻」完成，每次记一条完成（时间 + 实际结果），待办本身保持可再完成
   //  - 非重复待办：未完成先弹详情（顺手记实际结果）；已完成再点回退未完成、保留已填内容
@@ -543,7 +551,7 @@ Page(pageBase({
       f.node.status = 0; this._save(); this.rebuild();
     }
   },
-  // 点「⊙」：随时打开详情，编辑预期结果、设/取消重复、看完成历史，不改变完成状态
+  // 点「⊙」：随时打开详情，编辑备注、设/取消重复、看完成历史，不改变完成状态
   openDetail(e) {
     const f = this._findTodo(e.currentTarget.dataset.gid, e.currentTarget.dataset.tid); if (!f) return;
     this._openDetail(e.currentTarget.dataset.gid, e.currentTarget.dataset.tid, false, f.node);
@@ -575,6 +583,9 @@ Page(pageBase({
       const node = f.node;
       node.expect = (this.data.expectVal || '').trim();
       node.repeat = this.data.repeatOn ? 1 : 0;
+      // 标为「不定次重复」即永远算未完成：清掉可能残留的已完成状态，
+      // 否则概览（全部事项）会把它当成已完成而跳过，只留一句「暂无进行中的待办」
+      if (node.repeat) { node.status = 0; node.completedAt = 0; }
       if (d.willComplete) {
         if (node.repeat) {
           // 不定次重复：追加一条完成记录（时间 + 本次实际结果），待办保持可再完成

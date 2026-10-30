@@ -7,10 +7,10 @@
    使目录图标与「积跬步」标题的视觉中线 = 原生胶囊中线（status-h + 22px）；
    右侧预留原生胶囊宽度（~96px）避免被盖。分割线贴着内容下方。 */
 /* 顶栏占位：仅用于把内容推到状态栏之下，不再显示标题（避免内容进入状态栏） */
-.jk-head { height: var(--status-h, 20px); }
+.jk-head { height: var(--status-h, 20px); }  /* 兜底值；实际高度由 JS 的 headH 内联给出 */
 
-/* 目录入口悬浮胶囊：与微信胶囊同高对齐，位于起睡胶囊（theme-switcher）左侧。
-   实底 + 细边 + 轻投影，观感与右侧原生胶囊 / 起睡胶囊一致，内容从它脚下穿过时被挡住 */
+/* 目录入口悬浮胶囊：贴左缘、与微信胶囊同高对齐（右侧起睡胶囊与原生胶囊不动）。
+   实底 + 细边 + 轻投影，观感与右侧胶囊一致，正文从它下方开始穿过时被挡住 */
 .jk-dirpill {
   position: fixed; z-index: 60;
   display: flex; align-items: center;
@@ -97,7 +97,7 @@
 .jk-node.done .jk-label { color: var(--ink4, #A9A498); }
 .jk-acts { display: flex; gap: 2px; flex: none; }
 
-/* 预期结果 / 实际结果 */
+/* 实际结果 / 重复完成记录（色块式；备注不用这套，见文末 .jk-note 纯文本行） */
 .jk-refl {
   margin: 4px 0 8px 53px; padding: 9px 12px; font-size: 13px; line-height: 1.5;
   color: var(--ink2); background: var(--soft, #F4F5F5);
@@ -131,7 +131,7 @@
 .jk-switch.on .jk-knob { left: 21px; }
 .jk-hist-empty { font-size: 12.5px; color: var(--ink4, #A9A498); padding: 6px 2px 2px; font-style: italic; }
 
-/* 弹层内字段标签（预期结果 / 实际结果） */
+/* 弹层内字段标签（备注 / 实际结果） */
 .jk-field-label { font-size: 12.5px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
 /* 愿望说明（卡片内展示） */
 .jk-goal-desc {
@@ -164,7 +164,7 @@
    读起来就是从下拉框长出来的尖角（不再是旋转方块叠加） */
 .jk-nav-caret {
   position: fixed; z-index: 52;
-  top: calc(var(--status-h, 20px) + 40px); left: 26px;
+  top: calc(var(--status-h, 20px) + 40px); left: 47px;  /* 指向左侧「全部事项」胶囊的中心 */
   width: 0; height: 0;
   border-left: 7px solid transparent;
   border-right: 7px solid transparent;
@@ -256,6 +256,16 @@
 .jk-ov-go { font-size: 12.5px; font-weight: 600; color: var(--accent); flex: none; padding: 0 2px; margin-left: 4px; }
 .jk-ov-go:active { opacity: .6; }
 .jk-ov-empty { font-size: 13px; color: var(--ink4, #A9A498); padding: 4px 8px 2px; font-style: italic; }
+/* 备注（概览首条 / 单事项视图共用）：纯文本行，无背景、无边框、无内边距；
+   左边距 65px = 行内 8(行内边距) + 20(三角占位) + 8 + 21(圆圈) + 8，正好与待办标题左缘对齐
+   （单事项视图里 .jk-node 的 padding-left 已随层级递增，故此处写死 65 依旧贴合当前层标题） */
+.jk-note {
+  display: flex; align-items: baseline; gap: 6px;
+  margin: 0 8px 4px 65px;
+  font-size: 13px; line-height: 1.55; color: var(--ink2);
+}
+.jk-note-t { flex: none; font-size: 11px; color: var(--ink4, #A9A498); letter-spacing: .5px; }
+.jk-note-v { flex: 1; min-width: 0; word-break: break-word; }
 
 /* 目录「全部事项」入口（回概览） */
 .jk-nav-dot.all { background: var(--ink4, #A9A498); }
